@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+  <herd>gnome</herd>
+  <maintainer>
+    <email>sudormrfhalt@gmail.com</email>
+  </maintainer>
+  <use>
+	<flag name="coverage">Enable code coverage support</flag>
+	<flag name="introspection">Use <pkg>dev-libs/gobject-introspection</pkg>
+	for introspection</flag>
+	<flag name="jit">Enable JIT javascript compiler (disabling it will
+	cause performance penalty)</flag>
+  </use>
+</pkgmetadata>

@@ -1,0 +1,148 @@
+#!/bin/sh
+# /root/.bin/Gentoo/e - portage management tool
+
+if [[ -z $@ ]]; then
+  echo "e <option> <*option2/pkg> - portage management tasks:
+  1 | oneshot   - adds a package as a dependency
+  - | flagrem   - removes a global USE flag
+  + | flagadd   - adds a global USE flag
+  b | blocked   - blocked pkg workaround - <blocking> <tomerge>
+  c | clean     - cleans (removes) package sources no longer in portage tree
+  d | depclean  - remove unneeded dependencies
+  e | elog      - view elog (developer notes for merged packages)
+  f | flag      - add flag to package - <category/pkg flag>
+  g | flaginfo  - information on a package's USE flags
+  h | flaghas   - programs using USE flag
+  i | install   - installs package (will use binary if available)
+  k | keyword   - add keyword for unsupport archtechtures
+  l | list      - lists files installed to a package
+  o | owns      - check the file's owning package
+  p | pretend   - check details of how a package is going to be added
+  q | query     - search for an installed package
+  r | remove    - remove package(s)
+  s | search    - search for a package
+  t | searchdes - search the description of packages
+  u | upgrade   - emerge world (upgrade everything)
+  x | check     - check installed pkg(s) integrity
+  y | sync      - sync the portage database
+  z | revdep    - rebuild dependencies
+  freeze        - freeze a pkg update - <cat/pkg> <cat/pkg-version>
+  unfreeze      - unfreeze a package - <package>
+  unmask        - unmask package - <category/pkg-*version>
+  gcl           - list installed gcc compilers
+  gcs           - set new gcc compiler
+  kl            - list available kernels
+  ks            - select new kernel (will require bootloader update)"
+  exit
+fi
+
+# change to ebuild directory, put in ~/.bashrc:
+# cde () { cd "$(dirname `equery ewhich "$@"`)" ; }
+# b | blocked   - untested
+# unfreeze      - generic matching will delete any line that matches
+# forcerm(add?) - removes package that can't otherwise be uninstalled
+#    forcerm )           shift
+#                        emerge --force "$@"
+#                        ;;
+# etc-update (add?)
+# --resume --skipfirst (add?)
+
+case $1 in
+    1 | oneshot )       shift
+                        emerge --oneshot "$@"
+                        ;;
+    - | flagrem )       shift
+                        if [[ -z "$@" ]]; then
+                          echo " exiting: flag required"
+                          exit; else
+                          euse -D "$@"
+                        fi
+                        ;;
+    + | flagadd )       shift
+                        if [[ -z "$@" ]]; then
+                          echo " exiting: flag required"
+                          exit; else
+                          euse -E "$@"
+                        fi
+                        ;;
+    B | Block )         shift
+                        quickpkg $1
+                        emerge --unmerge $1
+                        emerge $2
+                        emerge --usepkgonly --nodeps $1
+                        ;;
+    c | clean )         eclean distfiles
+                        ;;
+    d | depclean )      emerge --depclean
+                        ;;
+    e | elog )          less /var/log/portage/elog/summary.log
+                        ;;
+    f | flag )          shift
+                        echo "$@" >> /etc/portage/package.use
+                        ;;
+    g | useinfo )       shift
+                        equery uses "$@"
+                        ;;
+    h | flaghas )       shift
+                        equery hasuse "$@"
+                        ;;
+    i | install )       shift
+                        emerge --usepkg --ask "$@"
+                        ;;
+    k | keyword )       shift
+                        echo -e "$@ **" >> /etc/portage/package.keywords
+                        ;;
+    l | ls | list )     shift
+                        equery files "$@"
+                        ;;
+    o | own )           shift
+                        equery belongs "$@"
+                        ;;
+    p | pretend )       shift
+                        emerge -pv "$@"
+                        ;;
+    q | query )         shift
+                        equery list "*$@*"
+                        ;;
+    r | remove )        shift
+                        emerge --unmerge "$@"
+                        ;;
+    s | search )        shift
+                        eix "$@"
+                        ;;
+    t | searchdes )     shift
+                        eix -S "$@"
+                        ;;
+    u | upgrade )       emerge --update --newuse --deep --ask world
+                        ;;
+    x | check )         shift
+                        equery check "$@"
+                        ;;
+    y | sync )          eix-sync
+                        ;;
+    z | revdep )        revdep-rebuild
+                        ;;
+    freeze )            shift
+                        echo "$1" >> /etc/portage/package.mask
+                        echo "$2" >> /etc/portage/package.unmask
+                        ;;
+    unfreeze )          shift
+                        sed -i "/$@/d" /etc/portage/package.mask
+                        sed -i "/$@/d" /etc/portage/package.unmask
+                        ;;
+    unmask )            shift
+                        echo "$@" >> /etc/portage/package.unmask
+                        ;;
+    gcl )               gcc-config -l
+                        ;;
+    gcs )               shift
+                        gcc-config "$@"
+                        ;;
+    kl )                eselect kernel list
+                        ;;
+    ks )                shift
+                        eselect kernel set "$@"
+                        ;;
+    * )                 emerge "$@"
+esac
+

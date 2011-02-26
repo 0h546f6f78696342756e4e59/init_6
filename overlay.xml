@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<layman>
+  <overlay contact="git://github.com/init6/init_6.git" name="init6" src="git://github.com/init6/init_6.git" status="unofficial" type="git">
+    <link>http://github.com/init6/init_6</link>
+    <description>init6 Gentoo overlay</description>
+  </overlay>
+</layman>

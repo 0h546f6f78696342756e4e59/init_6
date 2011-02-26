@@ -1,0 +1,189 @@
+## PLATFORM
+gnome-base/gconf #Gnome Configuration System and Daemon
+gnome-base/orbit #ORBit2 is a high-performance CORBA ORB
+#gnome-extra/at-spi #The Gnome Accessibility Toolkit
+#dev-libs/atk #GTK+ & GNOME Accessibility Toolkit
+media-libs/audiofile #An elegant API for accessing audio files
+#media-sound/esound #The Enlightened Sound Daemon
+#x11-libs/gdk-pixbuf #Image loading library for GTK+
+dev-libs/glib #The GLib library of C routines
+gnome-base/gnome-mime-data #MIME data for Gnome
+gnome-base/gnome-vfs #Gnome Virtual Filesystem
+#gnome-vfs-monikers # ?
+x11-libs/gtk+ #Gimp ToolKit +
+#dev-util/gtk-doc #GTK+ Documentation Generator
+dev-libs/libIDL #CORBA tree builder
+media-libs/libart_lgpl #a LGPL version of libart
+gnome-base/libbonobo #GNOME CORBA framework
+gnome-base/libbonoboui #User Interface part of libbonobo
+gnome-base/libglade #Library to construct graphical interfaces at runtime
+gnome-base/libgnome #Essential Gnome Libraries
+gnome-base/libgnomecanvas #The Gnome 2 Canvas library
+gnome-base/libgnomeui #User Interface routines for Gnome
+x11-libs/pango #Internationalized text layout and rendering library
+
+## DESKTOP
+x11-misc/alacarte #Simple GNOME menu editor
+#at-spi2-atk # ?
+#gnome-extra/at-spi #The Gnome Accessibility Toolkit
+#at-spi2-core # ?
+app-cdr/brasero #Brasero (aka Bonfire) is yet another application to burn CD/DVD for the gnome desktop
+gnome-extra/bug-buddy #A graphical bug reporting tool
+media-video/cheese #A cheesy program to take pictures and videos from your webcam
+#app-accessibility/dasher #A text entry interface, driven by continuous pointing gestures
+#gnome-base/dconf #Simple low-level configuration system
+gnome-extra/deskbar-applet #An Omnipresent Versatile Search Interface
+#net-voip/ekiga #H.323 and SIP VoIP softphone
+#net-im/empathy #Telepathy client and library using GTK+
+media-gfx/eog #The Eye of GNOME image viewer
+www-client/epiphany #GNOME webbrowser based on Webkit
+www-client/epiphany-extensions #Extensions for the Epiphany web browser
+app-text/evince #Simple document viewer for GNOME
+mail-client/evolution  #Integrated mail, addressbook and calendaring functionality
+gnome-extra/evolution-data-server #Evolution groupware backend
+#gnome-extra/evolution-exchange #Evolution module for connecting to Microsoft Exchange
+#evolution-mapi # ?
+gnome-extra/evolution-webcal #A GNOME URL handler for web-published ical calendar files
+app-arch/file-roller #archive manager for GNOME
+gnome-extra/gcalctool #A calculator application for GNOME
+gnome-extra/gconf-editor #An editor to the GNOME 2 config system
+gnome-base/gdm #GNOME Display Manager
+app-editors/gedit #A text editor for the GNOME desktop
+app-editors/gedit-plugins #Offical plugins for gedit
+gnome-base/gnome-applets #Applets for the GNOME Desktop and Panel
+x11-themes/gnome-backgrounds #A set of backgrounds packaged with the GNOME desktop
+net-wireless/gnome-bluetooth #Fork of bluez-gnome focused on integration with GNOME
+gnome-extra/gnome-color-manager #GNOME Color Manager is a session framework for the GNOME desktop environment that makes it easy to manage easy to manage, install and generate color profiles.
+gnome-base/gnome-control-center #The gnome2 Desktop configuration tool
+gnome-base/gnome #Meta package for the GNOME desktop
+#dev-dotnet/gnome-desktop-sharp #GtkSharp's gnome-desktop module of the gnome-desktop-sharp tarball
+sys-apps/gnome-disk-utility #Disk Utility for GNOME using devicekit-disks
+app-text/gnome-doc-utils #A collection of documentation utilities for the Gnome project
+gnome-extra/gnome-games #Collection of games for the GNOME desktop
+x11-themes/gnome-icon-theme #GNOME 2 default icon themes
+#gnome-icon-theme-symbolic
+gnome-base/gnome-keyring #Password and keyring managing daemon
+#app-accessibility/gnome-mag #Gnome magnification service definition
+gnome-extra/gnome-media #Multimedia related programs for the GNOME desktop
+gnome-base/gnome-menus #The GNOME menu system, implementing the F.D.O cross-desktop spec
+net-analyzer/gnome-netstatus #Network interface information applet
+net-analyzer/gnome-nettool #Collection of network tools
+#app-portage/packagekit #Manage packages in a secure way using a cross-distro and cross-architecture API
+gnome-base/gnome-panel #The GNOME panel
+gnome-extra/gnome-power-manager #Gnome Power Manager
+#dev-python/gnome-python #Meta package which provides python modules for GNOME 2 libraries
+gnome-extra/gnome-screensaver #Replaces xscreensaver, integrating with the desktop
+gnome-base/gnome-session #Gnome session manager
+gnome-base/gnome-settings-daemon #Gnome Settings Daemon
+#dev-dotnet/gnome-sharp #GtkSharp's gnome module of the gnome-sharp tarball
+#app-accessibility/gnome-speech #Simple general API for producing text-to-speech output
+gnome-extra/gnome-system-monitor #The Gnome System Monitor
+#app-admin/gnome-system-tools #Tools aimed to make easy the administration of UNIX systems
+x11-terms/gnome-terminal #The Gnome Terminal
+x11-themes/gnome-themes #A set of GNOME themes, with sets for users with limited or low vision
+gnome-extra/gnome-user-docs #GNOME end user documentation
+#gnome-extra/gnome-user-share #Personal file sharing for the GNOME desktop
+gnome-extra/gnome-utils #Utilities for the Gnome2 desktop
+dev-libs/gobject-introspection #Introspection infrastructure for gobject library bindings
+#app-accessibility/gok #Gnome Onscreen Keyboard
+media-libs/gst-plugins-base #Basepack of plugins for gstreamer
+media-libs/gst-plugins-good #Basepack of plugins for gstreamer
+media-libs/gstreamer #Streaming media framework
+x11-themes/gtk-engines #GTK+2 standard engines and themes
+gnome-extra/gtkhtml #Lightweight HTML Rendering/Printing/Editing Engine
+x11-libs/gtksourceview #A text widget implementing syntax highlighting and other features
+gnome-extra/gucharmap #Unicode character map viewer
+gnome-base/gvfs #GNOME Virtual Filesystem Layer
+gnome-extra/hamster-applet #Time tracking for the masses, in a GNOME applet
+#gnome-extra/libgail-gnome #Gail libraries for GNOME
+gnome-base/libgnome-keyring #Compatibility library for accessing secrets
+gnome-base/libgnomekbd #Gnome keyboard configuration library
+gnome-base/libgnomeprint #Printer handling for Gnome
+gnome-base/libgnomeprintui #User interface libraries for gnome print
+gnome-base/libgtop #A library that provides top functionality to applications
+dev-libs/libgweather #Library to access weather information from online services
+#dev-libs/liboobs #Liboobs is a wrapping library to the System Tools Backends.
+gnome-base/librsvg #Scalable Vector Graphics (SVG) rendering library
+net-libs/libsoup #An HTTP library implementation in C
+x11-libs/libwnck #A window navigation construction kit
+x11-wm/metacity #GNOME default window manager
+#gnome-extra/mousetweaks #Mouse accessibility enhancements for the GNOME desktop
+gnome-base/nautilus #A file manager for the GNOME desktop
+#gnome-extra/nautilus-sendto #A nautilus extension for sending files to locations
+#app-accessibility/orca #Extensible screen reader that provides access to the desktop
+dev-python/pygtksourceview #GTK+2 bindings for Python
+net-misc/rygel #Rygel is an open source UPnP/DLNA MediaServer
+app-crypt/seahorse #A GNOME application for managing encryption keys
+app-crypt/seahorse-plugins #A GNOME application for managing encryption keys
+media-sound/sound-juicer #CD ripper for GNOME 2
+gnome-extra/swfdec-gnome #Flash player and thumbnailer for GNOME
+#app-misc/tomboy #Desktop note-taking application
+app-misc/gnote #Desktop note-taking application
+media-video/totem #Media player for GNOME
+dev-libs/totem-pl-parser #Playlist parsing library
+net-misc/vinagre #VNC Client for the GNOME Desktop
+net-misc/vino #An integrated VNC server for GNOME
+x11-libs/vte #Gnome terminal widget
+gnome-extra/yelp #Help browser for GNOME
+gnome-extra/zenity #Tool to display dialogs from the commandline and shell scripts
+
+## ADMIN
+app-admin/pessulus #Lockdown editor for GNOME
+#app-admin/sabayon #Tool to maintain user profiles in a GNOME desktop
+
+## DEVTOOLS
+#app-accessibility/accerciser #Interactive Python accessibility explorer
+#dev-util/anjuta #A versatile IDE for GNOME
+#dev-util/devhelp #An API documentation browser for GNOME 2
+#dev-libs/gdl #The Gnome Devtool Libraries
+#dev-util/glade #GNOME GUI Builder
+#dev-util/gnome-devel-docs #Documentation for developing for the GNOME desktop environment
+
+## BINDINGS
+
+# C++
+#dev-cpp/atkmm #C++ interface for the ATK library
+dev-cpp/gconfmm #C++ bindings for GConf
+dev-cpp/glibmm #C++ interface for glib2
+#dev-cpp/gnome-vfsmm #C++ bindings for gnome-vfs
+dev-cpp/gtkmm #C++ interface for GTK+2
+#dev-cpp/libglademm #C++ bindings for libglade
+#dev-cpp/libgnomecanvasmm #C++ bindings for libgnomecanvas
+#dev-cpp/libgnomemm #C++ bindings for libgnome
+#dev-cpp/libgnomeuimm #C++ bindings for libgnomeui
+dev-libs/libsigc++ #Typesafe callback system for standard C++
+#libxml++ # ?
+#dev-cpp/mm-common #Build infrastructure and utilities for GNOME C++ bindings
+dev-cpp/pangomm #C++ interface for pango
+
+# Java
+#glib-java # ?
+#libgconf-java # ?
+#libglade-java # ?
+#libgnome-java # ?
+#libgtk-java # ?
+
+# Js
+# dev-libs/gjs # Javascript bindings for GNOME
+#dev-libs/seed #Javascript bindings for Webkit-GTK and GNOME libraries
+
+# Mono
+#dev-dotnet/gtk-sharp #GtkSharp's gtk module of the gtk-sharp tarball
+
+# Perl
+#dev-perl/glib-perl #Glib - Perl wrappers for the GLib utility and Object libraries
+#dev-perl/gnome2-canvas #Perl interface to the Gnome Canvas
+#dev-perl/gnome2-gconf #Perl wrappers for the GConf configuration engine
+#dev-perl/gnome2-vfs-perl #Perl interface to the 2.x series of the Gnome Virtual File System libraries
+#dev-perl/gnome2-perl #Perl interface to the 2.x series of the Gnome libraries
+#dev-perl/gtk2-gladexml #Create user interfaces directly from Glade XML files
+#dev-perl/gtk2-perl #Perl bindings for GTK2
+#dev-perl/Pango #Layout and render international text
+
+# Python
+dev-python/libgnome-python #Python bindings for essential GNOME libraries
+#pyatspi # ?
+dev-python/pygobject #GLib's GObject library bindings for Python
+dev-python/pygtk #GTK+2 bindings for Python
+dev-python/pyorbit #ORBit2 bindings for Python
+

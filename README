@@ -1,0 +1,17 @@
+USE AT YOUR OWN RISK.
+
+И не говорите потом что я вас не предупреждал!
+
+You are supposed to be using ~amd64 or ~x86 if you use this overlay
+Please report any failure or missing dep.
+You can also request to add any ebuild.
+
+For add overlay install layman
+
+and run
+
+> emerge -av layman && layman -a init6
+
+If you've never worked with a overlay, please read http://www.gentoo.org/proj/en/overlays/userguide.xml
+
+sudormrfhalt@gmail.com
