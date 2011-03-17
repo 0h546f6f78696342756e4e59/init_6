@@ -53,7 +53,7 @@ app-editors/gedit-plugins #Offical plugins for gedit
 gnome-base/gnome-applets #Applets for the GNOME Desktop and Panel
 x11-themes/gnome-backgrounds #A set of backgrounds packaged with the GNOME desktop
 net-wireless/gnome-bluetooth #Fork of bluez-gnome focused on integration with GNOME
-gnome-extra/gnome-color-manager #GNOME Color Manager is a session framework for the GNOME desktop environment that makes it easy to manage easy to manage, install and generate color profiles.
+#gnome-extra/gnome-color-manager #GNOME Color Manager is a session framework for the GNOME desktop environment that makes it easy to manage easy to manage, install and generate color profiles.
 gnome-base/gnome-control-center #The gnome2 Desktop configuration tool
 gnome-base/gnome #Meta package for the GNOME desktop
 #dev-dotnet/gnome-desktop-sharp #GtkSharp's gnome-desktop module of the gnome-desktop-sharp tarball
@@ -112,13 +112,13 @@ gnome-base/nautilus #A file manager for the GNOME desktop
 #gnome-extra/nautilus-sendto #A nautilus extension for sending files to locations
 #app-accessibility/orca #Extensible screen reader that provides access to the desktop
 dev-python/pygtksourceview #GTK+2 bindings for Python
-net-misc/rygel #Rygel is an open source UPnP/DLNA MediaServer
+#net-misc/rygel #Rygel is an open source UPnP/DLNA MediaServer
 app-crypt/seahorse #A GNOME application for managing encryption keys
 app-crypt/seahorse-plugins #A GNOME application for managing encryption keys
 media-sound/sound-juicer #CD ripper for GNOME 2
 gnome-extra/swfdec-gnome #Flash player and thumbnailer for GNOME
 #app-misc/tomboy #Desktop note-taking application
-app-misc/gnote #Desktop note-taking application
+#app-misc/gnote #Desktop note-taking application
 media-video/totem #Media player for GNOME
 dev-libs/totem-pl-parser #Playlist parsing library
 net-misc/vinagre #VNC Client for the GNOME Desktop
@@ -143,7 +143,7 @@ app-admin/pessulus #Lockdown editor for GNOME
 
 # C++
 #dev-cpp/atkmm #C++ interface for the ATK library
-dev-cpp/gconfmm #C++ bindings for GConf
+#dev-cpp/gconfmm #C++ bindings for GConf
 dev-cpp/glibmm #C++ interface for glib2
 #dev-cpp/gnome-vfsmm #C++ bindings for gnome-vfs
 dev-cpp/gtkmm #C++ interface for GTK+2

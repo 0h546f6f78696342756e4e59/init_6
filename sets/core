@@ -34,15 +34,15 @@ dev-libs/libxslt
 dev-libs/mpfr
 dev-libs/openssl
 dev-libs/popt
-dev-perl/Authen-SASL
-dev-perl/Digest-HMAC
-dev-perl/Digest-SHA1
-dev-perl/Error
-dev-perl/IO-Socket-SSL
+#dev-perl/Authen-SASL
+#dev-perl/Digest-HMAC
+#dev-perl/Digest-SHA1
+#dev-perl/Error
+#dev-perl/IO-Socket-SSL
 dev-perl/Locale-gettext
-dev-perl/Net-SMTP-SSL
-dev-perl/Net-SSLeay
-dev-perl/YAML-Tiny
+#dev-perl/Net-SMTP-SSL
+#dev-perl/Net-SSLeay
+#dev-perl/YAML-Tiny
 dev-util/gtk-doc-am
 dev-util/pkgconfig
 dev-vcs/git
@@ -56,7 +56,7 @@ net-misc/wget
 perl-core/Archive-Tar
 perl-core/Compress-Raw-Bzip2
 perl-core/Compress-Raw-Zlib
-perl-core/Digest-MD5
+#perl-core/Digest-MD5
 perl-core/ExtUtils-CBuilder
 perl-core/ExtUtils-ParseXS
 perl-core/IO-Compress
@@ -80,7 +80,7 @@ sys-apps/help2man
 sys-apps/iproute2
 sys-apps/kbd
 sys-apps/less
-sys-apps/man
+sys-apps/man-db
 sys-apps/man-pages
 sys-apps/man-pages-posix
 sys-apps/module-init-tools
@@ -100,7 +100,7 @@ sys-devel/autoconf
 sys-devel/autoconf-wrapper
 sys-devel/automake
 sys-devel/automake-wrapper
-sys-devel/bc
+#sys-devel/bc
 sys-devel/binutils
 sys-devel/binutils-config
 sys-devel/bison
@@ -141,7 +141,7 @@ virtual/pager
 virtual/perl-Archive-Tar
 virtual/perl-Compress-Raw-Bzip2
 virtual/perl-Compress-Raw-Zlib
-virtual/perl-Digest-MD5
+#virtual/perl-Digest-MD5
 virtual/perl-ExtUtils-CBuilder
 virtual/perl-ExtUtils-ParseXS
 virtual/perl-IO-Compress
@@ -150,8 +150,8 @@ virtual/perl-Module-Build
 virtual/perl-Package-Constants
 virtual/perl-Scalar-List-Utils
 virtual/perl-Test-Harness
-virtual/perl-digest-base
-virtual/perl-libnet
+#virtual/perl-digest-base
+#virtual/perl-libnet
 
 app-admin/syslog-ng
 app-portage/eix

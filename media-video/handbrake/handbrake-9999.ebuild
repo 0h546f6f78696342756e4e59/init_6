@@ -4,9 +4,12 @@
 
 EAPI="2"
 
-ESVN_REPO_URI="svn://svn.handbrake.fr/HandBrake/trunk"
+#ESVN_REPO_URI="svn://svn.handbrake.fr/HandBrake/trunk"
+EGIT_REPO_URI="git://github.com/HandBrake/HandBrake.git"
+EGIT_PROJECT="HandBrake"
 
-inherit subversion gnome2-utils
+#inherit subversion gnome2-utils
+inherit git gnome2-utils
 
 DESCRIPTION="Open-source DVD to MPEG-4 converter."
 HOMEPAGE="http://handbrake.fr/"
@@ -15,19 +18,20 @@ SLOT="0"
 
 KEYWORDS="~x86 ~amd64"
 
-IUSE="doc gtk"
-RDEPEND="
+IUSE="css doc gtk"
+RDEPEND="sys-libs/zlib
+	css? ( media-libs/libdvdcss )
 	gtk? (	>=x11-libs/gtk+-2.8
 			dev-libs/glib
 			dev-libs/dbus-glib
-			sys-apps/hal
-			net-libs/webkit-gtk
 			x11-libs/libnotify
 			media-libs/gstreamer
 			media-libs/gst-plugins-base
 			>=sys-fs/udev-147[extras]
 	)"
-DEPEND="sys-libs/zlib
+DEPEND="=sys-devel/automake-1.10*
+	=sys-devel/automake-1.4*
+	=sys-devel/automake-1.9*
 	dev-lang/yasm
 	>=dev-lang/python-2.4.6
 	|| ( >=net-misc/wget-1.11.4 >=net-misc/curl-7.19.4 )
