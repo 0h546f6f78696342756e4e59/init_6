@@ -1,4 +1,4 @@
-# Copyright 1999-2011 Gentoo Foundation
+# Copyright 1999-2009 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
@@ -23,22 +23,16 @@ RDEPEND="sys-libs/zlib
 	css? ( media-libs/libdvdcss )
 	gtk? (	>=x11-libs/gtk+-2.8
 			dev-libs/dbus-glib
+			sys-apps/hal
 			net-libs/webkit-gtk
 			x11-libs/libnotify
 			media-libs/gstreamer
 			media-libs/gst-plugins-base
 	)"
-DEPEND="=sys-devel/automake-1.10*
-        =sys-devel/automake-1.4*
-        =sys-devel/automake-1.9*
-	dev-lang/yasm
+DEPEND="dev-lang/yasm
 	dev-lang/python
 	|| ( net-misc/wget net-misc/curl ) 
 	${RDEPEND}"
-
-src_prepare() {
-	epatch "${FILESDIR}/${P}-backport-lib-fixes.patch"
-}
 
 src_configure() {
 	# Python configure script doesn't accept all econf flags
@@ -67,10 +61,6 @@ pkg_preinst() {
 
 pkg_postinst() {
 	gnome2_icon_cache_update
-	echo
-	ewarn "This is experimental and NOT supported by gentoo."
-	ewarn "DO NOT report bugs to Gentoo's bugzilla"
-	echo
 }
 
 pkg_postrm() {

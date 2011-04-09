@@ -1,0 +1,13 @@
+--- gtk/src/callbacks.c.orig	2011-02-26 10:24:19.820468628 +0100
++++ gtk/src/callbacks.c	2011-02-26 10:24:45.204741449 +0100
+@@ -4881,9 +4881,7 @@
+ 	notification = notify_notification_new(
+ 		"Encode Complete",
+ 		"Put down that cocktail, Your HandBrake queue is done!",
+-		"hb-icon",
+-		NULL);
+-	notify_notification_attach_to_status_icon(notification, si);
++		"hb-icon");
+ 	g_signal_connect(notification, "closed", (GCallback)notify_closed_cb, ud);
+ 	notify_notification_show(notification, NULL);
+ #endif

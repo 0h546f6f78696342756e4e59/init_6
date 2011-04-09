@@ -11,81 +11,69 @@ EGIT_PROJECT="HandBrake"
 #inherit subversion gnome2-utils
 inherit git gnome2-utils
 
-DESCRIPTION="Open-source DVD to MPEG-4 converter."
+DESCRIPTION="Open-source DVD to MPEG-4 converter"
 HOMEPAGE="http://handbrake.fr/"
+
+ESVN_REPO_URI="svn://svn.handbrake.fr/HandBrake/trunk"
+
 LICENSE="GPL-2"
 SLOT="0"
-
-KEYWORDS="~x86 ~amd64"
+KEYWORDS="~amd64 ~x86"
 
 IUSE="css doc gtk"
 RDEPEND="sys-libs/zlib
 	css? ( media-libs/libdvdcss )
 	gtk? (	>=x11-libs/gtk+-2.8
-			dev-libs/glib
 			dev-libs/dbus-glib
+			sys-apps/hal
+			net-libs/webkit-gtk
 			x11-libs/libnotify
 			media-libs/gstreamer
 			media-libs/gst-plugins-base
-			>=sys-fs/udev-147[extras]
 	)"
-DEPEND="=sys-devel/automake-1.10*
-	=sys-devel/automake-1.4*
-	=sys-devel/automake-1.9*
-	dev-lang/yasm
-	>=dev-lang/python-2.4.6
-	|| ( >=net-misc/wget-1.11.4 >=net-misc/curl-7.19.4 )
-	$RDEPEND"
+DEPEND="dev-lang/yasm
+	dev-lang/python
+	|| ( net-misc/wget net-misc/curl ) 
+	${RDEPEND}"
+
+src_prepare() {
+	epatch "${FILESDIR}/${P}-build.patch"
+	epatch "${FILESDIR}/${P}-new_libnotify.patch"
+}
 
 src_configure() {
-
-	local myconf=""
-
-	! use gtk && myconf="${myconf} --disable-gtk"
-
-	./configure --force --prefix=/usr --disable-gtk-update-checks ${myconf} || die "configure failed"
-
+	# Python configure script doesn't accept all econf flags
+	./configure --force --prefix=/usr \
+		$(use_enable gtk) \
+		|| die "configure failed"
 }
 
 src_compile() {
-
-	cd "${S}/build" || die "cannot find build dir"
-	make || die "failed compiling ${PN}"
-
+	emake -j1 -C build || die "failed compiling ${PN}"
 }
 
 src_install() {
+	emake -C build DESTDIR="${D}" install || die "failed installing ${PN}"
 
-	cd "${S}/build" || die "cannot find build dir"
-	make DESTDIR="${D}" install || die "failed installing ${PN}"
-
-	if use doc;then
-		make doc || die "failed making docs"
-		cd "${S}"
-		dodoc AUTHORS CREDITS NEWS THANKS || die "failed installing docs"
-		dodoc build/doc/articles/txt/* || die "failed installing docs"
+	if use doc; then
+		emake -C build doc
+		dodoc AUTHORS CREDITS NEWS THANKS \
+			build/doc/articles/txt/* || die "docs failed"
 	fi
-
 }
 
 pkg_preinst() {
-
 	gnome2_icon_savelist
-
 }
 
 pkg_postinst() {
-
 	gnome2_icon_cache_update
 	echo
 	ewarn "This is experimental and NOT supported by gentoo."
 	ewarn "DO NOT report bugs to Gentoo's bugzilla"
 	echo
-
 }
 
 pkg_postrm() {
-
 	gnome2_icon_cache_update
-
 }
