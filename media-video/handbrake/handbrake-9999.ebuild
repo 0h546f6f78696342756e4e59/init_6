@@ -21,11 +21,11 @@ SLOT="0"
 KEYWORDS="~amd64 ~x86"
 
 IUSE="css doc gtk"
+#			sys-apps/hal
 RDEPEND="sys-libs/zlib
 	css? ( media-libs/libdvdcss )
 	gtk? (	>=x11-libs/gtk+-2.8
 			dev-libs/dbus-glib
-			sys-apps/hal
 			net-libs/webkit-gtk
 			x11-libs/libnotify
 			media-libs/gstreamer
@@ -36,10 +36,10 @@ DEPEND="dev-lang/yasm
 	|| ( net-misc/wget net-misc/curl ) 
 	${RDEPEND}"
 
-src_prepare() {
-	epatch "${FILESDIR}/${P}-build.patch"
-	epatch "${FILESDIR}/${P}-new_libnotify.patch"
-}
+#src_prepare() {
+#	epatch "${FILESDIR}/${P}-build.patch"
+#	epatch "${FILESDIR}/${P}-new_libnotify.patch"
+#}
 
 src_configure() {
 	# Python configure script doesn't accept all econf flags
