@@ -46,6 +46,8 @@ src_unpack() {
 	fi
 	epatch "${FILESDIR}/libxml2-multilib.patch"
 	epatch "${FILESDIR}/libxml2-2.7.8-reactivate-versionning-script.patch"
+	epatch "${FILESDIR}/libxml2-2.7.7-xpath-double-free.patch"
+
 }
 
 src_prepare() {
