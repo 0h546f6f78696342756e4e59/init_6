@@ -120,7 +120,9 @@ src_prepare() {
 	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
 	epatch "${FILESDIR}"/${PN}-disables-DS3DMODE_NORMAL.patch
 	epatch "${FILESDIR}"/${PN}-imagemagick-6.5.patch
+#	epatch "${FILESDIR}"/${PN}pulse-configure.ac-1.3.19.patch
 	epatch "${FILESDIR}"/${PN}pulse-0.39.patch
+#	epatch "${FILESDIR}"/${PN}pulse-winecfg-1.3.11.patch
 	eautoreconf
 	
 	epatch_user #282735
@@ -212,6 +214,21 @@ src_install() {
 	if ! use perl ; then
 		rm "${D}"/usr/bin/{wine{dump,maker},function_grep.pl} "${D}"/usr/share/man/man1/wine{dump,maker}.1 || die
 	fi
+	
+	exeinto /etc/xdg/menus/
+	doexe "${FILESDIR}/wine.menu" || die "doexe failed"
+	domenu "${FILESDIR}"/wine-mime-msi.desktop
+	domenu "${FILESDIR}"/wine-notepad.desktop
+	domenu "${FILESDIR}"/wine-oleview.desktop
+	domenu "${FILESDIR}"/wine-regedit.desktop
+	domenu "${FILESDIR}"/wine-uninstaller.desktop
+	domenu "${FILESDIR}"/wine-wineboot.desktop
+	domenu "${FILESDIR}"/wine-winecfg.desktop
+	domenu "${FILESDIR}"/wine-winefile.desktop
+	domenu "${FILESDIR}"/wine-winemine.desktop
+	domenu "${FILESDIR}"/wine-winhelp.desktop
+	domenu "${FILESDIR}"/wine-wordpad.desktop
+	
 }
 
 pkg_postinst() {
