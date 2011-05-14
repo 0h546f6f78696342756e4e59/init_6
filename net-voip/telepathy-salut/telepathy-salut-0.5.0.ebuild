@@ -22,9 +22,9 @@ RDEPEND="dev-libs/libxml2
 	>=net-libs/telepathy-glib-0.13.12
 	>=net-dns/avahi-0.6.22
 	net-libs/libsoup:2.4
-	sys-apps/util-linux
-	app-text/xmldiff"
+	sys-apps/util-linux"
 DEPEND="${RDEPEND}
+	app-text/xmldiff
 	test? (
 		>=dev-libs/check-0.9.4
 		net-libs/libgsasl
