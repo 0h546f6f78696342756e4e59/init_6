@@ -38,9 +38,9 @@ S="${WORKDIR}/linux-${KV_FULL}"
 src_unpack() {
 	rpm_unpack || die
 
-	tar -xpf "${WORKDIR}/kernel-2.6.32-131.0.15.el6.tar.bz2" || die
+	tar -xpf "${WORKDIR}/linux-2.6.32-131.0.15.el6.tar.bz2" || die
 	mv "linux-2.6.32-131.0.15.el6" "${S}" || die
-	rm -f "${WORKDIR}/kernel-2.6.32-131.0.15.el6.tar.bz2" || die
+	rm -f "${WORKDIR}/linux-2.6.32-131.0.15.el6.tar.bz2" || die
 
 	rm -f "${WORKDIR}/linux-kernel-test.patch" || die
 	sed -i -e "s:^\(EXTRAVERSION =\).*:\1 ${EXTRAVERSION}:" "${S}/Makefile" || die
@@ -57,12 +57,8 @@ src_prepare() {
 
 	# acpi
 	epatch "${FILESDIR}/${PVR}/acpi-ec-add-delay-before-write.patch" || die # https://bugzilla.kernel.org/show_bug.cgi?id=14733
-	# fs
-	epatch "${FILESDIR}/${PVR}/xfs-list-sort.patch" || die
 	# font
 	epatch "${FILESDIR}/${PVR}/font-8x16-iso-latin-1.patch" || die # http://sudormrf.wordpress.com/2010/10/23/ka-ping-yee-iso-latin-1 font-in-linux-kernel/
-
-	epatch "${FILESDIR}/${PVR}/linux-2.6-hotfixes.patch" || die
 
 }
 
