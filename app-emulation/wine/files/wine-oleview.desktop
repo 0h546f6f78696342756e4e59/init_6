@@ -1,3 +1,4 @@
+
 [Desktop Entry]
 Name=Wine OLE View
 Comment=Windows OLE View
@@ -6,3 +7,4 @@ Icon=wine
 Terminal=false
 Type=Application
 Categories=X-Wine;
+X-Desktop-File-Install-Version=0.18

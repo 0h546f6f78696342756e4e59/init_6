@@ -1,3 +1,4 @@
+
 [Desktop Entry]
 Name=WineMine
 Comment=Wine Minesweeper 
@@ -6,3 +7,4 @@ Icon=winemine
 Terminal=false
 Type=Application
 Categories=Game;LogicGame;
+X-Desktop-File-Install-Version=0.18

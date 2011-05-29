@@ -1,3 +1,4 @@
+
 [Desktop Entry]
 Name=Regedit
 Comment=Wine registry editor
@@ -6,3 +7,4 @@ Icon=regedit
 Terminal=false
 Type=Application
 Categories=X-Wine;
+X-Desktop-File-Install-Version=0.18
