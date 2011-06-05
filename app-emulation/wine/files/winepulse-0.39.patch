@@ -2,7 +2,7 @@ diff --git a/dlls/winepulse.drv/Makefile.in b/dlls/winepulse.drv/Makefile.in
 new file mode 100644
 index 0000000..a6fdbf8
 --- /dev/null
-+++ b/dlls/winepulse.drv/Makefile.in
++++ /dlls/winepulse.drv/Makefile.in
 @@ -0,0 +1,10 @@
 +MODULE    = winepulse.drv
 +IMPORTS   = winmm user32 kernel32
@@ -18,7 +18,7 @@ diff --git a/dlls/winepulse.drv/pulse.c b/dlls/winepulse.drv/pulse.c
 new file mode 100644
 index 0000000..9dd1f80
 --- /dev/null
-+++ b/dlls/winepulse.drv/pulse.c
++++ /dlls/winepulse.drv/pulse.c
 @@ -0,0 +1,805 @@
 +/*
 + * Wine Driver for PulseAudio
@@ -829,7 +829,7 @@ diff --git a/dlls/winepulse.drv/wavein.c b/dlls/winepulse.drv/wavein.c
 new file mode 100644
 index 0000000..af721b9
 --- /dev/null
-+++ b/dlls/winepulse.drv/wavein.c
++++ /dlls/winepulse.drv/wavein.c
 @@ -0,0 +1,589 @@
 +/*
 + * Wine Driver for PulseAudio - WaveIn Functionality
@@ -1424,7 +1424,7 @@ diff --git a/dlls/winepulse.drv/waveout.c b/dlls/winepulse.drv/waveout.c
 new file mode 100644
 index 0000000..99b7c18
 --- /dev/null
-+++ b/dlls/winepulse.drv/waveout.c
++++ /dlls/winepulse.drv/waveout.c
 @@ -0,0 +1,1029 @@
 +/*
 + * Wine Driver for PulseAudio - WaveOut Functionality
@@ -2459,7 +2459,7 @@ diff --git a/dlls/winepulse.drv/winepulse.drv.spec b/dlls/winepulse.drv/winepuls
 new file mode 100644
 index 0000000..1b49460
 --- /dev/null
-+++ b/dlls/winepulse.drv/winepulse.drv.spec
++++ /dlls/winepulse.drv/winepulse.drv.spec
 @@ -0,0 +1,3 @@
 +@ stdcall -private DriverProc(long long long long long long) PULSE_DriverProc
 +@ stdcall -private wodMessage(long long long long long long) PULSE_wodMessage
@@ -2468,7 +2468,7 @@ diff --git a/dlls/winepulse.drv/winepulse.h b/dlls/winepulse.drv/winepulse.h
 new file mode 100644
 index 0000000..b83de5d
 --- /dev/null
-+++ b/dlls/winepulse.drv/winepulse.h
++++ /dlls/winepulse.drv/winepulse.h
 @@ -0,0 +1,197 @@
 +/* Definitions for PulseAudio Wine Driver
 + *

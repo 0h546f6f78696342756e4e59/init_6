@@ -120,7 +120,8 @@ src_prepare() {
 	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
 	epatch "${FILESDIR}"/${PN}-disables-DS3DMODE_NORMAL.patch
 	epatch "${FILESDIR}"/${PN}-imagemagick-6.5.patch
-#	epatch "${FILESDIR}"/${PN}pulse-configure.ac-1.3.20.patch
+	epatch "${FILESDIR}"/${PN}-1.1.7-chinese-font-substitutes.patch
+	epatch "${FILESDIR}"/${PN}-1.3.20-winepulse-configure.ac.patch
 	epatch "${FILESDIR}"/${PN}pulse-0.39.patch
 	epatch "${FILESDIR}"/${PN}pulse-winecfg-1.3.11.patch
 	eautoreconf
