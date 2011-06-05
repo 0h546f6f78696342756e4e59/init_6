@@ -216,31 +216,13 @@ src_install() {
 		rm "${D}"/usr/bin/{wine{dump,maker},function_grep.pl} "${D}"/usr/share/man/man1/wine{dump,maker}.1 || die
 	fi
 	
-	exeinto /etc/xdg/menus/applications-merged/
-	doexe "${FILESDIR}/wine.menu" || die "doexe failed"
-	exeinto /usr/share/desktop-directories/
-	doexe  "${FILESDIR}/Wine.directory" || die "doexe failed"
-	domenu "${FILESDIR}"/wine-mime-msi.desktop
-	domenu "${FILESDIR}"/wine-notepad.desktop
-	domenu "${FILESDIR}"/wine-oleview.desktop
-	domenu "${FILESDIR}"/wine-regedit.desktop
-	domenu "${FILESDIR}"/wine-uninstaller.desktop
-	domenu "${FILESDIR}"/wine-wineboot.desktop
-	domenu "${FILESDIR}"/wine-winecfg.desktop
-	domenu "${FILESDIR}"/wine-winefile.desktop
-	domenu "${FILESDIR}"/wine-winemine.desktop
-	domenu "${FILESDIR}"/wine-winhelp.desktop
-	domenu "${FILESDIR}"/wine-wordpad.desktop
-	exeinto /usr/share/pixmaps/
-	doexe "${FILESDIR}"/msiexec.svg
-	doexe "${FILESDIR}"/notepad.svg
-	doexe "${FILESDIR}"/regedit.svg
-	doexe "${FILESDIR}"/winecfg.svg
-	doexe "${FILESDIR}"/winefile.svg
-	doexe "${FILESDIR}"/winemine.svg
-	doexe "${FILESDIR}"/wine.svg
-	doexe "${FILESDIR}"/winhelp.svg
-	doexe "${FILESDIR}"/wordpad.svg
+	insinto /etc/xdg/menus/applications-merged/
+	doins  "${FILESDIR}/wine.menu" || die "doins failed"
+	insinto /usr/share/desktop-directories/
+	doins  "${FILESDIR}/Wine.directory" || die "doexe failed"
+	domenu "${FILESDIR}"/*.desktop || die "doins failed"
+	insinto /usr/share/pixmaps/
+	doins "${FILESDIR}"/*.svg || die "doins failed"
 }
 
 pkg_postinst() {
