@@ -72,7 +72,7 @@ sys-apps/debianutils
 sys-apps/diffutils
 sys-apps/file
 sys-apps/findutils
-sys-apps/funtoo-netscripts
+#sys-apps/funtoo-netscripts
 sys-apps/gawk
 sys-apps/grep
 sys-apps/groff
@@ -155,13 +155,13 @@ virtual/perl-Test-Harness
 
 app-admin/syslog-ng
 app-portage/eix
-dev-util/ccache
+#dev-util/ccache
 dev-vcs/git
 net-misc/dhcpcd
-sys-apps/gdisk
+sys-apps/gptfdisk
 sys-boot/boot-update
 sys-boot/grub
 sys-devel/gcc
-sys-fs/cryptsetup
-sys-fs/mdadm
+#sys-fs/cryptsetup
+#sys-fs/mdadm
 sys-power/cpufrequtils
