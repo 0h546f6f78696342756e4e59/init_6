@@ -4,8 +4,6 @@
 
 EAPI="2"
 
-K_NOUSENAME="yes"
-K_NOSETEXTRAVERSION="yes"
 K_DEBLOB_AVAILABLE="0"
 K_SECURITY_UNSUPPORTED="1"
 
@@ -49,14 +47,14 @@ src_unpack() {
 	einfo "A long time ago in a galaxy far, far away...."
 	echo
 
-	epatch "${FILESDIR}"/"${PVR}"/linux-3.0-fix-uts-release.patch
+#	epatch "${FILESDIR}"/"${PVR}"/linux-3.0-fix-uts-release.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-makefile-after_link.patch
 #	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-compile-fixes.patch
 #	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-upstream-reverts.patch # zero
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-hotfixes.patch
 # Architecture patches
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6.29-sparc-IOC_TYPECHECK.patch
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
+#	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-defaults-acpi-video.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-video-dos.patch
@@ -75,7 +73,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/die-floppy-die.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6.30-no-pcspkr-modalias.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-serial-460800.patch
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-noise.patch
+#	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-noise.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
 #	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-selinux-mprotect-checks.patch
 # FIXME: Can we drop this now? See updated linux-2.6-selinux-mprotect-checks.patch
@@ -85,7 +83,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/fix_xen_guest_on_old_EC2.patch
 #	epatch "${FILESDIR}"/"${PVR}"/drm-nouveau-updates.patch # zero
 #	epatch "${FILESDIR}"/"${PVR}"/drm-intel-next.patch # zero
-	epatch "${FILESDIR}"/"${PVR}"/drm-intel-make-lvds-work.patch
+#	epatch "${FILESDIR}"/"${PVR}"/drm-intel-make-lvds-work.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
 #	epatch "${FILESDIR}"/"${PVR}"/drm-intel-edp-fixes.patch
 #	epatch "${FILESDIR}"/"${PVR}"/drm-i915-gen4-has-non-power-of-two-strides.patch
@@ -102,7 +100,7 @@ src_unpack() {
 ###FIX###	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-add-lgdt3304-support.patch
 #	epatch "${FILESDIR}"/"${PVR}"/lirc-staging-2.6.36-fixes.patch
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
-	epatch "${FILESDIR}"/"${PVR}"/add-appleir-usb-driver.patch
+#	epatch "${FILESDIR}"/"${PVR}"/add-appleir-usb-driver.patch
 	epatch "${FILESDIR}"/"${PVR}"/neuter_intel_microcode_load.patch
 #	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-usb-pci-autosuspend.patch
 ###	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-enable-more-pci-autosuspend.patch
@@ -111,7 +109,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/mm-slub-do-not-wake-kswapd-for-slubs-speculative-high-order-allocations.patch
 	epatch "${FILESDIR}"/"${PVR}"/mm-slub-do-not-take-expensive-steps-for-slubs-speculative-high-order-allocations.patch
 	epatch "${FILESDIR}"/"${PVR}"/mm-vmscan-if-kswapd-has-been-running-too-long-allow-it-to-sleep.patch
-	epatch "${FILESDIR}"/"${PVR}"/revert-ftrace-remove-unnecessary-disabling-of-irqs.patch
+#	epatch "${FILESDIR}"/"${PVR}"/revert-ftrace-remove-unnecessary-disabling-of-irqs.patch
 
 # my
 	epatch "${FILESDIR}"/"${PVR}"/font-8x16-iso-latin-1.patch
