@@ -4,4 +4,7 @@
 =net-libs/webkit-gtk-9999
 =sys-kernel/vanilla-sources-9999
 
+# Andrey Ovcharov <sudormrfhalt@gmail.com>
+# kernel mainline
 =sys-kernel/fc-sources-3.0_rc2
+=sys-kernel/fc-sources-3.0_rc3

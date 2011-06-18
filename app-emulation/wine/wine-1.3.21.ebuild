@@ -20,20 +20,20 @@ else
 	S=${WORKDIR}/${MY_P}
 fi
 
-pulse_patches() { echo "$1"/winepulse-{0.39,configure.ac-1.3.10,winecfg-1.3.11}.patch ; }
-GV="1.1.0"
+pulse_patches() { echo "$1"/winepulse-{0.39,configure.ac-1.3.20,winecfg-1.3.11}.patch ; }
+GV="1.2.0"
 DESCRIPTION="free implementation of Windows(tm) on Unix"
 HOMEPAGE="http://www.winehq.org/"
 SRC_URI="${SRC_URI}
 	gecko? (
-		mirror://sourceforge/wine/wine_gecko-${GV}-x86.cab
-		win64? ( mirror://sourceforge/wine/wine_gecko-${GV}-x86_64.cab )
+		mirror://sourceforge/wine/wine_gecko-${GV}-x86.msi
+		win64? ( mirror://sourceforge/wine/wine_gecko-${GV}-x86_64.msi )
 	)
 	pulseaudio? ( `pulse_patches http://art.ified.ca/downloads/winepulse` )"
 
 LICENSE="LGPL-2.1"
 SLOT="0"
-IUSE="alsa capi cups custom-cflags dbus esd fontconfig +gecko gnutls gphoto2 gsm gstreamer hal jack jpeg lcms ldap mp3 nas ncurses nls openal +opengl +oss +perl png pulseaudio samba scanner ssl test +threads +truetype +win32 +win64 +X xcomposite xinerama xml"
+IUSE="alsa capi cups custom-cflags dbus esd fontconfig +gecko gnutls gphoto2 gsm gstreamer hal jack jpeg lcms ldap mp3 nas ncurses nls openal +opengl +oss +perl png pulseaudio samba scanner ssl test +threads +truetype v4l +win32 +win64 +X xcomposite xinerama xml"
 RESTRICT="test" #72375
 
 MLIB_DEPS="amd64? (
@@ -85,6 +85,7 @@ RDEPEND="truetype? ( >=media-libs/freetype-2.0.0 media-fonts/corefonts )
 	scanner? ( media-gfx/sane-backends )
 	ssl? ( dev-libs/openssl )
 	png? ( media-libs/libpng )
+	v4l? ( media-libs/libv4l )
 	!win64? ( ${MLIB_DEPS} )
 	win32? ( ${MLIB_DEPS} )
 	xcomposite? ( x11-libs/libXcomposite ) "
@@ -125,7 +126,6 @@ src_prepare() {
 	epatch "${FILESDIR}"/${PN}pulse-0.39.patch
 	epatch "${FILESDIR}"/${PN}pulse-winecfg-1.3.11.patch
 	eautoreconf
-
 	epatch_user #282735
 	sed -i '/^UPDATE_DESKTOP_DATABASE/s:=.*:=true:' tools/Makefile.in || die
 	sed -i '/^MimeType/d' tools/wine.desktop || die #117785
@@ -167,6 +167,7 @@ do_configure() {
 		$(use_with scanner sane) \
 		$(use_enable test tests) \
 		$(use_with truetype freetype) \
+		$(use_with v4l) \
 		$(use_with X x) \
 		$(use_with xcomposite) \
 		$(use_with xinerama) \
@@ -209,13 +210,13 @@ src_install() {
 	dodoc ANNOUNCE AUTHORS README
 	if use gecko ; then
 		insinto /usr/share/wine/gecko
-		doins "${DISTDIR}"/wine_gecko-${GV}-x86.cab || die
-		use win64 && { doins "${DISTDIR}"/wine_gecko-${GV}-x86_64.cab || die ; }
+		doins "${DISTDIR}"/wine_gecko-${GV}-x86.msi || die
+		use win64 && { doins "${DISTDIR}"/wine_gecko-${GV}-x86_64.msi || die ; }
 	fi
 	if ! use perl ; then
 		rm "${D}"/usr/bin/{wine{dump,maker},function_grep.pl} "${D}"/usr/share/man/man1/wine{dump,maker}.1 || die
 	fi
-	
+
 	insinto /etc/xdg/menus/applications-merged/
 	doins  "${FILESDIR}/wine.menu" || die "doins failed"
 	insinto /usr/share/desktop-directories/
