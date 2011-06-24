@@ -49,10 +49,9 @@ src_unpack() {
 	einfo "A long time ago in a galaxy far, far away...."
 	echo
 
-#	epatch "${FILESDIR}"/"${PVR}"/linux-3.0-fix-uts-release.patch
+	epatch "${FILESDIR}"/"${PVR}"/linux-3.0-fix-uts-release.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-makefile-after_link.patch
 #	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-compile-fixes.patch
-
 # revert patches from upstream that conflict or that we get via other means
 #	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-upstream-reverts.patch -R
 # Architecture patches
@@ -82,9 +81,9 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/drm-intel-make-lvds-work.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-acpi-blacklist.patch
-#	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-fixes.patch
-#	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-update.patch
-#	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-experimental.patch
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-fixes.patch
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-update.patch
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-experimental.patch
 #	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-uvcvideo-update.patch
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
 	epatch "${FILESDIR}"/"${PVR}"/add-appleir-usb-driver.patch
