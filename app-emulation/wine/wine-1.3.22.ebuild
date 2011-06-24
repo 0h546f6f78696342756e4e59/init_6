@@ -1,6 +1,6 @@
 # Copyright 1999-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header: $
+# $Header: /var/cvsroot/gentoo-x86/app-emulation/wine/wine-1.3.21.ebuild,v 1.1 2011/05/28 17:53:09 vapier Exp $
 
 EAPI="2"
 
@@ -114,19 +114,11 @@ src_unpack() {
 }
 
 src_prepare() {
-#	if use pulseaudio ; then
-#		EPATCH_OPTS=-p1 epatch `pulse_patches "${DISTDIR}"`
-#		eautoreconf
-#	fi
-#	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
-	epatch "${FILESDIR}"/${PN}-disables-DS3DMODE_NORMAL.patch
-#	epatch "${FILESDIR}"/${PN}-1.1.7-chinese-font-substitutes.patch
-	epatch "${FILESDIR}"/${PN}-imagemagick-6.5.patch
-	epatch "${FILESDIR}"/${PN}pulse-configure.ac-1.3.20.patch
-	epatch "${FILESDIR}"/${PN}pulse-0.39.patch
-	epatch "${FILESDIR}"/${PN}pulse-winecfg-1.3.11.patch
-
-	eautoreconf
+	if use pulseaudio ; then
+		EPATCH_OPTS=-p1 epatch `pulse_patches "${DISTDIR}"`
+		eautoreconf
+	fi
+	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
 	epatch_user #282735
 	sed -i '/^UPDATE_DESKTOP_DATABASE/s:=.*:=true:' tools/Makefile.in || die
 	sed -i '/^MimeType/d' tools/wine.desktop || die #117785
@@ -225,6 +217,7 @@ src_install() {
 	domenu "${FILESDIR}"/*.desktop || die "doins failed"
 	insinto /usr/share/pixmaps/
 	doins "${FILESDIR}"/*.svg || die "doins failed"
+
 }
 
 pkg_postinst() {
