@@ -88,14 +88,14 @@ pkg_setup() {
 
 src_prepare() {
 	# Patch from upstream git, will be in next release
-	epatch "${FILESDIR}/${P}-wacom-touch.patch"
+#	epatch "${FILESDIR}/${P}-wacom-touch.patch"
 
 	# https://bugzilla.gnome.org/show_bug.cgi?id=621836
 	# Apparently this change severely affects touchpad usability for some
 	# people, so revert it if USE=short-touchpad-timeout.
 	# Revisit if/when upstream adds a setting for customizing the timeout.
-	use short-touchpad-timeout &&
-		epatch "${FILESDIR}/${PN}-3.0.2-short-touchpad-timeout.patch"
+#	use short-touchpad-timeout &&
+#		epatch "${FILESDIR}/${PN}-3.0.2-short-touchpad-timeout.patch"
 
 	gnome2_src_prepare
 }

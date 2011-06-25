@@ -30,12 +30,12 @@ IUSE="debug eds +gnome +map +geoloc +networkmanager sendto spell test webkit"
 RDEPEND=">=dev-libs/glib-2.27.2:2
 	>=x11-libs/gtk+-3.0.2:3
 	>=dev-libs/dbus-glib-0.51
-	>=net-libs/telepathy-glib-0.14.1
+	>=net-libs/telepathy-glib-0.15.1
 	>=media-libs/libcanberra-0.25[gtk3]
 	>=x11-libs/libnotify-0.7
 	>=gnome-base/gnome-keyring-2.91.4-r300
 	>=net-libs/gnutls-2.8.5
-	>=dev-libs/folks-0.4
+	>=dev-libs/folks-0.5.1
 
 	gnome-base/gsettings-desktop-schemas
 	net-libs/farsight2

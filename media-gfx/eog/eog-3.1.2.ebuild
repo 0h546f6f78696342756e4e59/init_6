@@ -24,7 +24,7 @@ else
 fi
 
 RDEPEND=">=x11-libs/gtk+-3.0.2:3[introspection]
-	>=dev-libs/glib-2.25.15:2
+	>=dev-libs/glib-2.29.4:2
 	>=dev-libs/libxml2-2:2
 	>=dev-libs/libpeas-0.7.4[gtk]
 	>=gnome-base/gnome-desktop-2.91.2:3
