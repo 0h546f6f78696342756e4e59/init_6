@@ -1,0 +1,3518 @@
+#!/bin/bash
+# vim:set ts=4 sw=4:
+#
+# Copyright (c) 2004-2006 Ed Catmur <ed@catmur.co.uk>
+# This program is licensed under the terms of the GPL version 2.
+#
+# Parts inspired by qpkg, copyright (c) gentoo.org
+# It is believed all code copyright gentoo.org has been replaced by my own
+# (better) algorithms. :P
+
+PROG="dep"
+SYNOPSIS="an inappropriate Portage engine"
+VERSION="@PACKAGE_VERSION@"
+TAG="@PACKAGE_TAG@"
+DESCRIPTION="List dependencies and reverse dependencies of packages, and clean the world file and the set of installed packages."
+
+shopt -s extglob
+
+spaces="                                                                                "
+spaces="${spaces:0:${COLUMNS:=80}}"
+
+WORLD_FILE="/var/lib/portage/world"
+
+function help_fmt() {
+	PLUSMINUS="$(iconv -c -f UTF-8 <<<$'\xc2\xb1')" || PLUSMINUS="+-"
+	sed -r -e "
+	$([[ "$opt_arg_colour" == "html" ]] && echo 's/</\&lt;/g;s/>/\&gt;/g')
+	s![[:upper:]_]{2,}!${RD}\\0${NO}!g
+	s!( |^)$PROG( |$)!$Cy\\0$NO!
+	s!^[^[:space:]].*:!$YL\\0$NO!
+	s!((^|,|\\()[[:space:]]*)(-[[:alpha:]?-]+)!\\1${FC}\\3${NO}!g
+	s!\\\\\\(\\+-([[:alnum:]])!${FC}${PLUSMINUS}\\1${NO}!g
+	s!( |^)/[^[:space:]]+!$GR\\0$NO!
+	s![[:alpha:]]+\([[:digit:]]+\)!${BL}\\0${NO}!
+	s!^(An? ([[:alpha:]]+ ){1,3}is )([[:alpha:]]+)!\\1${BR}\\3${NO}!
+	s!(\\[=?|,)([[:alpha:]]+)(,|\\])!\\1${FC}\\2${NO}\\3!g
+	s!(\\[|,)([[:alpha:]]+)(,|\\])!\\1${FC}\\2${NO}\\3!g
+	s!<[[:alnum:]._-]+@[[:alnum:]._-]+>!${Fc}\\0${NO}!g
+	"
+}
+
+# Yes, a word wrap algorithm. I rock.
+function fmt_w() {
+	local cols=${1:-$COLUMNS} l1indent=${2:-0} lxindent=${3:0}
+	local l n i c esc nlesc line lnum=1 indent
+	while read line; do
+		((lnum == 1)) \
+		&& { ((n = l1indent)); echo -n "${spaces:0:$l1indent}"; } \
+		|| { ((n = lxindent)); echo -n "${spaces:0:$lxindent}"; }
+		((i = 0)); c=${line:0:1}; esc=""; nlesc=""
+		while ((i<${#line})); do case "$c" in
+			$'\x1b')
+				echo -n "$esc"
+				while [[ "$c" != 'm' ]]; do
+					esc="$esc$c"
+					((++i)); ((i > ${#line})) && break
+					c="${line:$i:1}"
+				done; esc="$esc$c"
+				((++i)); c="${line:$i:1}";;
+			$'\x9') 
+				echo -n "$c"
+				((n += 8)); ((n >= cols)) && ((n = cols-1))
+				((++i)); c="${line:$i:1}";;
+			[[:space:]])
+				if ((n < cols)); then echo -n "$c"; ((++n)); fi
+				((++i)); c="${line:$i:1}";;
+			[^[:print:]]) 
+				echo -n "$c"
+				((++i)); c="${line:$i:1}";;
+			[[:graph:]]) 
+				word=""; ((l=0))
+				while [[ "$c" == [[:graph:]] ]]; do
+					word="$word$c"; ((++l))
+					((++i)); ((i <= ${#line})) || break
+					c="${line:$i:1}"
+				done || continue
+				if (( n == cols )); then
+					echo; echo -n "${spaces:0:$lxindent}"
+					echo -n "$nlesc"
+					((++lnum, n = lxindent))
+				fi
+				if (( n + l <= cols )); then
+					echo -n "$esc$word"
+					((n += l))
+				elif (( n <= cols * 3 / 4 )); then
+					if [[ "$esc" ]]; then
+						echo "$esc${word:0:$((cols-n))}"
+						echo -n "$esc${word:$((cols-n))}"
+					else
+						echo -n "$word"
+					fi
+					((++lnum, n += l - cols))
+				else
+					echo; echo -n "${spaces:0:$lxindent}"
+					echo -n "$nlesc$esc$word"
+					((++lnum, n = l + lxindent))
+				fi
+				[[ "$esc" ]] && nlesc="$esc"; esc="";;
+			*) echo Oops: fmt_w: $i >&2; ((++i));;
+		esac; done
+		echo "$esc"
+		((++lnum))
+		continue
+	done
+	[[ "$line" ]] && echo -n "$line" 	# unterminated last line
+}
+
+function print_version() {
+	cat <<END
+${PROG} v. ${VERSION} "${TAG}"
+END
+}
+function print_usage() {
+	print_version
+	echo "    ${SYNOPSIS}!"
+	echo
+	fmt_w '' '' 40 <<<"Usage: ${PROG} ${USELINE}"
+	fmt_w <<<"${DESCRIPTION}"
+}
+
+function shopt_help() {
+	local line i j c1=$2 c2=$3
+	for ((i=0; i<shopt_count; ++i)); do
+		[[ "${shopt_category[$i]}" == "$1" ]] || continue
+		line="  "
+		for ((j=0; j<${#shopt_short[$i]}; ++j)); do
+			[[ "${shopt_category[$i]}" == opt ]] \
+				&& line="${line}\\(+-" || line="${line}-"
+			line="${line}${shopt_short[$i]:$j:1}"
+			[[ "${shopt_itype[$i]}" == "NUMBER" ]] && line="${line}[num]"
+			line="${line}, "
+		done
+		(( ${#shopt_short[$i]} )) || line="${line}    "
+		line="${line}--${shopt_long[$i]}"
+		if [[ "${shopt_itype[$i]}" == "NUMBER" ]]; then
+			line="${line}[=num]"
+		elif [[ "${shopt_itype[$i]}" == [[:lower:]]* ]]; then
+			line="${line}[=${shopt_itype[$i]}]"
+		fi
+		(( ${#line} < c1 )) && line="${line}${spaces:0:$((c1-${#line}))}"
+		line="${line} ${shopt_desc[$i]}"
+		if [[ "${shopt_idefault[$i]}" ]]; then
+			(( (${#line}+${#shopt_idefault[$i]}) < c2 )) && line="${line}${spaces:0:$((c2-(${#line}+${#shopt_idefault[$i]})))}"
+			line="${line} (${shopt_idefault[$i]})"
+		fi
+		echo "$line"
+	done
+}
+
+INSTRUCTIONS="A package is unneeded if there is no installed package that depends on it. As a special case, the running kernel's sources are needed.
+A world file entry is redundant if there is another installed package that depends on it. When merging the new world file, the merging program used is sdiff(1). Your world file is located at $WORLD_FILE.
+Spring-clean will help find large sets of unneeded packages and orphaned circular dependency loops.
+Env vars - USE, ACCEPT_KEYWORDS, etc., can be used to override /etc/make.conf."
+function print_help() {
+	echo
+	print_usage
+	echo; echo "Action selection:"
+	shopt_help action 28 77
+	echo; echo "Info types:"
+	shopt_help info 28 77
+	echo; echo "Options: (--option=[yes,no] unless otherwise indicated)                (default)"
+	shopt_help opt 28 77
+	fmt_w <<<"$INSTRUCTIONS"
+	cat <<END
+
+$PROG is copyright Ed Catmur <ed@catmur.co.uk> and contributors. Distributed
+under the terms of the GNU General Public License version 2. NO WARRANTY given.
+END
+}
+
+declare -i shopt_count=0
+declare -a shopt_category shopt_short shopt_long shopt_desc shopt_type shopt_itype shopt_idefault
+function arg() { 
+	shopt_category[$shopt_count]="$1"
+	shopt_short[$shopt_count]="$2"
+	shopt_long[$shopt_count]="$3"
+	shopt_desc[$shopt_count]="$4"
+	shopt_type[$shopt_count]="$5"
+	shopt_itype[$shopt_count]="$6"
+	shopt_idefault[$shopt_count]="$7"
+	if [[ "$1" == opt ]]; then
+		shopt_varname[$shopt_count]="opt_arg_${3//-/_}"
+		[[ "$7" == @(yes|auto) ]] && eval ${shopt_varname[$shopt_count]}="$7"
+	fi
+	((shopt_count++))
+}
+
+# remaining option letters:
+# -            m           y  +  cdefghijklm    rstu wxyz
+# -AB    GHIJ  MNO Q     W YZ +ABCDEFGHIJ LMNOPQRSTUVWXYZ
+# - 234567890                 + 234567890
+USELINE="[OPTION]... [ACTION | INFO-TYPE [PACKAGE | VIRTUAL | FILE | USE | CATEGORY | PATTERN]...]"
+
+arg action '' usage		"Display usage"
+arg action 'h?' help	"Display this help"
+arg action V version 	"Show version"
+arg action P purge 	"Unmerge unneeded SLOTted packages (of PACKAGE...)" PNAME
+arg action d depclean 	"Unmerge all unneeded packages (of PACKAGE...)" PNAME
+arg action w pruneworld "Remove redundant entries from the world file"
+arg action E filter-etc-portage "Remove redundant entries from files in /etc/portage"
+arg action s spring-clean "An incredibly slow recursive depclean"
+arg action O overlay-clean "Identify unused ebuilds in an overlay" DIRECTORY
+
+do_arg_info=""
+do_package_sizes=""
+arg info c category 	"Show category resolutions of PACKAGE" 	  PNAME,PACKAGE 
+arg info C catpackages 	"Show packages in CATEGORY" 				   CATEGORY 
+arg info e versions 	"List versions of PACKAGE, with status" 		PNAME
+arg info f contents 	"List contents of PACKAGE" 						XPACKAGE
+arg info F owners 		"List packages owning FILE"					FILE,STRING
+arg info g search 		"Search for packages matching PATTERN"			STRING
+arg info i info    "Display PACKAGE info (HOMEPAGE, DESCRIPTION, etc.)" PACKAGE
+arg info j changelog 	"Display Portage ChangeLog entries for PACKAGE" PACKAGE,PNAME NUMBER
+arg info k keywords		"Show per-arch keyword status for PACKAGE" 		PNAME
+arg info l depends		"(default) List dependencies of PACKAGE" 		PACKAGE
+arg info L rev-depends 	"List reverse dependencies of PACKAGE" 	  PNAME,PACKAGE
+arg info r provides 	"List virtuals PACKAGE provides" 				PACKAGE
+arg info R virtuals		"List packages providing VIRTUAL" 				VIRTUAL
+arg info S depstrings	"Display the dependency strings for PACKAGE" 	PACKAGE
+arg info t tree-depends "Display the full dependency tree for PACKAGE" 	PACKAGE
+arg info T reverse-tree "Display the reverse dependency tree for PACKAGE" PACKAGE,PNAME
+arg info u usedesc		"Show USE flags and descriptions of PACKAGE" 	PACKAGE
+arg info U iuse			"List packages that (say they) respect USE" 	USE
+arg info x exists		"Show whether PACKAGE depends on later PACKAGEs" PACKAGE LEGION
+arg info X rev-exists	"Show whether later PACKAGEs depend on PACKAGE" PNAME,PACKAGE LEGION
+arg info z size			"Display disk space used by PACKAGE" 			PACKAGE
+
+arg opt K colour 		"Colour output" 			    '' yes,no,auto,html auto
+arg opt v verbose  	"Verbosity level (cumulative)" '' NUMBER "1 console, 0 pipe"
+arg opt 1 "for-emerge" "Produce output suitable for emerge --oneshot" '' BINARY no
+arg opt b build-time "Include deps needed to build PACKAGE" 	   '' BINARY yes
+arg opt o original-depends "Calculate deps as when PACKAGE was merged" '' BINARY no
+arg opt q unique-depends "Show dependencies that only PACKAGE requires" '' BINARY no
+arg opt D depth "Depth to follow dependency trees" '' NUMBER unlimited
+arg opt n uninstalled 	"Include uninstalled packages in searches" '' BINARY no
+arg opt a ask 			"For -[Pdw]: ask to perform action" 	   '' BINARY yes
+arg opt p pretend 		"For -[Pdw]: just show what would be done" '' BINARY no
+
+function handle_arg_action() {
+	case "$1" in
+		"--${shopt_long[$2]}" | "-"[${shopt_short[$2]}] )
+			do_arg_action="${shopt_long[$2]}";;
+		*) 						return 1;;
+	esac
+}
+
+function handle_arg_info() {
+	case "$1" in
+		"--size" | "-z" ) 
+			do_package_sizes="yes";;
+		"--changelog="+([[:digit:]]) )
+			do_arg_info="${shopt_long[$2]}"; changelog_entries=${1#*=};;
+		-j )
+		  	do_arg_info="${shopt_long[$2]}"
+			if ((j+1 == ${#optargs[$i]})); then
+				if [[ "${optargs[$((i+1))]}" == +([[:digit:]]) ]]; then
+					changelog_entries=${optargs[$((++i))]}
+					[[ $changelog_entries == 0 ]] \
+						|| changelog_entries=${changelog_entries##+(0)}
+					continue
+				fi
+			else
+				for ((k=++j; j<${#optargs[$i]}; ++j)); do
+					[[ "${optargs[$i]:$j:1}" == [[:digit:]] ]] || break
+				done
+				((j > k)) && changelog_entries=${optargs:$k:$((j-k))}
+				((--j))
+			fi;;
+		"--${shopt_long[$2]}" | "-"[${shopt_short[$2]}] )
+			do_arg_info="${shopt_long[$2]}";;
+		*) 
+			return 1;;
+	esac
+}
+
+function handle_arg_opt() {
+	case "$1" in
+		+K ) 							opt_arg_colour="no";;
+		--colour=@(yes|no|auto|html) ) 	opt_arg_colour="${1#*=}";;
+		--verbose | -v ) 				((++opt_arg_verbose));;
+				    +v ) 				((--opt_arg_verbose));;
+		--verbose=yes ) 				opt_arg_verbose=1;;
+		--verbose=no ) 					opt_arg_verbose=0;;
+		@(--verbose|-v)=+([[:digit:]]) ) opt_arg_verbose="${1#*=}";;
+		--depth@(|=unlimited) )			opt_arg_depth=;;
+		-D )							((++opt_arg_depth));;
+		+D )							((--opt_arg_depth));;
+		@(--depth|-D)=+([[:digit:]]) )	opt_arg_depth="${1#*=}";;
+		"--${shopt_long[$2]}"?(=yes) | "-"[${shopt_short[$2]}] )
+										eval ${shopt_varname[$2]}="yes";;
+		"--${shopt_long[$2]}"=no | "+"[${shopt_short[$2]}] )
+										eval ${shopt_varname[$2]}="";;
+		* )								return 1;;
+	esac
+}
+
+optargs=("$@")
+args=()
+(( ${#optargs[@]} == 0 )) && do_arg_action="usage" || do_arg_action=""
+for ((i=0; i<${#optargs[@]}; ++i)); do case "${optargs[$i]}" in
+	--exec )
+		do_arg_action="exec"; args=("${optargs[@]:$((i+1))}"); break;;
+
+	-- )
+		args=("${args[@]}" "${optargs[@]:$((i+1))}"); break;;
+	
+	--* )
+		happy=""
+		for ((j=0; j<shopt_count; ++j)); do
+			[[ "${optargs[$i]}" == "--${shopt_long[$j]}"?(=*) ]] || continue
+			[[ "${shopt_itype[$j]}" == NUMBER \
+				&& "${optargs[$i]}" == "--${shopt_long[$j]}" \
+				&& "${optargs[$((i+1))]}" == +([[:digit:]]) ]] \
+				&& optargs[$i]="${optargs[$i]}=${optargs[$((++i))]}"
+			case "${shopt_category[$j]}" in 
+				action) handle_arg_action "${optargs[$i]}" $j && happy="yes";;
+				info) handle_arg_info "${optargs[$i]}" $j && happy="yes";;
+				opt) handle_arg_opt "${optargs[$i]}" $j && happy="yes";;
+			esac
+			[[ "$happy" ]] && break
+		done
+		[[ "$happy" ]] || do_arg_action="usage";;
+
+	[+-]* ) 
+		for ((j=1; j<${#optargs[$i]}; ++j)); do 
+			happy=""
+			for ((k=0; k<shopt_count; ++k)); do
+				[[ ${shopt_short[$k]} == *"${optargs[$i]:$j:1}"* ]] || continue
+				myarg="${optargs[$i]:0:1}${optargs[$i]:$j:1}"
+				if [[ "${shopt_itype[$k]}" == NUMBER ]]; then
+					if [[ "${optargs[$i]:$((j+1)):1}" == [[:digit:]] ]]; then
+						myarg="${myarg}=${optargs[$i]:$((++j)):1}"
+						while [[ "${optargs[$i]:$((j+1)):1}" == [[:digit:]] ]]
+						do myarg="${myarg}${optargs[$i]:$((++j)):1}"; done
+					elif (( j == ${#optargs[$i]} - 1 )) \
+						&& [[ "${optargs[$((i+1))]}" == +([[:digit:]]) ]]; then
+						myarg="${myarg}=${optargs[$((++i))]}"
+						j=${#optargs[$i]}
+					fi
+				fi
+				case "${shopt_category[$k]}" in 
+					action) handle_arg_action "$myarg" $k && happy="yes";;
+					info) handle_arg_info "$myarg" $k && happy="yes";;
+					opt) handle_arg_opt "$myarg" $k && happy="yes";;
+				esac
+				[[ "$happy" ]] && break
+			done
+			[[ "$happy" ]] || do_arg_action="usage"
+		done;;
+	
+	* ) args[${#args[@]}]="${optargs[$i]}";;
+esac; done
+
+if [[ -z "$do_arg_info" ]]; then
+	[[ "$do_package_sizes" ]] \
+		&& do_arg_info="size" \
+		|| do_arg_info="depends"
+fi
+
+for ((i=0; i<shopt_count; ++i)); do
+	[[ "${shopt_long[$i]}" == "${do_arg_info}" ]] || continue
+	do_info_shopt_idx=$i
+done
+
+if [[ "$opt_arg_pretend" ]]; then
+	do_action="pretend"; portage_action_arg="--pretend"
+elif [[ "$opt_arg_ask" ]]; then
+	do_action="ask"; portage_action_arg="--ask"
+else
+	do_action="force"; portage_action_arg=""
+fi
+
+[[ "$do_arg_info" == "owners" ]] && load_config="" || load_config="yes"
+
+[[ "$do_arg_info" == "search" && -z "${args[*]}" ]] && args=('*')
+
+[[ -z "$do_arg_action" && "${args[*]}" ]] && do_arg_action="info"
+
+[[ -t 1 ]] && outputtoterminal="yes" || outputtoterminal=""
+
+[[ "$opt_arg_colour" == auto ]] && opt_arg_colour=$outputtoterminal
+
+if [[ -z "$opt_arg_verbose" ]]; then
+	[[ "$outputtoterminal" ]] && opt_arg_verbose=1 || opt_arg_verbose=0
+fi
+
+if [[ "$opt_arg_for_emerge" ]]; then
+	opt_arg_verbose=0
+	opt_arg_colour=""
+	outputtoterminal=""
+fi
+
+if [[ "$opt_arg_colour" == "yes" ]]; then
+	NO=$'\x1b[0;0m'
+	BR=$'\x1b[0;01m'
+	RD=$'\x1b[31;01m' Rd=$'\x1b[00;31m'
+	GR=$'\x1b[32;01m' Gr=$'\x1b[00;32m'
+	YL=$'\x1b[33;01m' Yl=$'\x1b[00;33m'
+	BL=$'\x1b[34;01m' Bl=$'\x1b[00;34m'
+	FC=$'\x1b[35;01m' Fc=$'\x1b[00;35m'
+	CY=$'\x1b[36;01m' Cy=$'\x1b[00;36m'
+elif [[ "$opt_arg_colour" == "html" ]]; then
+	NO="</span>"
+	for x in BR RD GR YL BL FC CY; do
+		eval "$x=\"<span class=\\\"$x\\\">\""
+	done
+	for x in Rd Gr Yl Bl Fc Cy; do
+		eval "$x=\"<span class=\\\"dk$x\\\">\""
+	done
+	exec 2>&1
+else
+	for x in NO BR RD Rd GR Gr YL Yl BL Bl FC Fc CY Cy; do
+		eval $x=""
+	done
+fi
+
+# short-circuit portage import
+[[ "$0" == */dep ]] && case "$do_arg_action" in
+	help) print_help | help_fmt; exit;;
+	version) print_version | help_fmt; exit;;
+	usage) print_usage | help_fmt; exit;;
+esac
+
+function html_wrap() {
+	cat <<END
+<html>
+<head>
+	<title>$PROG $*</title>
+	<style>
+		pre.terminal { background-color: white; border: solid thin; 
+			padding-left: 2px; padding-right: 2px; 
+			text-wrap: unrestricted; }
+		span.BR { font-weight: bold; }
+		span.RD { font-weight: bold; color: #FF5555; }
+		span.dkRd { color: #AA0000; }
+		span.GR { font-weight: bold; color: #55FF55; }
+		span.dkGr { color: #00AA00; }
+		span.YL { font-weight: bold; color: #E9D643; }
+		span.dkYl { color: #BB6C1C; }
+		span.BL { font-weight: bold; color: #5555FF; }
+		span.dkBl { color: #0000AA; }
+		span.FC { font-weight: bold; color: #FF55FF; }
+		span.dkFc { color: #AA00AA; }
+		span.CY { font-weight: bold; color: #25E2E2; }
+		span.dkCy { color: #018686; }
+		div.titlebar { background-color: #e0e0e0; 
+			border-top: solid thin; 
+			border-bottom: solid thin; 
+			margin-top: 1px; margin-bottom: 1px; 
+			padding-left: 2px; padding-right: 2px;
+			position: relative; left: -2px; width: 100%;
+		}
+		pre.terminal > div.titlebar:first-child {
+			margin-top: 0px; border-top: none;
+		
+	</style>
+</head>
+<body>
+	<pre class="terminal">
+<span class="BL">$([[ "$EUID" == 0 ]] && echo '#' || echo '$')</span> $PROG $@
+END
+	$PROG --verbose --colour=html "$@" | sed 's!\(^\|<[^>/]\+>\)\(.*\)\(.*\)\(<[^>/]\+/>\|$\)!\1\2<span></span>\3\4!g'
+cat <<END
+	</pre>
+</body>
+</html>
+END
+}
+
+trap 'exit 1' SIGINT
+
+# TODO split this into a separate libportage.sh package
+
+# A Portage library written in bash, for bash scripts.
+# Designed to be lightweight yet full-featured.
+# Copyright (c) 2004 Ed Catmur <ed@catmur.co.uk>
+# Licensed under the GPL, version 2 or later.
+
+# Conventions:
+# Whenever you see "mlsr" that means a full version specifier:
+# mega.macro.major.minor.micro(letter)-status-revision
+# When constructing pipelines, do not leave | tokens as the last character of
+# the feeding line; they should begin the next line. Similar for && and ||.
+# Keep if and then, for/while and do, on the same line where possible
+# (think 1TBS)
+# needle is being sought (in a haystack, normally)
+
+temp_dir="$(mktemp -t -d dep.XXXXXXXX)" || exit 1
+trap "rm -r $temp_dir" EXIT
+trap "rm -r $temp_dir" TERM
+
+# A useful trick to stack e.g. USE flags
+# 0. Concatenate the lists, from highest to lowest priority (i.e. in reverse 
+# order of application)
+function stacking_sort() {
+	discard_negatives="$1"
+# 1. Transform removals from `-foo' to `foo -':
+	sed 's/^-\(.*\)$/\1 -/' | \
+# 2. Pipe the resulting mess through the `stacking sort':
+	sort -s -k1,1 -u | \
+# this is a stable sort on first column, unique i.e. output first for each key
+# 3. Finally reverse the transform:
+	if [[ "$discard_negatives" ]]; then
+		sed -e '/ -$/d'
+	else
+		sed -e 's/^\(.*\) -$/-\1/'
+	fi 2>/dev/null
+# Example:
+#	AFTER 0.	AFTER 1.	AFTER 2.	AFTER 3.
+# 	foo		foo		foo		foo
+#	-bar		bar -		bar -		-bar (if not $1)
+#	-foo		foo -
+#	baz		baz		baz		baz
+#	bar		bar
+}
+
+function kill_comments_and_blanks() {
+	[[ $# -gt 0 ]] && sed -e 's/#.*//;/^$/d' "$@"
+}
+
+# Neither POSIX [ nor the bash [[ operator accept the output of wildcard 
+# expansion when testing for file existence. This is damn annoying, as we
+# often want to test for the existence of foo* and don't care whether there
+# are 1 or 100 files that match that wildcard.
+function car() { echo "$1"; }
+function cdr() { echo "${@:2}"; }
+function abl() { echo "${@:1:$(($#-1))}"; }
+
+function has() {
+	local a="$1" x; shift;
+	for x in "${@}"; do
+		[[ "${x}" == "${a}" ]] && return 0
+	done
+	return 1
+}
+
+function pads() {
+	local n=$1; shift; local s="$*"; ((n=n<${#s}?0:n-${#s}))
+	echo -n "${spaces:0:$n}"
+}
+
+function pad() {
+	echo -n "$2"; pads $1 "$2"
+}
+
+function rpad() {
+	pads $1 "$2"; echo "$2"
+}
+
+function set_xterm_title() {
+	if [[ "$opt_arg_colour" == "html" ]]; then
+		local args="${*//</&lt;}"
+		echo -n "<div class=\"titlebar\">${args//>/&gt;}</div>" >&2
+	else
+		[[ "$TERM" = @(@(x|E|a|k)term|rxvt|gnome|screen)* ]] \
+			&& echo -n $'\x1b']"2;$*"$'\x07' >&2
+		[[ "$TERM" = screen* ]] \
+			&& echo -n $'\x1b']"k$*"$'\x1b'"\\" >&2
+		true
+	fi
+}
+
+function format_error() {
+	fmt_w $((COLUMNS-4)) \
+	| while read line; do echo ${RD}!!!${NO} "$line"; done
+}
+
+function log_message() {
+	(( opt_arg_verbose >= $1 )) && format_error <<<"${*:2}" >&2
+}
+
+function memoise() {
+	mkdir $temp_dir/$1
+	eval "__memoised__$1() { $(typeset -f $1 | sed '1,2d;$d'); }
+	$1() {
+		[[ -d $temp_dir ]] || return 1
+		local x=\"$temp_dir/$1/_\${*//\//:}\"
+		(( \${#x} > 255 )) && x=\"$temp_dir/$1/\$(sha1sum <<<\"\$*\")\"
+		RETVAL=0
+		trap return SIGPIPE
+		if [[ -e \"\$x\" ]]; then
+			cat \"\$x\" 2>&-
+		else
+			__memoised__$1 \"\$@\" | tee \"\$x\"
+			RETVAL=\${PIPESTATUS[0]}; ((RETVAL == 0)) || rm \"\$x\"
+		fi
+		trap - SIGPIPE
+		return \$RETVAL
+	}"
+}
+
+# Version specifier: 
+# 	(cvs.)?([[:digit:]]+.)*[[:digit:]]+[[:lower:]]?(_(alpha|beta|pre|rc|p)[[:digit:]]*)?(-r[[:digit:]]+)?
+# as: 	(cvs.)(...,mega,macro),major,(minor,micro,nano,...),(letter),(status(number)),(ebuild revision) 
+# e.g. 3.57.2.20030722c_beta37-r12
+VER_SHPAT='?(cvs.)*(+([[:digit:]]).)+([[:digit:]])?([[:lower:]])?(_@(alpha|beta|pre|rc|p)*([[:digit:]]))?(-r+([[:digit:]]))'
+VER_REGEXP='\(cvs\.\)\?\([[:digit:]]\+\.\)*[[:digit:]]\+[[:lower:]]\?\(_\(alpha\|beta\|pre\|rc\|p\)[[:digit:]]*\)\?\(-r[[:digit:]]\+\)\?'
+
+function format_cpv() {
+	cpv="$1"; cat="${cpv%/*}"; pv="${cpv#$cat/}"; pn="${pv/%-$VER_SHPAT}"
+	cat_col=${2:-CY}; pn_col=${3:-GR}; mlsr_col=${4:-CY}
+	if [[ "$pv" == "$pn" ]]; then
+		echo ${!cat_col}"$cat"${NO}/${!pn_col}"$pn"${NO}
+	else
+		echo ${!cat_col}"$cat"${NO}/${!pn_col}"$pn"${NO}-${!mlsr_col}"${pv#$pn-}"${NO}
+	fi
+}
+
+function format_taint() {
+	local cpv="$1"
+	for tok in "${@:2}"; do
+		if [[ $tok != *\? ]]; then
+			echo -n "${Gr}$tok${NO}"' '
+			continue
+		fi
+		tok=${tok%\?}
+		if [[ $tok == \!* ]]; then
+			if has ${tok:1} $(dbuse $cpv); then
+				echo -n "${Bl}$tok${NO}"'? '
+			else
+				echo -n "${BL}$tok${NO}"'? '
+			fi
+		else
+			if has $tok $(dbuse $cpv); then
+				echo -n "${RD}$tok${NO}"'? '
+			else
+				echo -n "${Rd}$tok${NO}"'? '
+			fi
+		fi
+	done
+}
+
+function format_depatom() {
+	batom="$1"; asvirtual="$2"
+	atom="${batom#!}"; bang="${batom/%$atom}"
+	cpvs=${atom/#[<>]=}; cpvs=${cpvs/#[=~<>]}; cpvs=${cpvs#\*}
+	vs=${atom%$cpvs}
+	cpv=${cpvs%\*}; star=${cpvs#$cpv}
+	if [[ "$opt_arg_colour" == "html" ]]; then
+		vs=${vs//</&lt;}; vs=${vs//>/&gt;}
+	fi
+	if [[ "$asvirtual" ]]; then col=FC; elif [[ "${bang}" ]]; then col=RD;
+	else col=Gr; fi
+	echo $bang$vs${!col}$cpv${NO}${star}
+}
+
+function format_revdep() {
+	asvirtual="$1"
+	indent="${2:-	}"
+	ndeps=0
+	while read deppkg depatom taint; do
+		((++ndeps))
+		case $deppkg in
+			WORLD )
+			echo "$indent${BL}$(pad 35 "WORLD FILE")${NO}  $(format_depatom ${depatom} ${asvirtual})";;
+			SYSTEM )
+			echo "$indent${YL}$(pad 35 "SYSTEM PROFILE")${NO}  $(format_depatom ${depatom} ${asvirtual})";;
+			KERNEL )
+			echo "$indent${RD}RUNNING KERNEL${NO}";;
+			* )
+			echo "$indent$(format_cpv $deppkg)$(pads 35 $deppkg)  $(format_taint "$deppkg" ${taint})$(format_depatom ${depatom} ${asvirtual})";;
+		esac
+	done
+	return $ndeps
+}
+
+# Structure of /var/cache/edb/dep:
+# 
+# In portage 2.0.51, cache files are /var/cache/edb/dep/${TREE}/${P}
+# e.g. /var/cache/edb/dep/usr/portage/x11-base/xorg-x11-6.7.0
+#
+# The files themselves have a simple line-based structure:
+# 	1. DEPEND
+#	2. RDEPEND
+#	3. SLOT
+#	4. SRC_URI
+#	5. RESTRICT
+#	6. HOMEPAGE
+#	7. LICENSE
+#	8. DESCRIPTION
+#	9. KEYWORDS
+#	10. INHERITED
+#	11. IUSE
+#	12. CDEPEND (blank in portage 2.1)
+#	13. PDEPEND
+#	14. PROVIDE
+#	15. EAPI (since portage 2.1)
+#	16-22. <unused>
+#
+# See /usr/lib/portage/bin/ebuild.sh @@ 1516: for myarg in $*; do... depend)...
+# and /usr/lib/portage/pym/portage.py @@ 4844: auxdbkeys=[...]
+#
+# In portage 2.1, the structure changes to a key=value format, where value is 
+# unquoted and keys are _eclasses_, LICENSE, RESTRICT, etc.: the same as for
+# 2.0.51, with the addition of EAPI and the replacement of INHERITED by 
+# _eclasses_.
+#
+# Extract these with extract_var(name, cpv, tree).
+deplines=('' DEPEND RDEPEND SLOT SRC_URI RESTRICT HOMEPAGE LICENSE DESCRIPTION KEYWORDS INHERITED IUSE CDEPEND PDEPEND PROVIDE)
+for ((i=0;i<${#deplines[@]};++i)); do declare depline_${deplines[$i]}=$i; done
+
+# New inheriting profiles work thus: /etc/make.profile is a symlink to a 
+# directory somewhere in $PORTDIR; this has a file "parent" which contains the
+# relative path to the parent profile. Follow until you run out of parents.
+# profile_files() returns a profile stack for the named file, highest precedence
+# first (the correct way for stacking_sort). Each file returned exists.
+
+# handles multiple inheritance - probably pointless
+function profile_stack_read() {
+	dir="$1"; shift
+	for rel in "$@"; do
+		pdir="$(readlink -f "$dir/$rel")"
+		echo "$pdir"
+		[[ -r "$pdir/parent" ]] && profile_stack_read "$pdir" \
+				$(kill_comments_and_blanks "$pdir/parent")
+	done
+}
+
+function profile_files() {
+	while read path; do
+		[[ -r "$path/$1" ]] && echo "$path/$1"
+	done <<<"$profile_stack"
+}
+
+function etc_portage_files() {
+	name="$1"
+	if [[ -d "/etc/portage/$name" ]]; then
+		find "/etc/portage/$name" -type f -readable
+	elif [[ -r "/etc/portage/$name" ]]; then
+		echo "/etc/portage/$name"
+	fi
+}
+
+# profile_files with trees as well
+function profile_files_extra() {
+	name="$1"
+	etc_portage_files "$name"
+	profile_files "$name"
+	for x in $portage_trees; do
+		[[ -r "${x%/}/profiles/$name" ]] && echo "${x%/}/profiles/$name"
+	done
+}
+
+function shlex_parse_assignments() {
+	while read name value; do
+		if [[ "$name" == "!source" ]]; then
+			eval shlex_parse_assignments "\"$value\""
+		elif [[ "${!name+isset}" ]] && has $name $PORTAGE_VARS_ADDITIVE; then
+			eval "$name=\"${value//\$@(\{$name\}|$name)} ${!name}\""
+		else
+			eval "$name=\"$value\""
+		fi
+	done < <(sed -n -e '/^[[:space:]]*[[:alnum:]_]\+=/ {
+			s/^\([^=]\+\)=\("\?\)\([^"]\+\).*\2/\1 \3/ ; ta ;
+			s/^\([^=]\+\)="\?/\1 / ; {
+				:b ; N ; s/".*// ; tc ; bb ; :c ; s/\\\?\n/ /g
+			} ;
+		} ;
+		s/^[[:space:]]*source[[:space:]]\+/!source /; T
+		:a ; p' \
+		"$@")
+}
+
+function load_portage_config() {
+	profile_stack="$(profile_stack_read /etc/portage/profile .
+		profile_stack_read /etc/make.profile .)"
+
+	# portage settings files are parsed with portage_util.getconfig, which 
+	# uses shlex.shlex. We could source the settings files, but that takes 
+	# ages and gives spurious results. Can we sed it? Yes we can!
+	# Note that the portage devs (well, ciaran at least) refuse to even 
+	# specify what the format of make.conf and friends actually is! 
+	# See http://bugs.gentoo.org/show_bug.cgi?id=100373
+	PORTAGE_VARS_EXPORT="PORTDIR DISTDIR PKGDIR PORT_LOGDIR PORTDIR_OVERLAY PORTAGE_TMPDIR CCACHE_DIR CHOST ARCH ACCEPT_KEYWORDS USE_EXPAND USE_ORDER"
+	PORTAGE_VARS_KEEP="USE"
+	PORTAGE_VARS_ADDITIVE="USE"
+	PORTAGE_SETTINGS_DEFAULTS='
+PORTDIR="/usr/portage"
+DISTDIR="${PORTDIR}/distfiles"
+PKGDIR="${PORTDIR}/packages"
+PORT_LOGDIR="/var/log/portage"
+PORTAGE_TMPDIR="/var/tmp"
+CCACHE_DIR="${PORTAGE_TMPDIR}/ccache"
+CHOST="i386-pc-linux-gnu"
+ARCH="x86"
+'
+	while read name value; do
+		if ! [[ "${!name+isset}" ]] || has $name $PORTAGE_VARS_ADDITIVE; then
+			eval "$name=\"$value\""
+		fi
+	done <<<"$(
+		shlex_parse_assignments \
+			- <<<"$PORTAGE_SETTINGS_DEFAULTS" \
+			/etc/make.globals \
+			$(profile_files make.defaults) \
+			/etc/make.conf
+		for x in $PORTAGE_VARS_EXPORT $USE_EXPAND; do
+			echo "$x" "${!x}"
+		done
+		for x in $PORTAGE_VARS_KEEP; do
+			echo "__conf_$x" "${!x}"
+		done
+	)"
+	read -a ACCEPT_KEYWORDS <<<"$ARCH $ACCEPT_KEYWORDS"
+
+	portage_trees="$PORTDIR "
+	for portage_tree in $PORTDIR_OVERLAY; do
+		portage_trees="$portage_tree $portage_trees"
+	done
+	categories=$(sort -u $(profile_files_extra categories))
+
+	allprofilepackages=$(
+		kill_comments_and_blanks $(profile_files packages) \
+		| stacking_sort yes
+	)
+
+	profileprovided=$(
+		kill_comments_and_blanks $(profile_files package.provided) \
+		| stacking_sort yes
+	)
+
+	usemask_unstacked=$(kill_comments_and_blanks $(profile_files use.mask))
+}
+
+function ebuild_dep_to_stdout() {
+	ebuild="$1"; cat="$2"; pn="$3"; mlsr="$4"
+	mls="${mlsr%-r+([[:digit:]])}"; rev="${mlsr#$mls-}"
+	dbkey=/dev/stdout ECLASSDIR=$PORTDIR/eclass EBUILD=$ebuild \
+	P="$pn-$mls" PN="$pn" PV="$mls" PR="${rev:-r0}" PVR="$mlsr" \
+	PF="$pn-$mlsr" CATEGORY="$cat" PORTDIR_OVERLAY="$PORTDIR_OVERLAY" \
+	EBUILD_PHASE="depend" /usr/lib/portage/bin/ebuild.sh depend
+}
+
+function ebuild_dep_from_vardb() {
+	cpv="$1"; cat="${cpv%/*}"; pv="${cpv#$cat/}"; 
+	pn="${pv/%-$VER_SHPAT}"; mlsr="${pv#$pn-}"
+	ebuild_dep_to_stdout /var/db/pkg/$cpv/$pv.ebuild $cat $pn $mlsr
+}
+memoise ebuild_dep_from_vardb
+
+# TODO adapt to portage 2.1 edb format
+function ebuild_dep_to_edb() {
+	echo ebuild_dep_to_edb "$*" | format_error >&2
+	cpv="$1"; tree="$2"; cp="${cpv/%-$VER_SHPAT}"; mlsr="${cpv#$cp-}"
+	cat="${cp%/*}"; pn="${cp#${cat}/}"
+	depfile=/var/cache/edb/dep/$tree/$cpv
+	ebuild=$tree/$cat/$pn/$pn-$mlsr.ebuild
+	if [[ ! -f $ebuild ]]; then
+		echo Could not find $ebuild | format_error >&2
+		return 1
+	fi
+	mkdir -p ${depfile%/*}
+	ebuild_dep_to_stdout $ebuild $cat $pn $mlsr > $depfile
+}
+
+function populate_from_tree() {
+	cp="$1"
+	for tree in $portage_trees; do
+		for ebuild in ${tree%/}/${cp}/${cp#*/}-$VER_SHPAT.ebuild; do
+			[[ -f "$ebuild" ]] || continue
+			mlsr=${ebuild#${tree%/}/${cp}/${cp#*/}-}
+			mlsr=${mlsr%.ebuild}
+			cpv=$cp-$mlsr
+			[[ -f /var/cache/edb/dep/$tree/$cpv ]] && continue
+			ebuild_dep_to_edb $cpv $tree
+		done
+	done
+}
+
+function vercmp() {
+	comm_ver "$1" "$3"
+	case "$2" in
+		"=" ) (( $? == 0 ));;
+		"~" ) (( $? == 255 || $? == 0 || $? == 1 ));;
+		"<=" ) (( $? == 0 || $? >= 128 ));;
+		"<" ) (( $? >= 128 ));;
+		">=" ) (( $? < 128 ));;
+		">" ) (( $? > 0 && $? < 128 ));;
+		* ) format_error <<<"Unrecognised version comparator: $2" >&2
+	esac
+}
+
+function dep_satisfies_mlsr() {
+	local t_mlsr="$1"; local vs="$2"; local d_mlsr="$3"
+	[[ "$vs" == @(<|>)* ]] && d_mlsr="${d_mlsr%\*}"  # >=foo-2* idiocy
+	if [[ "$d_mlsr" == *\* ]]; then
+		[[ "$t_mlsr" == $d_mlsr ]] && return 0 || return 1
+	fi
+	[[ "$vs" == "" ]] && return 0
+	vercmp "${t_mlsr}" "${vs}" "${d_mlsr}"
+}
+
+function dep_satisfies() {
+	testpkg="$1"
+	depatom="$2"
+	t_cp="${testpkg/%-$VER_SHPAT}"
+	t_mlsr="${testpkg#${t_cp}-}"
+	d_cpv="${depatom/#@(<|<=|=|~|>=|>)}"
+	vs="${depatom%${d_cpv}}"
+	d_cp="${d_cpv/%-$VER_SHPAT?(\*)}"
+	d_mlsr="${d_cpv#${d_cp}-}"
+	# doesn't dereference virtuals
+	[[ "$t_cp" != "$d_cp" ]] && return 2
+	dep_satisfies_mlsr "$t_mlsr" "$vs" "$d_mlsr"
+}
+
+function accept_for() {
+	local cp="$1" mlsr="$2" return="${3:-RESULT}"
+	if [[ ! -e /etc/portage/package.keywords ]]; then
+		read -a "$return" <<<"${ACCEPT_KEYWORDS[@]}"
+		return 0
+	fi
+	accept_ks=("${ACCEPT_KEYWORDS[@]}")
+	extra_ks=()
+	while read -a atom_keywords; do
+		if dep_satisfies ${cp}-${mlsr} "${atom_keywords[0]}"; then
+			extra_ks=("${extra_ks[@]}" "${atom_keywords[@]:1}")
+		fi
+	done <<<"$(
+		grep '^[<>=~]*'$cp -r /etc/portage/package.keywords 2>/dev/null
+		)"
+	for keyword in "${extra_ks[@]}"; do
+		case "$keyword" in
+			-\*) accept_ks[${#accept_ks[@]}]="${keyword}";;
+			-*) for i in ${!accept_ks[@]}; do [[ "-${accept_ks[$i]}" == "${keyword}" ]] && unset accept_ks[$i]; done;;
+			*) accept_ks[${#accept_ks[@]}]="${keyword}";;
+		esac
+	done
+	read -a "$return" <<<"${accept_ks[@]}"
+}
+
+function best_tree() {
+	cpv="$1"
+	cp="${cpv/%-$VER_SHPAT}"; mlsr="${cpv#$cp-}"; pv="${cpv#*/}"
+	for tree in ${portage_trees}; do
+		[[ -f ${tree}/${cp}/${pv}.ebuild ]] || continue
+		is_keyword_masked $cp $mlsr $tree && continue
+		echo ${tree%/}
+		return 0
+	done
+	for tree in ${portage_trees}; do
+		[[ -f ${tree}/${cp}/${pv}.ebuild ]] || continue
+		echo ${tree%/}
+		return 0
+	done
+	echo $PORTDIR
+	return 1
+}
+
+function edb_tree() {
+	cpv="$1"
+	cp="${cpv/%-$VER_SHPAT}"; mlsr="${cpv#$cp-}"; pv="${cpv#*/}"
+	for tree in ${portage_trees}; do
+		[[ -f /var/cache/edb/dep/${tree}/${cpv} ]] || continue
+		is_keyword_masked $cp $mlsr $tree && continue
+		echo ${tree%/}
+		return 0
+	done
+	for tree in ${portage_trees}; do
+		[[ -f /var/cache/edb/dep/${tree}/${cpv} ]] || continue
+		echo ${tree%/}
+		return 0
+	done
+	echo $PORTDIR
+	return 1
+}
+
+function extract_var_from_vardb() {
+	local name="$1" name2="depline_$1" cpv="$2"
+	if [[ "$name" && -e /var/db/pkg/$cpv/$name ]]; then
+		cat /var/db/pkg/$cpv/$name
+	elif [[ "${!name2}" ]]; then
+		ebuild_dep_from_vardb $cpv | sed "${!name2}!d"
+	elif [[ -e "/var/db/pkg/${cpv}/environment.bz2" ]]; then
+		bunzip2 -c "/var/db/pkg/${cpv}/environment.bz2" \
+			| sed 's!^'"${name}"'=!!;t;d'
+	fi
+}
+
+function extract_var_from_edb() {
+	local name=$1 tree=$2 cpv=$3
+	if read && [[ "$REPLY" == +([[:word:]])=* ]]; then
+		# portage 2.1 format
+		if [[ "$name" == INHERITED ]]; then
+			while :; do if [[ "$REPLY" == "_eclasses_="* ]]; then
+				eclasses=(${REPLY#_eclasses_=})
+				for ((i=0;i<${#eclasses[@]};i+=3)); do
+					echo -n "${eclasses[$i]} "
+				done; echo; break
+			else read || break; fi; done
+		else
+			while :; do if [[ "$REPLY" == "$name="* ]]; then
+				echo "${REPLY#$name=}"; break
+			else read || break; fi; done
+		fi
+	else
+		# portage 2.0 format
+		name2=depline_$name; num=${!name2}
+		for ((i=1;i<num;++i)); do read; done; echo "$REPLY"
+	fi </var/cache/edb/dep/$tree/$cpv
+}
+
+function extract_var() {
+	name="$1"
+	cpv="$2"
+	tree="$3"
+	if [[ "$opt_arg_original_depends" && -d /var/db/pkg/$cpv ]]; then
+		extract_var_from_vardb "$name" "$cpv"
+	elif [[ -f /var/cache/edb/dep/$tree/$cpv ]]; then
+		extract_var_from_edb "$name" "$tree" "$cpv"
+	elif [[ "$tree" && -f "$tree/${cpv/%-$VER_SHPAT}/${cpv#*/}.ebuild" ]]; then
+		ebuild_dep_to_edb ${cpv} ${tree}
+		extract_var_from_edb "$name" "$tree" "$cpv"
+	elif [[ -z "$tree" ]] && newtree="$(best_tree $cpv)"; then
+		extract_var "$name" "$cpv" "$newtree"
+	elif [[ -d /var/db/pkg/$cpv ]]; then
+		extract_var_from_vardb "$name" "$cpv"
+	elif [[ -z "$tree" ]] && newtree="$(edb_tree $cpv)"; then
+		extract_var "$name" "$cpv" "$newtree"
+	else
+		format_error <<<"failed extract_var $* :: ${FUNCNAME[@]}" >&2
+	fi
+}
+
+function keywords_for() {
+	read -a "${3:-RESULT}" <<<"$(extract_var KEYWORDS $1 $2)"
+}
+
+function provide_for() {
+	extract_var PROVIDE $1 $2
+}
+
+function slot_for() {
+	extract_var SLOT $1 $2
+}
+
+function contingent_provide_for() {
+	cpv="$1"; cp="${cpv/%-$VER_SHPAT}"
+	local provide="$(provide_for $cpv $2)"
+	if [[ "$provide" == *"?"* ]] ; then
+		toks=( $provide )
+		for (( i=0; i<${#toks[@]}; ++i )); do 
+			case ${toks[$i]} in
+				*\? )
+				flag=${toks[$i]%?}; flag=${flag#!}
+				if if has $flag $(dbuse $cpv)
+				then [[ "${toks[$i]}" != \!* ]]
+				else [[ "${toks[$i]}" == \!* ]]; fi; then
+					(( ++i ))
+					echo ${toks[$i]%-$VER_SHPAT}
+				fi;;
+				* )
+				echo ${toks[i]%-$VER_SHPAT};;
+			esac
+		done
+	else
+		echo "${provide//[[:space:]]/
+}"
+	fi
+}
+
+function get_contingent_virtuals() {
+	if [[ -s /var/cache/edb/virtuals ]]; then
+		cat /var/cache/edb/virtuals
+		return
+	fi
+	# note: portage treeVirtuals comes from cpv_all, which uses listdir()
+	# so prefers installed packages according to their on-disk directory
+	# order. Yes, this is silly. (portage.py vardbapi.cpv_all() @@4729)
+	trap return SIGPIPE
+	find /var/db/pkg -mindepth 3 -maxdepth 3 -name PROVIDE \
+		-and -not -size 0c -and -not -size 1c \
+	| cut -d/ -f5-6 \
+	| while read cpv; do
+		cp="${cpv%-$VER_SHPAT}"
+		opt_arg_original_depends=1 contingent_provide_for $cpv \
+			| while read; do [[ "$REPLY" ]] && echo "$REPLY $cp"; done
+	done
+	trap - SIGPIPE
+}
+
+function read_virtuals() {
+	for vfile; do 
+		[[ -e "$vfile" ]] && while read virt cps; do 
+			for cp in $cps; do echo "$virt $cp"; done
+		done <"$vfile"
+	done
+}
+
+function allvirtuals() {
+	set_xterm_title "Calculating virtuals... collecting"
+	trap return SIGPIPE
+	(
+		# portage.py settings.__getvirtuals_compile() @@1533
+		treeVirtuals=$(get_contingent_virtuals)
+		dirVirtuals=$(read_virtuals $(profile_files virtuals))
+		userVirtuals=$(read_virtuals /etc/portage/virtuals)
+		# utVirtuals := treeVirtuals /\ userVirtuals
+		comm -1 -2 <(sort <<<"$treeVirtuals") <(sort <<<"$userVirtuals")
+		# ptVirtuals := treeVirtuals /\ dirVirtuals
+		comm -1 -2 <(sort <<<"$treeVirtuals") <(sort <<<"$dirVirtuals")
+		echo "$treeVirtuals"
+		echo "$userVirtuals"
+		echo "$dirVirtuals"
+		set_xterm_title "Calculating virtuals... sorting"
+	) | kill_comments_and_blanks - | sort -s -k1,1 | (
+		virtual=""; cps=""
+		while read newv cp; do if [[ "$newv" == "$virtual" ]]; then
+			has $cp $cps || cps="$cps $cp"
+		else
+			[[ "$virtual" ]] && echo "$virtual $cps"
+			virtual="$newv"; cps="$cp"
+		fi; done; [[ "$virtual" ]] && echo "$virtual $cps"
+	)
+	trap - SIGPIPE
+	set_xterm_title "Calculating virtuals... done"
+}
+memoise allvirtuals
+
+function autouse() {
+	set_xterm_title "Calculating auto USE flags..."
+	kill_comments_and_blanks $(profile_files use.defaults) \
+	| while read use packages; do 
+		for package in $packages; do
+			[[ -z "${package}" || -d /var/db/pkg/${package} || -d $(car /var/db/pkg/${package}-$VER_SHPAT) ]] && echo $use
+		done
+	done | tac
+	set_xterm_title "Calculating auto USE flags... done"
+}
+memoise autouse
+
+function package_use_mask() {
+	(
+		kill_comments_and_blanks $(profile_files package.use.mask) \
+		| while read package pusemask; do
+			dep_satisfies "$1" $package && echo $pusemask
+		done | sed 's/[[:space:]]\+/\n/g'
+		echo "$usemask_unstacked"
+	) | stacking_sort yes
+}
+
+function usecomponent() {
+	# return a USE component, one flag per line, highest priority first
+	# TODO FIXME not correct yet - though OK for default case
+	local component="$1" cpv="$2"
+	case "$component" in
+		env) sed 's/[[:space:]]\+/\n/g' <<<"$USE" | tac;;
+		pkg) [[ "$cpv" ]] && \
+			kill_comments_and_blanks $(etc_portage_files package.use) \
+			| while read package use; do
+				dep_satisfies "$cpv" $package && echo $use
+			done | sed 's/[[:space:]]\+/\n/g';;
+		conf) sed 's/[[:space:]]\+/\n/g' <<<"$__conf_USE";;
+		auto) autouse;;
+		defaults);;
+		*) format_error <<<"Unknown USE component: $component" >&2;;
+	esac
+}
+
+function dbuse() {
+	local cpv=$1
+	if [[ "$cpv" && "$opt_arg_original_depends" && -d /var/db/pkg/$cpv ]]; then
+		sed -e 's/[[:space:]]\+/\n/g' /var/db/pkg/$cpv/USE
+	else
+		[[ "$USE_ORDER" ]] || USE_ORDER="env:pkg:conf:defaults"
+		(
+			echo $ARCH
+			package_use_mask "$cpv" | sed -e 's/^/-/'
+			for component in ${USE_ORDER//:/ }; do
+				usecomponent $component "$@"
+			done
+		) \
+		| sed '/^-\*$/,$d' \
+		| stacking_sort yes
+		for x in $USE_EXPAND; do
+			xl=$(lower "$x")
+			# would need grab_setting "$x", but is done above
+			for y in ${!x}; do
+				echo "${xl}_$y"
+			done
+		done
+	fi
+}
+
+# Compare two numbers as fractional parts of a decimal fraction.
+function comm_float() {
+	local f1="$1" f2="$2" i d1 d2
+	for ((i=0;i<${#f1}||i<${#f2};++i)); do
+		d1=${f1:$i:1}; [[ "$d1" ]] || d1=0
+		d2=${f2:$i:1}; [[ "$d2" ]] || d2=0
+		((d1<d2)) && return -7; ((d1>d2)) && return 7
+	done
+	return 0
+}
+
+# Compare version specifiers s1, s2. Returns <0, 0, >0 if s1 is resp lower, 
+# equal, higher than s2. Note that <0 actually means >127 (-1 -> 255, etc)
+# 0: equal; 1: differ in erev; 2: differ in status number; 3: differ in status;
+# 4: differ in letter; 5: differ in mmm length; 6: differ in mmm
+#
+# This needs to be kept equivalent to portage_versions.vercmp().
+#
+# NOTE: Portage considers e.g. 7.0 and 7.0.0 to be equivalent. Yes, I know, 
+# this sucks. HATE HATE HATE
+#
+# status code number: alpha->0, beta->1, pre->2, rc->3, (none)->4, p->5
+function comm_ver() {
+	local s1_mlsr="$1" s2_mlsr="$2"
+	[[ "$s1_mlsr" == "$s2_mlsr" ]] && return 0
+	if [[ "$s1_mlsr" == */* || "$s2_mlsr" == */* ]]; then
+		echo "Oops: comm_ver called with category/package: $(format_cpv $s1_mlsr) $(format_cpv $s2_mlsr)" | format_error >&2
+		return 0
+	fi
+	s1_mls="${s1_mlsr/%-r+([[:digit:]])}"; s1_r="${s1_mlsr#${s1_mls}}"
+	s1_r="${s1_r/#-r*(0)}"
+	s1_ml="${s1_mls/%_@(alpha|beta|pre|rc|p)*([[:digit:]])}"
+	s1_s="${s1_mls#${s1_ml}}"; s1_sc="${s1_s/%*([[:digit:]])}"
+	s1_scn="$((6-${#s1_sc}))"; [[ $s1_scn -ge 4 ]] && s1_scn=$((10-$s1_scn))
+	s1_sn="${s1_s##${s1_sc}*(0)}"; s1_m="${s1_ml/%[[:lower:]]}"
+	s1_l="${s1_ml#${s1_m}}"; s1_m=( ${s1_m//./ } )
+	s2_mls="${s2_mlsr/%-r+([[:digit:]])}"; s2_r="${s2_mlsr#${s2_mls}}"
+	s2_r="${s2_r/#-r*(0)}"
+	s2_ml="${s2_mls/%_@(alpha|beta|pre|rc|p)*([[:digit:]])}"
+	s2_s="${s2_mls#${s2_ml}}"; s2_sc="${s2_s/%*([[:digit:]])}"
+	s2_scn="$((6-${#s2_sc}))"; [[ $s2_scn -ge 4 ]] && s2_scn=$((10-$s2_scn))
+	s2_sn="${s2_s##${s2_sc}*(0)}"; s2_m="${s2_ml/%[[:lower:]]}"
+	s2_l="${s2_ml#${s2_m}}"; s2_m=( ${s2_m//./ } )
+	local i
+	for ((i=0; i<${#s1_m[@]} || i<${#s2_m[@]}; ++i)); do
+		s1mi="${s1_m[$i]}"; s2mi="${s2_m[$i]}"
+		[[ "$s1mi" || "$s2mi" == '0' ]] || return -5
+		[[ "$s2mi" || "$s1mi" == '0' ]] || return 5
+		if [[ "$s1mi" == 0* || "$s2mi" == 0* ]]; then
+			comm_float "$s1mi" "$s2mi"; ret=$?; ((ret)) && return $ret
+		else
+			((s1mi < s2mi)) && return -6
+			((s1mi > s2mi)) && return 6
+		fi
+	done
+	((${#s1_m[@]}!=${#s2_m[@]})) && [[ "${s1_l}${s1_s}${s1_r}" == "${s2_l}${s2_s}${s2_r}" ]] && return 0
+	[[ "$s1_l" < "$s2_l" ]] && return -4
+	[[ "$s1_l" > "$s2_l" ]] && return 4
+	[[ "$s1_scn" < "$s2_scn" ]] && return -3
+	[[ "$s1_scn" > "$s2_scn" ]] && return 3
+	[[ "$s1_sn" -lt "$s2_sn" ]] && return -2
+	[[ "$s1_sn" -gt "$s2_sn" ]] && return 2
+	[[ "${s1_r}" -lt "${s2_r}" ]] && return -1
+	[[ "${s1_r}" -gt "${s2_r}" ]] && return 1
+	echo "Error! comm_ver failed $1 $2" >&2
+	exit 128	# should not reach here
+}
+
+function highest_mlsr() {
+	local highest=""
+	local mlsr
+	for mlsr in $*; do
+		if ! [[ "$highest" ]]; then 
+			highest=$mlsr
+			continue
+		fi
+		vercmp $mlsr ">" $highest && highest=$mlsr
+	done
+	echo $highest
+}
+
+function method_sort() {
+	# An insertion sort, or something like it: we expect the input list to 
+	# be largely sorted so want to compare new elements to the top end of 
+	# the partial list.
+	# <method>: a function which returns true if $1 sorts after $2.
+	local -a method=( "$@" )
+	read x && local -a list[0]="$x" || return 1
+	while read x; do
+		local i
+		for ((i = ${#list[@]} - 1; i >= 0; --i)); do
+			"${method[@]}" "$x" "${list[i]}" && break
+		done \
+		&& list=("${list[@]:0:i+1}" "$x" "${list[@]:i+1}") \
+		|| list=("$x" "${list[@]}")
+	done
+	for x in "${list[@]}"; do cat <<<"$x"; done
+}
+
+function is_ver_higher() {
+	# vercmp "${1% *}" ">" "${2% *}"
+	comm_ver "${1% *}" "${2% *}"; (( $? > 0 && $? < 128 ))
+}
+
+function mlsr_sort() {
+	method_sort is_ver_higher
+}
+
+function has_version() {
+	pkgspec="$1"
+	if [[ "$pkgspec" == virtual/* ]]; then
+		grep -q "${pkgspec}" /var/db/pkg/*/*/PROVIDE
+		return
+	fi
+	# (<|<=|=|~|>=|>)?category/package(-version)?*?
+	case "$pkgspec" in
+		\<=*) vs="<=";pkgspec="${pkgspec:2}";;
+		\<*)  vs="<"; pkgspec="${pkgspec:1}";;
+		=*)   vs="="; pkgspec="${pkgspec:1}";;
+		\~*)  vs="~"; pkgspec="${pkgspec:1}";;
+		\>=*) vs=">=";pkgspec="${pkgspec:2}";;
+		\>*)  vs=">"; pkgspec="${pkgspec:1}";;
+		*)    vs="";;
+	esac
+	case "$vs" in
+		=) arr=( /var/db/pkg/$pkgspec )
+		[[ -d "${arr}" ]] && return 0 || return 1;;
+		\~) arr=( /var/db/pkg/${pkgspec}?(-r+([[:digit:]])) )
+		[[ -d "${arr}" ]] && return 0 || return 1;;
+		"") arr=( /var/db/pkg/${pkgspec}-$VER_SHPAT )
+		[[ -d "${arr}" ]] && return 0 || return 1;;
+		*)
+		cp="${pkgspec/%-$VER_SHPAT}"
+		verstring_req="${pkgspec#${cp}-}"
+		avail=( /var/db/pkg/${cp}-$VER_SHPAT )
+		[[ -d "${avail}" ]] || return 1
+		[[ "${vs}" ]] || return 0
+		for inst in "${avail[@]}"; do
+			verstring_inst="${inst#/var/db/pkg/${cp}-}"
+			vercmp "${verstring_inst}" "$vs" "${verstring_req}" && return 0
+		done
+		return 1;;
+	esac
+}
+
+function virtuals_from() {
+	cp=$1
+	allvirtuals | while read virtual provider providers; do
+		[[ "$provider" == "$cp" || "$provider" \
+		== @(<|<=|=|~|>=|>)"$cp"-$VER_SHPAT?(\*) ]] && echo $virtual
+	done
+}
+
+function virtual_version() {
+	cp=$1; mlsr=$2; virtual=$3; tree=$4
+	contingent_provide_for $cp-$mlsr $tree \
+	| while read provide; do
+		provide_base="${provide%-$VER_SHPAT}"
+		[[ "${provide_base}" == "${virtual}" ]] || continue
+		if [[ "${provide_base}" == "${provide}" ]]; then
+			echo ${mlsr}
+		else
+			echo ${provide#${provide_base}-}
+		fi
+		return 1
+	done || return 0
+	return 1
+}
+
+# XXX outputs stonkingly big and dense graphs -- need a way to trim them down
+function dot_depgraph() {
+	local -a handled=() queue=()
+	if [[ "$1" == @(""|world|system) ]]; then
+		[[ "$1" == "system" ]] || for req in $(<{WORLD_FILE}); do
+			queue[${#queue[@]}]="$(resolve_depatom "${req}")"
+		done
+		for req in ${allprofilepackages}; do
+			[[ "$req" == \** ]] || continue; req="${req#\*}"
+			queue[${#queue[@]}]="$(resolve_depatom "${req}")"
+		done
+	else for x in "$@"; do
+		expand_arg "$x"
+		queue[${#queue[@]}]="$RESULT"
+	done; fi
+	case $do_arg_info in
+		tree-depends) 	echo "digraph \"deptree for ${queue[*]}\" {";;
+		reverse-tree) 	echo "digraph \"reverse deptree for ${queue[*]}\" {";;
+		depends) 		echo "digraph \"deplist for ${queue[*]}\" {";;
+		rev-depends) 	echo "digraph \"reverse deplist for ${queue[*]}\" {"
+			for node in "${queue[@]}"; do
+				echo "	\"$node\" -> \"$(resolve_depatom "$node")\";"
+			done;;
+		*) format_error <<<"Oops: dot_depgraph unknown type" >&2; return 1;;
+	esac
+	has $do_arg_info tree-depends depends \
+		&& local reverse="" || local reverse="yes"
+	while ((${#queue[@]} > 0)); do
+		node="${queue}"; queue=("${queue[@]:1}")
+		handled[${#handled[@]}]="$node"
+		while read dep taint; do
+			[[ "$dep" ]] || continue
+			depend="$(resolve_depatom "${dep#!}")"
+			[[ "$dep" == !virtual/* && "$depend" == "$node" ]] && continue
+			[[ "$reverse" ]] \
+				&& echo -n "	\"${depend:-$dep}\" -> \"$node\" [" \
+				|| echo -n "	\"$node\" -> \"${depend:-$dep}\" ["
+			[[ "$taint" ]] && echo -n "label=\"$taint\","
+			[[ "$dep" == !* ]] && echo -n "arrowhead=\"odiamond\", color=\"red\","
+			echo "];"
+			if [[ "$dep" != !* && "$depend" ]] \
+				&& has $do_arg_info tree-depends reverse-tree; then
+				has "$depend" "${handled[@]}" "${queue[@]}" \
+				|| queue[${#queue[@]}]="$depend"
+			fi
+		done <<<"$([[ "$reverse" ]] && _smartdep $node || resdepend $node)"
+	done
+	echo "	subgraph \"cluster_SYSTEM\" {"
+	echo "		label=\"SYSTEM\";"
+	for req in ${allprofilepackages}; do
+		[[ "$req" == \** ]] || continue; req="${req#\*}"
+		[[ "${handled[*]}" == *${req%-$VER_SHPAT}* ]] || continue
+		depend="$(resolve_depatom "${req#\*}")"
+		has "$depend" "${handled[@]}" && echo "		\"$depend\";"
+	done
+	echo "	}"
+	echo "	subgraph \"cluster_WORLD\" {"
+	echo "		label=\"WORLD\";"
+	for req in $(<${WORLD_FILE}); do
+		[[ "${handled[*]}" == *${req%-$VER_SHPAT}* ]] || continue
+		depend="$(resolve_depatom "${req}")"
+		has "$depend" "${handled[@]}" && echo "		\"$depend\";"
+	done
+	echo "	}"
+	echo "}"
+}
+
+function has_revdepend() {
+	# TODO FIXME make more efficient
+	[[ "$(_smartdep "$@")" ]]
+}
+
+function add_deps_to_required() {
+	local dep="$1"; local ensure="$2"; local cpv
+	required=$(<$temp_dir/required)
+	cpv="$(resolve_depatom "$dep")" || return
+	[[ "$cpv" ]] || return
+	has $cpv $required && return
+	if [[ "$opt_arg_unique_depends" && -z "$ensure" ]]; then
+		has_revdepend $cpv "" "$required" && return
+	fi
+	echo "$cpv" >> $temp_dir/required
+	if [[ "$opt_arg_for_emerge" ]]; then echo "${indent}=${cpv}"
+	elif (( opt_arg_verbose > 0 )); then echo "$indent$(format_cpv $cpv)$(pads 43 "$indent$cpv")  $(format_depatom "$dep")"
+	else echo "$indent$(format_cpv $cpv)"; fi
+	[[ "$do_package_sizes" ]] && info_action_size $cpv
+	if ! has $cpv $profileprovided; then
+		indent="$indent  "
+		{ [[ "${opt_arg_depth}" ]] && (( ${#indent} / 2 > opt_arg_depth )); } \
+		|| while read dep taint; do
+			[[ "$dep" && "${dep:0:1}" != "!" ]] \
+				&& add_deps_to_required $dep
+		done <<<"$(resdepend $cpv)"
+		indent="${indent#  }"
+	fi
+}
+
+function makeideal() {
+	:> $temp_dir/required
+	echo "${YL}SYSTEM PROFILE${NO}:"
+	for req in $(echo "${allprofilepackages}" | sed 's/\*\(.*\)/\1/;t;d');
+	do
+		indent="" add_deps_to_required $req
+	done
+	echo "${BL}WORLD FILE${NO}:"
+	for req in $(sort ${WORLD_FILE}); do
+		indent="" add_deps_to_required $req
+	done
+	all_installed_cpvs | while read cpv; do 
+		is_running_kernel $cpv || continue; echo $cpv; break
+	done >> $temp_dir/required
+	sort -u $temp_dir/required > $temp_dir/s_required
+	( all_installed_cpvs; echo "$profileprovided" ) \
+		| sort -u > $temp_dir/provided
+	all_installed_cpvs | sort -u > $temp_dir/installed
+	my_redundant=$(comm -2 -3 $temp_dir/installed $temp_dir/s_required)
+	missing=$(comm -2 -3 $temp_dir/s_required $temp_dir/provided)
+	echo
+	echo "${BR}To remove:${NO}"
+	echo $'\t''*' $my_redundant
+	echo "${BR}To install:${NO}"
+	echo $'\t''*' $missing
+	[[ "$my_redundant" ]] && emerge -vC $portage_action_arg $my_redundant
+	[[ "$missing" ]] && emerge -v1 $portage_action_arg \
+					$(echo "$missing" | sed 's/^/=/')
+}
+	
+function raw_depends() {
+	cpv=$1
+	(
+		[[ "$opt_arg_build_time" ]] && extract_var DEPEND $cpv
+		extract_var RDEPEND $cpv
+		extract_var PDEPEND $cpv
+	) | sed 's/(/ ( /g;s/)/ ) /g;s/[[:space:]]\+/\n/g'
+}
+
+# This is AFAICT the only formal specification of Portage dependency syntax
+# in existence. Scary, huh. It seems the Portage developers are allergic to
+# specifications; maybe they don't like being tied down.
+# As a result, this is the product of experiment, surmise and (when all else
+# fails) reading the code. It could all become totally wrong tomorrow, as when
+# bracket-lists became permissible in or-nodes.
+#
+# depend syntax:
+#
+# <depend-list> ::= <depend-node>*
+# <depend-node> ::= <b-atom> | <bracket-list> | <or-node> | <use-node>
+# <b-atom> ::= <ATOM> | <blocker>
+# <blocker> ::= "!"<ATOM>
+# <bracket-list> ::= "(" <depend-list> ")"
+# <or-node> ::= "||" "(" <depend-node>* ")"
+# <use-node> ::= <use-selector>"?" <depend-node>
+# <use-selector> ::= ["!"]<USE_FLAG>
+#
+# evaluation rules:
+#
+# evaluate(d...) ([depend-node] --> [b-atom]) ==>
+#	concatenate evaluate-single(d) for each d
+# evaluate-single(d) (depend-node --> [b-atom]) ==>
+#	match d in
+# 		use-node "u? d" ==> evaluate-single(d) if in-use(u)
+# 		or-node "|| ( x... )" ==> 
+#			first y where 
+#				y = evaluate-single(x) 
+#				and already-installed(y)
+#			otherwise first y where 
+#				y = evaluate-single(x) 
+#				and satisfiable(y)
+#			otherwise first y where
+#				y = evaluate-single(x)
+#		bracket-list "( x... )" ==> evaluate(x...)
+#		b-atom "b" ==> [b]
+# already-installed(b...) ([b-atom] --> BOOLEAN) ==>
+#	conjunction match b in
+#		ATOM "a" ==> a in INSTALLED_LIST
+#		blocker "!a" ==> a not in INSTALLED_LIST
+# satisfiable(b...) ([b-atom] --> BOOLEAN) ==>
+#	conjunction match b in
+#		ATOM "a" ==> a in AVAILABLE_LIST
+#		blocker "!a" ==> a in AVAILABLE_LIST	// yes, this is wrong
+# // note satisfiable can result in bork merge-lists 
+# // e.g. "foo/bar !foo/bar" is satisfiable but not mergeable
+# in-use(u) (use-selector --> BOOLEAN) ==>
+#	match u in
+#		"!u" ==> u not in PACKAGE_USE_LIST
+#		"u" ==> u in PACKAGE_USE_LIST
+#
+function crunch_depends() {
+	local my_use="$(dbuse "$1")"
+	ordeps="$2" # carry through
+	local taint=""
+	while cd_evaluate_single; do :; done
+}
+function cd_evaluate_single() {
+	read tok || return 1
+	case "$tok" in
+	"" )
+		;;
+	*\? )
+		if cd_is_in_use "${tok%?}"; then
+			taint="$taint $tok" cd_evaluate_single
+		else
+			cd_discard_single
+		fi
+		;;
+	"||" )
+		read tok	# (
+		local orlist=() ornum=0 success=''
+		local instlist=() instnum=0 i
+		while orlist[$ornum]="$(taint="$taint ||" cd_evaluate_single)"
+		do
+			if cd_already_installed "${orlist[$ornum]}"; then
+				if [[ "$ordeps" == @(safe|all) ]]; then
+					instlist[$((instnum++))]="${orlist[ornum]}"
+				else
+					echo "${orlist[$ornum]}"
+					success=yes
+					while cd_discard_single; do :; done
+					break
+				fi
+			fi
+			((++ornum))
+		done
+		if [[ "$ordeps" == safe ]]; then
+			if ((ornum == 1)); then
+				echo "$orlist"
+			elif ((instnum == 1)); then
+				echo "$instlist"
+			fi
+		elif [[ "$ordeps" == all ]]; then
+			for ((i=0;i<ornum;++i)); do
+				echo "${orlist[$i]}"
+			done
+		else
+			if ! [[ "$success" ]]; then
+				for ((i=0;i<ornum;++i)); do
+					if cd_satisfiable "${orlist[$i]}"; then
+						echo "${orlist[$i]}"
+						success=yes
+						break
+					fi
+				done
+			fi
+			if ! [[ "$success" ]]; then
+				echo "${orlist[0]}"
+			fi
+		fi
+		;;
+	'(' )
+		while cd_evaluate_single; do :; done
+		;;
+	')' )					#'fix vim syntax
+		return 1;;
+	* )
+		echo "$tok $taint"
+		;;
+	esac
+	return 0
+}
+function cd_discard_single() {
+	local depth=0 tok
+	while read tok; do case "$tok" in
+		*\? ) ;;
+		"||" ) ;;
+		'(' ) ((++depth)) ;;
+		')' ) ((--depth)); ((depth <= 0)) && break ;;	# 'fix vim
+		* ) ((depth == 0)) && break ;;
+	esac; done
+	(( depth == 0 )) && [[ "$tok" ]]
+}
+function cd_already_installed() {
+	echo "$1" | while read batom taint; do
+		if [[ "$(resolve_depatom "${batom#!}" "yes" 2>/dev/null)" ]]
+		then
+			[[ "${batom:0:1}" != "!" ]] || return 1
+		else
+			[[ "${batom:0:1}" == "!" ]] || return 1
+		fi
+	done
+}
+function cd_satisfiable() {
+	echo "$1" | while read batom taint; do
+		[[ "$(resolve_depatom ${batom#!} 2>/dev/null)" ]] || return 1
+	done
+}
+function cd_is_in_use() {
+	if has "${1#!}" $my_use; then [[ "${1:0:1}" != '!' ]]
+	else [[ "${1:0:1}" == '!' ]]; fi
+}
+
+function resdepend() {
+	cpv=$1
+	ordeps="$2"
+	set_xterm_title "Calculating dependencies of: $cpv"
+	taint=""
+	taint_for_ifno=""
+	raw_depends $cpv | crunch_depends "$cpv" "$ordeps" | sort -u
+}
+
+function db_grep() {
+	local needle="$1" with_tree="$2" attr="$3" tree cpv
+	if [[ "$opt_arg_original_depends" ]]; then
+		find /var/db/pkg -name "$attr" \
+		| xargs grep -l "${needle}" \
+		| cut -d/ -f5-6
+	elif [[ "$opt_arg_uninstalled" ]]; then
+		for tree in $portage_trees; do
+			cd /var/cache/edb/dep/${tree}
+			grep -r --exclude '*.pickle' --exclude '*.cpickle' -l "${needle}" . \
+			| while read cpv; do
+				[[ -e "${tree}/${cpv%-${VER_SHPAT}}/${cpv##*/}.ebuild" ]] \
+					|| continue
+				[[ "$with_tree" ]] && echo "${cpv:2} ${tree}" || echo "${cpv:2}"
+			done
+		done | { [[ "$with_tree" ]] && cat || sort -u; }
+	else
+		for tree in $portage_trees; do
+			cd /var/cache/edb/dep/${tree}
+			find /var/db/pkg -mindepth 2 -maxdepth 2 -printf '%P\n' \
+			| xargs grep -l "${needle}" 2>/dev/null \
+			| while read cpv; do
+				[[ -e "${tree}/${cpv%-${VER_SHPAT}}/${cpv#*/}.ebuild" ]] \
+					|| continue
+				[[ "$with_tree" ]] && echo "${cpv} ${tree}" || echo "$cpv"
+			done
+		done | { [[ "$with_tree" ]] && cat || sort -u; }
+	fi
+}
+
+function potential_revdepends() {
+	needle="$1"
+	exclude="$2"
+	excl_sed="\!^$"
+	for excl in $exclude; do
+		[[ "$excl" == =* ]] \
+		&& excl_sed="$excl_sed"'\|^'"${excl:1}"'$' \
+		|| excl_sed="$excl_sed"'\|^'"${excl}-$VER_REGEXP"'$'
+	done
+	excl_sed="$excl_sed!d"
+	db_grep "${needle}"'\(-[0-9]\| \|)\|$\)' "" '*DEPEND' \
+	| sed -e "$excl_sed"
+}
+
+function info_action_rev-depends() {
+	local asvirtual="$2"
+	_smartdep "$1" | format_revdep "$asvirtual"
+}
+
+# Calculate reverse dependencies of a package
+function _smartdep() {
+	if [[ "$1" != *-$VER_SHPAT ]]; then
+		_smartdep_nopv "$@"
+		return
+	fi
+	# If you think you can understand this code, you don't.
+	# The comments were put in to enable me to write it, not to enable you
+	# (or me) to read it.
+	local cpv="$1"
+	local asvirtual="$2" 	# a cp; get mlsr from virtual_version
+	local exclude="$3"	# list first rdep not in $exclude
+	local ordeps="$4"
+	local no_warn_superseded="$5"
+	set_xterm_title "Reverse dependencies of: $cpv"
+	local cp="${cpv/%-$VER_SHPAT}"
+	local mlsr="${cpv#${cp}-}"
+	local installed="$(provided_mlsrs $cp)"
+	local versions="$(avail_versions $cp "" "" yes yes) $installed"
+	# find a depatom this satisfies but (other) installed versions 
+	# with higher priority of satisfaction do not	
+	if [[ "$asvirtual" ]]; then
+		local virtual_mlsr=$(virtual_version $cp $mlsr $asvirtual) \
+		|| return
+		local virtual_cpv=$asvirtual-$virtual_mlsr
+		# using tac and sort -u to take the highest package-mlsr
+		# for each virtual-mlsr
+		local cands="$(
+		echo "${installed}" | mlsr_sort | tac \
+		| while read amlsr; do
+			vmlsr="$(virtual_version $cp $amlsr $asvirtual)" \
+			|| continue
+			echo $vmlsr $amlsr
+		done | sort -s -k1,1 -u | tac | sed "/ $mlsr$/d" | cut -d' ' -f1
+		)"
+		# if installed, only consider higher versions as candidates 
+		# with greater priority of satisfaction - otherwise any 
+		# installed version has higher priority. Also applies below.
+		# Also, if masked then all unmasked versions have higher 
+		# priority.
+		cands_="$cands"; cands=""
+		if ! [[ -d /var/db/pkg/$cpv ]]; then
+			cands="$cands_"
+		elif has $mlsr $versions; then for vmlsr in ${cands_}; do
+			vercmp $vmlsr ">=" $virtual_mlsr \
+				&& cands="$cands $vmlsr"
+		done; else for vmlsr in ${cands_}; do
+			{ vercmp $vmlsr ">=" $virtual_mlsr || has $vmlsr $versions; } \
+				&& cands="$cands $vmlsr"
+		done; fi
+	else
+		unset $virtual_mlsr; unset $virtual_cpv
+		cands=""
+		if [[ ! -d /var/db/pkg/$cpv ]]; then for x in ${installed}; do
+			[[ $x != $mlsr ]] && ! has $x $cands \
+				&& cands="$cands $x"
+		done; elif has $mlsr $versions; then for x in ${installed}; do
+			[[ $x != $mlsr ]] && ! has $x $cands && vercmp $x ">=" $mlsr \
+				&& cands="$cands $x"
+		done; else for x in ${installed}; do
+			[[ $x != $mlsr ]] && ! has $x $cands \
+				&& { vercmp $x ">=" $mlsr || has $x $versions; } \
+				&& cands="$cands $x"
+		done; fi
+	fi
+	local needle=${asvirtual:-$cp}
+	local ncpv=${virtual_cpv:-$cpv}
+	potential_revdepends $needle \
+	| while read deppkg; do
+		has $deppkg $exclude && continue
+		resdepend "${deppkg}" "${ordeps}" | grep '^\('"${needle}"'\|''\([<>]=\?\|[=~]\)'"${needle}-$VER_REGEXP"'\*\?''\) ' \
+		| while read depatom taint; do
+			if dep_satisfies "${ncpv}" "$depatom"; then
+				if ! echo "${cands}" | while read candidate; do
+					dep_satisfies "${needle}-${candidate}" "$depatom" && break
+				done; then
+					echo $deppkg $depatom $taint
+					[[ "$exclude" ]] && return 1
+					break
+				else
+					[[ "$no_warn_superseded" ]] || echo "$ncpv superseded on $depatom ($deppkg) by one of" $cands | format_error >&2
+				fi
+			fi
+		done || return 1
+	done || return 0
+	echo "${allprofilepackages}" | grep '^\*\('"${needle}"'\|''\([<>]=\?\|[=~]\)'"${needle}-$VER_REGEXP"'\*\?''\)[[:space:]]*$' \
+	| while read depatom; do
+		depatom=${depatom#\*}
+		if dep_satisfies "$ncpv" "$depatom"; then
+			if ! echo "${cands}" | while read candidate; do
+				dep_satisfies "${needle}-${candidate}" "$depatom" && break
+			done; then
+				echo SYSTEM $depatom
+				break
+			fi
+		fi
+	done
+	cat ${WORLD_FILE} | grep '^\('"${needle}"'\|''\([<>]=\?\|[=~]\)'"${needle}-$VER_REGEXP"'\*\?''\)[[:space:]]*$' \
+	| while read depatom; do
+		if dep_satisfies "$ncpv" "$depatom"; then
+			if ! echo "${cands}" | while read candidate; do
+				dep_satisfies "${needle}-${candidate}" "$depatom" && break
+			done; then
+				echo WORLD $depatom
+				break
+			fi
+		fi
+	done
+	[[ "${asvirtual}" ]] || for virtual in $(virtuals_from $cp); do
+		_smartdep $cpv $virtual "$exclude" "$ordeps" "$no_warn_superseded"
+	done
+	is_running_kernel $cpv && echo KERNEL
+}
+memoise _smartdep
+
+function _smartdep_nopv () {
+	local needle="$1"	# cp
+	set_xterm_title "Reverse dependencies of: $needle"
+	local asvirtual="$2"
+	local exclude="$3"
+	local ordeps="$4"
+	trap return SIGPIPE
+	potential_revdepends ${needle} "$exclude" \
+	| while read deppkg; do
+		resdepend "${deppkg}" "${ordeps}" | grep '^\('"${needle}"'\|''\([<>]=\?\|[=~]\)'"${needle}-$VER_REGEXP"'\*\?''\) ' \
+		| if read depatom taint; then 
+			echo $deppkg $depatom $taint
+			[[ -z "$exclude" ]] || return 1
+		fi
+	done || return 0
+	echo "${allprofilepackages}" | grep '^\*\('"${needle}"'\|''\([<>]=\?\|[=~]\)'"${needle}-$VER_REGEXP"'\*\?''\)[[:space:]]*$' \
+	| if read depatom; then echo SYSTEM $depatom; fi
+	cat ${WORLD_FILE} | grep '^\('"${needle}"'\|''\([<>]=\?\|[=~]\)'"${needle}-$VER_REGEXP"'\*\?''\)[[:space:]]*$' \
+	| if read depatom; then echo WORLD $depatom; fi
+	for virtual in $(virtuals_from $needle); do
+		_smartdep_nopv "$virtual" "yes" "$exclude" "$ordeps"
+	done
+	for mlsr in $(installed_mlsrs $needle); do
+		is_running_kernel $needle-$mlsr && echo KERNEL
+	done
+	trap - SIGPIPE
+}
+
+function provided_and_avail() {
+	trap return SIGPIPE
+	provided_mlsrs "$1" | mlsr_sort | tac
+	[[ "$2" ]] || avail_versions "$1" "" "" yes yes | mlsr_sort | tac
+	trap - SIGPIPE
+}
+
+function pv_to_cpv() {
+	pv="$1"
+	p="${pv/%-$VER_SHPAT?(\*)}"
+	for category in $categories; do
+		for tree in $portage_trees; do
+			if [[ -d $tree/$category/$p ]]; then
+				echo "$category/$pv"
+				break
+			fi
+		done
+	done
+}
+
+function _resolve_depatom_inner_virtual() {
+	v_cp="${v_cpv%-$VER_SHPAT?(\*)}"; v_mlsr="${v_cpv#${v_cp}-}"
+	provided_and_avail $v_cp "$installed_only" \
+	| while read t_mlsr; do
+		{ [[ -z "$v_mlsr" ]] || dep_satisfies_mlsr "$t_mlsr" "$vs" "$v_mlsr"; }\
+			&& { [[ -z "$d_mlsr" ]] || dep_satisfies_mlsr \
+				"$(virtual_version $v_cp $t_mlsr $d_cp)" "$vs" "$d_mlsr"; } \
+			&& { echo "$v_cp-$t_mlsr"; return 1; }
+	done || return 0
+	return 1
+}
+
+function _resolve_depatom_inner() {
+	d_cp="${d_cpv/%-$VER_SHPAT?(\*)}"; d_mlsr="${d_cpv##${d_cp}?(-)}"
+	provided_and_avail $d_cp "$installed_only" \
+	| while read t_mlsr; do 
+		{ [[ -z "$d_mlsr" ]] || dep_satisfies_mlsr "$t_mlsr" "$vs" "$d_mlsr"; }\
+			&& { echo "$d_cp-$t_mlsr"; return 1; }
+	done || return 0
+	for v_cpv in $(allvirtuals | sed 's!^'"$d_cp"' \(.*\)$!\1!;t;d'); do
+		_resolve_depatom_inner_virtual && return 0
+	done
+	return 1
+}
+
+function resolve_depatom() {
+	depatom="$1"; installed_only="$2"
+	set_xterm_title "Resolving dependency: $depatom"
+	d_cpv="${depatom/#@(<|<=|=|~|>=|>)}"; vs="${depatom%${d_cpv}}"
+	if [[ "$d_cpv" == */* ]]; then
+		_resolve_depatom_inner && return 0
+	else
+		pv_to_cpv $d_cpv | while read d_cpv; do
+			_resolve_depatom_inner && return 1
+		done || return 0
+	fi
+	format_error <<<"Cannot resolve depatom $depatom" >&2
+	echo "${FUNCNAME[@]}" >&2
+	return 1
+}
+memoise resolve_depatom
+
+function is_in_maskfile() {
+	local cp="$1"; local mlsr="$2"; shift 2
+	kill_comments_and_blanks "$@" 2>/dev/null | grep "$cp" | stacking_sort yes \
+	| while read depatom; do
+		[[ "${depatom%\*}" == ?(<|<=|=|~|>=|>)${cp}?(-$VER_SHPAT?(\*)) ]] \
+			|| continue
+		! dep_satisfies ${cp}-${mlsr} "${depatom}" || return 1
+	done || return 0; return 1
+}
+
+function is_inclusion_masked() {
+	local cp="$1" mlsr="$2"
+	grep "$cp" <<<"${allprofilepackages}" \
+	| while read depatom; do
+		depatom="${depatom#\*}"
+		[[ "${depatom%\*}" == ?(<|<=|=|~|>=|>)${cp}?(-$VER_SHPAT?(\*)) ]] \
+			|| continue
+		dep_satisfies ${cp}-${mlsr} "$depatom" || return 1
+	done || return 0; return 1
+}
+
+function is_package_masked() {
+	local cp="$1" mlsr="$2"
+	is_inclusion_masked "$cp" "$mlsr" && return 0
+	is_in_maskfile "$cp" "$mlsr" $(etc_portage_files package.unmask) && return 2
+	is_in_maskfile "$cp" "$mlsr" $(profile_files_extra package.mask)
+}
+
+function is_package_unmasked() {
+	local cp="$1"; local mlsr="$2"
+	is_in_maskfile $cp $mlsr $(profile_files_extra package.mask) \
+	&& is_in_maskfile $cp $mlsr $(etc_portage_files package.unmask)
+}
+
+function get_mask_comment() {
+	local cp="$1"; local mlsr="$2"
+
+	grep "$cp" <<<"${allprofilepackages}" \
+	| while read depatom; do
+		depatom="${depatom#\*}"
+		[[ "${depatom%\*}" == ?(<|<=|=|~|>=|>)${cp}?(-$VER_SHPAT?(\*)) ]] \
+			|| continue
+		if ! dep_satisfies ${cp}-${mlsr} "$depatom"; then
+			echo "${RD}SYSTEM PROFILE${NO}"
+			return 1
+		fi
+	done || return 0
+	local x; local -a exclude=( )
+	for x in $(profile_files_extra package.mask); do
+		local state=""
+		while read line; do
+			case "$state" in
+			"") 
+				[[ "$line" == -?(<|<=|=|~|>=|>)${cp}?(-$VER_SHPAT?(\*)) ]] \
+					&& dep_satisfies ${cp}-${mlsr} "${line#-}" \
+					&& exclude[${#exclude[@]}]="${line#-}"
+				[[ "$line" == ?(<|<=|=|~|>=|>)${cp}?(-$VER_SHPAT?(\*)) ]] \
+					&& dep_satisfies ${cp}-${mlsr} "${line}" \
+					&& ! has "$line" "${exclude[@]}" \
+					&& { state="found"; format_depatom "${line}"; };;
+			"found") 
+				[[ "$line" == *([[:space:]]) ]] && break
+				[[ "$line" == "#"* ]] && { state="comment"; echo "${RD}$line${NO}"; };;
+			"comment")
+				[[ "$line" == "#"* ]] || break
+				echo "${RD}$line${NO}";;
+			esac
+		done <<<"$(tac "$x")"
+		if [[ "$state" ]]; then
+			[[ "$x" == "$PORTDIR/profiles/package.mask" ]] \
+				|| echo "[${Rd}${x}${NO}]"
+		fi
+	done | tac
+}
+
+function keyword_sym() {
+	local cp=$1 mlsr=$2 tree=$3
+	local my_keywords my_accept k_unstable="" k_masked=""
+	keywords_for $cp-$mlsr "$tree" my_keywords
+	has '*' "${my_keywords[@]}" && { echo " "; return 1; }
+	accept_for $cp $mlsr my_accept
+	has '*' "${my_accept[@]}" && for keyword in "${my_keywords[@]}"; do
+		[[ "$keyword" != [~-]* ]] && { echo " "; return 3; }
+	done
+	has '~*' "${my_accept[@]}" && for keyword in "${my_keywords[@]}"; do
+		[[ "$keyword" == \~* ]] && k_unstable="~"
+	done
+	for keyword in "${my_keywords[@]}"; do
+		has "$keyword" "${my_accept[@]}" || continue
+		case "$keyword" in
+			-* ) k_masked="-";;
+			\~* ) k_unstable="~";;
+			* ) echo " "; return 2;;
+		esac
+	done
+	[[ "$k_unstable" ]] && { echo "~"; return 2; }
+	[[ "$k_masked" ]] && { echo "-"; return 2; }
+	for keyword in "${my_keywords[@]}"; do
+		[[ "$keyword" != [~-]* ]] && { echo " "; return 0; }
+	done
+	for keyword in "${my_keywords[@]}"; do
+		[[ "$keyword" == \~* ]] && { echo "~"; return 0; }
+	done
+	echo "-"; return 0;
+}
+
+function is_keyword_masked() {
+	local cp=$1 mlsr=$2 tree=$3
+	local my_keywords my_accept
+	keywords_for $cp-$mlsr "$tree" my_keywords
+	has '*' "${my_keywords[@]}" && return 1 
+	accept_for $cp $mlsr my_accept
+	has '*' "${my_accept[@]}" && for keyword in "${my_keywords[@]}"; do
+		[[ "$keyword" != [~-]* ]] && return 3
+	done
+	has '~*' "${my_accept[@]}" && for keyword in "${my_keywords[@]}"; do
+		[[ "$keyword" == \~* ]] && return 3
+	done
+	for keyword in "${my_keywords[@]}"; do
+		has "$keyword" "${my_accept[@]}" && return 2
+	done
+	return 0
+}
+
+function avail_versions() {
+	local cp="$1" showtree="$2" populate_from_tree="$3" 
+	local excl_pmask="$4" excl_kmask="$5"
+	[[ "$populate_from_tree" ]] && populate_from_tree "$cp"
+	local any_printed="" tree
+	for tree in $portage_trees; do
+		local deppath=/var/cache/edb/dep/${tree%/} depfile
+		for depfile in ${deppath}/${cp}-$VER_SHPAT; do
+			[[ -f "$depfile" ]] || continue
+			local mlsr=${depfile#${deppath}/${cp}-}
+			[[ -f ${tree:-$PORTDIR}/$cp/${cp#*/}-$mlsr.ebuild ]] || continue
+			[[ "$excl_pmask" ]] && is_package_masked $cp $mlsr && continue
+			[[ "$excl_kmask" ]] && is_keyword_masked $cp $mlsr $tree && continue
+			[[ "$showtree" ]] && echo $mlsr ${tree%/} || echo $mlsr
+			any_printed="yes"
+		done
+	done
+	[[ "$any_printed" ]]
+}
+memoise avail_versions
+
+function provided_mlsrs() {
+	injected_mlsrs "$@"
+	installed_mlsrs "$@"
+}
+
+function injected_mlsrs() {
+	cp="$1"
+	for x in $profileprovided; do
+		[[ "$x" == "$cp"-$VER_SHPAT ]] && echo "${x#${cp}-}"
+	done
+}
+
+function installed_mlsrs() {
+	cp="$1"; remove_masked="$2"
+	for dir in /var/db/pkg/$cp-$VER_SHPAT; do
+		[[ -d "$dir" ]] || continue
+		mlsr=${dir#/var/db/pkg/${cp}-}
+		if [[ "$remove_masked" ]]; then
+			is_package_masked $cp $mlsr && continue
+			is_keyword_masked $cp $mlsr && continue
+		fi
+		echo $mlsr
+	done
+}
+memoise installed_mlsrs
+
+function all_installed_cpvs() {
+	find /var/db/pkg -mindepth 2 -maxdepth 2 -type d \
+	| cut -c13- \
+	| sort
+}
+
+function all_installed_cp_mlsrs() {
+	oldcp=""
+	all_installed_cpvs | while read cpv; do
+		cp="${cpv/%-$VER_SHPAT}"
+		if [[ "$oldcp" == "$cp" ]]; then
+			echo -n ${cpv#$cp-} ''
+		else
+			echo -n ${oldcp:+$'\n'}$cp ${cpv#$cp-} ''
+			oldcp=$cp
+		fi
+	done
+	echo
+}
+
+function is_running_kernel() {
+	cpv=$1
+	[[ -d /var/db/pkg/$cpv ]] \
+		&& has virtual/linux-sources $(contingent_provide_for $cpv) \
+		&& [[ "$(extract_var_from_vardb KV $cpv)" == "$(uname -r)" ]]
+}
+
+function not_in_tree() {
+	cp=$1; mlsr=$2
+	if tree=$(best_tree $cp-$mlsr); then
+		if is_package_masked $cp $mlsr; then
+			format_error >&2 <<END
+The package $(format_cpv $cp-$mlsr) is installed, but is masked. ${BR}Things will break.${NO} Please correct this to ensure sensible results.
+END
+		elif is_keyword_masked $cp $mlsr $tree; then
+			format_error >&2 <<END
+The package $(format_cpv $cp-$mlsr) is installed, but is keyword masked. ${BR}Things will break.${NO} Please correct this to ensure sensible results.
+END
+		else
+			format_error >&2 <<END
+Oops: not_in_tree $cp $mlsr called on valid unmasked package
+END
+		fi
+	elif avail_versions $cp >/dev/null; then
+		format_error >&2 <<END
+The package $(format_cpv $cp-$mlsr) is installed, but does not have a corresponding ebuild in an accessible portage tree. ${BR}Things will break.${NO} Please correct this to ensure sensible results.
+END
+	else
+		: # no ebuilds for this package in trees - perhaps a g-cpan.pl
+	fi
+}
+
+function rtnode() {
+	local node="$1" noworld="$2" forcircular="$3" ordeps="$4"
+	local allcircular=0
+	[[ "${opt_arg_depth}" ]] && (( ${#indent} / 2 >= opt_arg_depth )) && return
+	# note that unrooted revdeps count as circular. this makes sense for
+	# the pruneworld case; we don't want to remove sth from world and
+	# then have depclean remove it
+	while read deppkg depatom taint; do
+		[[ "$deppkg" ]] || continue
+		if [[ "$opt_arg_for_emerge" ]]; then echo "$indent  $deppkg"
+		else echo "$deppkg $depatom $taint" | format_revdep "" "$indent  "; fi
+		if has "$deppkg" $rt_encountered; then
+			[[ "$forcircular" ]] || format_error <<<"circular dependency: $rt_encountered $deppkg" >&2
+		else
+			if [[ "$deppkg" == SYSTEM ]]; then
+				allcircular=1
+			elif [[ "$deppkg" == WORLD ]]; then
+				[[ "$noworld" ]] || allcircular=1
+			elif [[ "$deppkg" == KERNEL ]]; then
+				:
+			else
+				rt_encountered="$rt_encountered $deppkg" indent="$indent  " rtnode "$deppkg" "" "$forcircular" ""
+				((allcircular |= $?))
+			fi
+		fi
+		[[ "$forcircular" ]] && ((allcircular > 0)) && break
+	done <<<"$(_smartdep "$node" "" "" "$ordeps" "no")"
+	return $allcircular
+}
+
+function info_action_tree-depends() {
+	set_xterm_title "Displaying dependency tree of $1"
+	indent=""
+	:> $temp_dir/required
+	add_deps_to_required "$1" yes
+}
+
+function info_action_reverse-tree() {
+	set_xterm_title "Displaying reverse dependency tree of $1"
+	indent=""
+	if [[ "$1" == *-$VER_SHPAT ]]; then
+		rt_encountered="$1"
+	else
+		star_arg "$1" yes yes
+		rt_encountered="$RESULT"
+	fi
+	rtnode "$@"
+}
+
+function print_depstring() {
+	local name=$1; local cpv="$2"
+	local indent="    "; local taint=""; local or=""
+	echo ${BL}$name${NO}:
+	extract_var $name $cpv \
+	| sed 's/(/( /g;s/)/ )/g;s/[[:space:]]\+/\n/g' \
+	| while read tok; do case "$tok" in
+		""  ) continue;;
+		\)  ) indent="${indent#    }"; echo "$indent$tok";;
+		*\? ) taint="$tok ";;
+		\(  ) 
+		echo "$indent$(format_taint $cpv $taint)${or:+${FC}||${NO} }$tok"
+		indent="$indent    "; taint=""; or="";;
+		"||"  ) or="$tok ";;
+		\!* )
+		echo "$indent$(format_taint $cpv $taint)${or:+${FC}||${NO} }${RD}$tok${NO}"
+		taint=""; or="";;
+		*   )
+		dcpv="$(resolve_depatom "${tok}")" \
+		&& dcpv="$(format_cpv $dcpv)" || dcpv="${RD}!!!${NO}"
+		echo "$indent$(format_taint $cpv $taint)${or:+${FC}||${NO} }$(format_depatom $tok)$(pads 40 "$indent$taint$or$tok") $dcpv"
+		taint=""; or="";;
+	esac; done
+}
+
+function info_action_depstrings() {
+	set_xterm_title "Displaying raw dependencies of $1"
+	local cpv="$1"
+	[[ "$opt_arg_build_time" ]] && print_depstring DEPEND $cpv
+	print_depstring RDEPEND $cpv
+	print_depstring CDEPEND $cpv
+	print_depstring PDEPEND $cpv
+	echo
+}
+
+function info_action_depends() {
+	set_xterm_title "Displaying dependencies of $1"
+	local cpv="$1" excl="" x
+	for x in "${@:2}"; do 
+		expand_arg "${x#=}"; excl="$excl ${RESULT[@]}"
+	done
+	resdepend $cpv \
+	| while read depatom taint; do
+		[[ "$depatom" ]] || continue
+		taint="${taint:+$taint }"
+		if [[ "${depatom:0:1}" == "!" ]]; then
+			[[ "$opt_arg_unique_depends" ]] && continue
+			f_cpv=""
+		else
+			tcpv="$(resolve_depatom ${depatom})" \
+			&& f_cpv="$(format_cpv $tcpv)" || f_cpv="${RD}!!!${NO}"
+			if [[ "$opt_arg_unique_depends" ]]; then
+				has_revdepend $tcpv "" "$excl" && continue
+			fi
+		fi
+		if [[ "$opt_arg_for_emerge" ]]; then
+			[[ "$f_cpv" ]] && echo "=$f_cpv"
+		else
+			echo "    $(format_taint $cpv ${taint})$(pads 16 "$taint")$(format_depatom ${depatom})$(pads 24 "${taint:16}${depatom}") $f_cpv"
+		fi
+	done
+	echo
+}
+
+function info_action_exists() {
+	local cpv="$1"
+	resdepend "$cpv" \
+	| ( local any=""
+	while read depatom taint; do
+		[[ "$depatom" ]] || continue
+		[[ "$depatom" == !* ]] && continue
+		tcpv="$(resolve_depatom ${depatom})"
+		for x in "${@:3}"; do
+			[[ "$x" == */* ]] || x="$(pv_to_cpv $x)"
+			if dep_satisfies $tcpv $x; then
+				echo "    $(format_taint "$cpv" ${taint})$(pads 16 "$taint")$(format_depatom ${depatom})$(pads 24 "${taint:16}${depatom}") $(format_cpv $tcpv)"
+				any=yes
+			fi
+		done
+	done; [[ "$any" ]]; )
+}
+
+function info_action_rev-exists() {
+	_smartdep "$1" \
+	| ( local any=""
+	while read pkg atom taint; do
+		for x in "${@:3}"; do
+			[[ "$x" == */* ]] || x="$(pv_to_cpv $x)"
+			if dep_satisfies $pkg $x; then
+				format_revdep <<<"$pkg $atom $taint"
+				any=yes
+			fi
+		done
+	done; [[ "$any" ]]; )
+}
+
+function redundant_of_all_cp_mlsrs() {
+	cp=$1; shift; mlsrs="$*"
+	for mlsr in $mlsrs; do
+		has_revdepend $cp-$mlsr "" "yes" "" "yes" && continue
+		echo $cp-$mlsr
+		echo $cp $mlsr >&2
+	done
+}
+
+function redundant() {
+	if [[ -z "$*" ]]; then
+		all_installed_cp_mlsrs
+	else
+		for cp in "$@"; do
+			[[ "$cp" == */* ]] && echo $cp || pv_to_cpv $cp
+		done | while read cp; do
+			echo $cp $(installed_mlsrs $cp)
+		done
+	fi | while read cp mlsr more_mlsrs; do
+		[[ "$do_arg_action" == "purge" ]] && [[ -z "$more_mlsrs" ]] && continue
+		redundant_of_all_cp_mlsrs $cp $mlsr $more_mlsrs
+	done
+}
+
+function info_action_changelog() {
+	local cpv="$1"
+	local tree="$(best_tree $cpv)" cp="${cpv%-$VER_SHPAT}"
+	local pn=${cp#*/} ver="${cpv#$cp-}" ready="" entries=0
+	echo "From ${BR}$tree/$cp/ChangeLog${NO}:"
+	while read; do
+		[[ "$REPLY" == \#* ]] && continue
+		if [[ "$REPLY" == \*$pn-$VER_SHPAT* ]]; then
+			line=${REPLY##\*$pn-$VER_SHPAT}; sp=${REPLY%$line}
+			linever=${sp#\*$pn-}
+			if [[ "$changelog_entries" ]]; then
+				(( ++entries > changelog_entries )) && break
+			elif vercmp $linever "<" $ver; then
+				[[ "$ready" ]] && break
+			else
+				ready=yes
+				while [[ "$REPLY" == \** ]]; do
+					echo "$REPLY"; read
+				done
+			fi
+		fi
+		echo "$REPLY"
+	done <$tree/$cp/ChangeLog | sed -e '
+s|^\(\*.* \)\((.*)\)$|'"$Fc"'\1'"$NO$Rd"'\2'"$NO"'|;t
+s|^  \([.-]*[0-9]\+ ... [0-9]\{4\}; \(.* \)\?\)\(<.*>\)|  '"$Rd"'\1'"$NO$Fc"'\3'"$NO"'|
+T;:a;/:/bb;/\n$/bb;N;ba;:b;
+s| \(-[[:graph:]]\+\)\([,:]\)| '"$Gr"'\1'"$NO"'\2|g
+s| \(+[[:graph:]]\+\)\([,:]\)| '"$Bl"'\1'"$NO"'\2|g
+s| \([[:graph:]]\+\)\([,:]\)| '"$Cy"'\1'"$NO"'\2|g
+'
+}
+
+function use_desc() {
+	local flag="$1" cpv="$2"
+	sed -e 's!^\('${cpv%-$VER_SHPAT}':\)\?'$flag' - !!;t;d' \
+		$(profile_files_extra use.desc) \
+		$(profile_files_extra use.local.desc) \
+	| sort -u \
+	| while read; do echo "${REPLY//!!/${RD}!!${NO}}"; false; done \
+	&& echo "${RD}!!!${NO} No description available"
+}
+
+function info_action_usedesc() {
+	set_xterm_title "Displaying USE flags for $1"
+	local cpv="$1"
+	local alluse="$(dbuse)" my_use=$(dbuse "$cpv") ouse=""
+	[[ -d /var/db/pkg/$cpv ]] && ouse=$(</var/db/pkg/$cpv/USE) || unset ouse
+	pusemask=$(package_use_mask "$cpv")
+	for x in $(extract_var IUSE $cpv | sed 's/[[:space:]]/\n/g' | sort -u)
+	do
+		if has $x $pusemask; then
+			echo -n "($x)$(pads 10 $x): "; use_desc $x $cpv
+		else
+			if has $x $my_use; then
+				sym="+"
+				if [[ "${ouse+set}" ]] && ! has $x ${ouse}; then
+				col=GR; dsym="*"; else col=RD; dsym=""; fi
+				has $x $alluse && psym="" || psym="^"
+			else
+				sym="-"
+				if [[ "${ouse+set}" ]] && has $x ${ouse}; then
+				col=GR; dsym="*"; else col=BL; dsym=""; fi
+				! has $x $alluse && psym="" || psym="^"
+			fi
+			echo -n "${!col}$sym$x$NO$dsym$psym$(pads 12 $sym$x$dsym$psym): "; use_desc $x $cpv
+		fi | fmt_w $COLUMNS 0 14
+	done
+}
+
+function info_action_iuse() {
+	set_xterm_title "Listing packages with $1 in IUSE"
+	db_grep "\\<$1\\>" "yes" IUSE \
+	| while read x tree; do
+		has $1 $(extract_var IUSE $x $tree) || continue
+		echo -n $'\t'"$(format_cpv "$x")"
+		(( opt_arg_verbose > 0 )) && echo ": $(use_desc $1 $x)" || echo
+	done
+}
+
+# Consider doing this in xslt - too expensive?
+function metadata_extract() {
+	local tree="$1" cp="$2" tag="$3"
+	[[ -e $tree/$cp/metadata.xml ]] || return
+	sed -n -e "s!^\\s*<$tag>\\(.*\\)</$tag>\$!$Fc$(pad 12 $tag)$NO: \\1!;T;p" \
+		$tree/$cp/metadata.xml
+}
+
+function info_action_info() {
+	set_xterm_title "Displaying information for $1"
+	local cpv="$1"; local cp=${cpv%-$VER_SHPAT} pv=${cpv#*/}
+	for x in SRC_URI RESTRICT HOMEPAGE LICENSE DESCRIPTION INHERITED; do
+		(echo -n "$Bl$(pad 12 $x)$NO: "; extract_var $x $cpv) \
+		| fmt_w $COLUMNS 0 14
+	done
+	local tree="$(best_tree $cpv)"
+	echo "$Fc$(pad 12 ebuild)$NO: $tree/$cp/$pv.ebuild" | fmt_w $COLUMNS 0 14
+	metadata_extract $tree $cp herd
+	metadata_extract $tree $cp email
+	local cat=${cp%/*} pn=${cp#*/} p=${pv%-r+([0-9])}
+	local pr=${pv#$p-}; [[ "$pr" == "$pv" ]] && pr="r0"
+	local slot="$(slot_for "$cpv")"
+	local patches=()
+	for d in /etc/portage/patches/$cat/$pn*; do
+		dn="${d##*/}"
+		[[ "$dn" == "$pn" || "$dn" == "$p" || "$dn" == "$p-$pr" \
+			|| "$dn" == "$pn[$slot]" || "${pv#$pn-}" == ${dn#$pn-} ]] \
+			|| continue
+		for x in "$d"/*; do [[ -f "$x" ]] && patches[${#patches[@]}]="$x"; done
+	done
+	if ((${#patches[@]})); then
+		echo -n "$Rd$(pad 12 patches)$NO: "
+		for x in "${patches[@]}"; do echo "$x"; done
+	fi | fmt_w $COLUMNS 0 14
+	if [[ -d /var/db/pkg/$cpv ]]; then
+		local counter=$(extract_var_from_vardb COUNTER $cpv)
+		local logs=()
+		for ((i=counter-1;i<=counter+1;++i)); do
+			x=/var/log/portage/$i-$pv.log
+			[[ -f "$x" ]] && logs[${#logs[@]}]="$x"
+		done
+		if ((${#logs[@]})); then
+			echo -n "$Rd$(pad 12 logs)$NO: "
+			for x in "${logs[@]}"; do echo "$x"; done
+		fi | fmt_w $COLUMNS 0 14
+	fi
+}
+
+function sort_trees() {
+	# sort: other <= portage <= overlay <= INJECTED (last best)
+	local -a t=("$@") pt=(); local x i
+	for x in INJECTED $portage_trees; do
+		for ((i=0;i<$#;++i)); do
+			[[ "${x%/}" == "${t[$i]%/}" ]] || continue
+			pt[${#pt[@]}]="${t[$i]}"; t[$i]=""
+		done
+	done
+	for x in "${t[@]}"; do
+		[[ "$x" ]] && echo "$x"
+	done
+	for ((i=${#pt[@]}-1;i>=0;--i)); do
+		echo "${pt[$i]}"
+	done
+}
+
+function mlsr_trees_sorted() {
+	local cp="$1"
+	( 
+		avail_versions "$cp" yes yes
+		for inst in /var/db/pkg/$cp-$VER_SHPAT; do
+			[[ -d "$inst" ]] || continue
+			cpv=${inst#/var/db/pkg/}
+			ebuild=$(extract_var_from_vardb EBUILD $cpv)
+			echo "${cpv#$cp-} ${ebuild%/$cp/${cpv#*/}.ebuild}"
+		done
+		for mlsr in $(injected_mlsrs "$cp"); do echo "${mlsr} INJECTED"; done
+	) \
+	| mlsr_sort \
+	| ( 
+		mlsr=""; trees=()
+		while read new_mlsr tree; do
+			if [[ "$new_mlsr" == "$mlsr" ]]; then
+				has "$tree" "${trees[@]}" || trees[${#trees[@]}]="$tree"
+			else
+				[[ "$mlsr" ]] && \
+					for x in $(sort_trees "${trees[@]}"); do
+						echo "$mlsr $x"
+					done
+				mlsr="$new_mlsr"; trees=(); trees[0]="$tree"
+			fi
+		done
+		[[ "$mlsr" ]] && for x in $(sort_trees "${trees[@]}"); do
+			echo "$mlsr $x"
+		done
+	)
+}
+
+function info_action_keywords() {
+# thanks ciaranm for eshowkw
+	set_xterm_title "Displaying cross-arch keywords for $1"
+	local cp="$1"; local pn=${cp#*/}
+	populate_from_tree "$cp"
+	
+	local mlsrs trees lmlsr=0 mlsr tree
+	mlsrs=(); trees=()
+	while read mlsr tree; do
+		mlsrs[${#mlsrs[@]}]="$mlsr"; trees[${#trees[@]}]="$tree"
+		(( ${#mlsr} > lmlsr )) && lmlsr=${#mlsr}
+	done <<<"$(mlsr_trees_sorted "$cp")"
+	local installed="$(installed_mlsrs "$cp")"
+		
+	local archs larch=0 arch
+	archs=( $(< $PORTDIR/profiles/arch.list) )
+	for arch in "${archs[@]}"; do 
+		(( ${#arch} > larch )) && larch=${#arch}
+	done
+
+	local i
+	for ((i=larch;i>0;--i)); do
+		echo -n "${spaces:0:$lmlsr} |"
+		for arch in "${archs[@]}"; do
+			[[ "$arch" == "$ARCH" ]] && echo -n "$BR"
+			((i > ${#arch})) && echo -n "  " \
+				|| echo -n " ${arch:$((${#arch}-i)):1}"
+			[[ "$arch" == "$ARCH" ]] && echo -n "$NO"
+		done
+		echo
+	done
+	
+	for ((i=0;i<=lmlsr;++i)); do echo -n "-"; done
+	echo -n "+"
+	for arch in "${archs[@]}"; do
+		[[ "$arch" == "$ARCH" ]] && echo -n "-v" || echo -n "--"
+	done
+	echo
+
+	for ((i=0;i<${#mlsrs[@]};++i)); do
+		mlsr=${mlsrs[$i]}; tree=${trees[$i]}
+		cpv=$cp-$mlsr; ebuild=$tree/$cp/$pn-$mlsr.ebuild
+		[[ "$tree" == "INJECTED" ]] && inj="yes" || inj=""
+		if is_package_masked $cp $mlsr; then col="$RD"; sym="x"
+		elif has $mlsr $installed && [[ ! -e $ebuild || $ebuild == $(extract_var_from_vardb EBUILD $cpv) ]]; then col="$BR"; sym=">"
+		elif [[ "$inj" ]]; then col="$Cy"; sym="J"
+		else col=""; sym="|"; fi
+		echo -n "$col$(pad $lmlsr $mlsr)${col:+$NO} $sym"
+		local keyword keywords=()
+		[[ "$inj" ]] || keywords_for $cpv "$tree" keywords
+		for arch in "${archs[@]}"; do
+			local sym=" "
+			has '-*' "${keywords[@]}" && sym="$RD*$NO"
+			has "-$arch" "${keywords[@]}" && sym="$Yl-$NO"
+			has "~$arch" "${keywords[@]}" && sym="$YL~$NO"
+			has "$arch" "${keywords[@]}" && sym="$GR+$NO"
+			echo -n " $sym"
+		done
+		[[ "$inj" ]] || local slot=$(slot_for $cpv $tree)
+		[[ "$slot" && "$slot" != 0 ]] && echo -n " [$slot]"
+		[[ "$tree" == "$PORTDIR" ]] && echo || echo " $tree"
+	done
+}
+
+function info_action_versions() {
+	set_xterm_title "Displaying versions of $1"
+	local cp="$1"; local pn=${cp#*/}
+	local installed="$(installed_mlsrs "$cp")"
+	local tree deppath depfile mlsr
+	mlsr_trees_sorted "$cp" | while read mlsr tree; do
+		cpv=$cp-$mlsr; ebuild=$tree/$cp/$pn-$mlsr.ebuild
+		[[ "$tree" == "INJECTED" ]] && inj="yes" || inj=""
+		[[ "$inj" ]] && S=" " || S="$(keyword_sym $cp $mlsr $tree)"
+		mask_comment=""
+		if [[ "$S" == "~" ]]; then COL="$YL"; S="$YL$S$NO"
+		elif [[ "$S" == "-" ]]; then COL="$Yl"; S="$Yl$S$NO"
+		else COL="$GR"; fi
+		I=" "; M=" "
+		if is_package_masked $cp $mlsr; then 
+			M="${RD}M$NO"; COL="$RD"
+			mask_comment="$(get_mask_comment $cp $mlsr)"
+		elif [[ -z "$inj" ]] && is_keyword_masked $cp $mlsr $tree; then 
+			M="${RD}K$NO"; COL="$RD"
+			keywords_for $cpv "$tree"
+			mask_comment="${RD}keywords: ${RESULT[@]}${NO}"
+		elif is_package_unmasked $cp $mlsr; then
+			M="${Rd}U$NO"
+		fi
+		if has "$mlsr" $installed && [[ ! -e $ebuild \
+			|| $ebuild == $(extract_var_from_vardb EBUILD $cpv) ]]; then
+			I="${CY}I$NO"; COL="$CY"
+		elif [[ "$inj" ]]; then
+			I="${Cy}J$NO"; COL="$Cy"
+		fi
+		if [[ "$inj" ]]; then
+			P="$(pads 12 "$mlsr")"
+			slot=""
+		else
+			slot="$(slot_for $cpv $tree)"
+			P="$(pads 12 "$mlsr$slot")"
+			slot="($COL$slot$NO)"
+		fi
+		[[ -f $ebuild ]] || tree="($RD$tree$NO)"
+		[[ "$tree" == "$PORTDIR" ]] && tree=""
+		echo $'\t'"[$M$S$I] $COL$mlsr$NO $slot$P $tree"
+		[[ "$mask_comment" ]] && echo "$mask_comment"
+	done
+}
+
+function format_bytes() {
+	bytes=$1
+	units=( bytes KiB MiB GiB TiB PiB )
+	if (( bytes < 1024 )); then
+		(( bytes == 1 )) && echo "1 byte" || echo "$bytes ${units[0]}"
+		return
+	fi
+	for ((i=1; i<=5; ++i)); do
+		(( bytes >= 1024 ** (i + 1) )) && continue
+		(( ii = 1024 ** i, i2 = 512 * 1024 ** (i - 1) ))
+		if (( bytes / 100 >= ii )); then
+			(( int = (bytes + i2) / ii ))
+			echo "$int ${units[i]}"
+		elif (( bytes / 10 >= ii )); then
+			(( int = bytes / ii ))
+			(( fr = ((bytes - int * ii) * 10 + i2) / ii ))
+			echo "$int.$fr ${units[i]}"
+		else
+			(( int = bytes / ii ))
+			(( fr = ((bytes - int * ii) * 100 + i2) / ii ))
+			[[ ${#fr} == 1 ]] && fr=0$fr
+			echo "$int.$fr ${units[i]}"
+		fi
+		break
+	done
+}
+
+pkgsize_tpkgs=0
+pkgsize_tfiles=0
+pkgsize_tinacc=0
+pkgsize_tbytes=0
+function info_action_size() {
+	cpv="$1"
+	set_xterm_title "Calculating disk usage of $cpv..."
+	local files=0 bytes=0 inacc=0
+	(( ++pkgsize_totals_pkgs ))
+	for file in $(sed -e "s:^obj \(.*\) [[:xdigit:]]\+ [[:digit:]]\+$:\1:;
+		s:^sym \(.*\) -> \(.*\) .*$:\1:;
+		s:^dir \(.*\)$:\1:" \
+		/var/db/pkg/$cpv/CONTENTS); do
+		(( ++files ))
+		[[ -r "$file" ]] && (( bytes += $(stat -c%s "$file") )) \
+			|| (( ++inacc ))
+	done
+	(( inacc > 0 )) \
+		&& finacc=" (${BR}$inacc${NO} inaccessible)" || finacc=""
+	echo "${BR}$files${NO} files$finacc: ${BR}$(format_bytes $bytes)${NO}"
+	(( ++pkgsize_tpkgs, pkgsize_tfiles += files ))
+	(( pkgsize_tinacc += inacc, pkgsize_tbytes += bytes ))	
+}
+
+function pkgsize_arg() {
+	set_xterm_title "Calculating size of $1"
+	echo "Size of $(format_cpv $1):"
+	info_action_size $1
+}
+
+function pkgsize_summary() {
+	(( pkgsize_tpkgs <= 1 )) && return
+	echo
+	(( pkgsize_tinacc > 0 )) \
+		&& finacc=" ($BR$pkgsize_tinacc$NO inaccessible)" || finacc=""
+	bytes="$(format_bytes $pkgsize_tbytes)"
+	echo "Total: $BR$pkgsize_tfiles$NO files$finacc: $BR$bytes$NO"
+}
+
+function formatcontentsentry() {
+	sed -e "s:^obj \(.*\) [[:xdigit:]]\+ [[:digit:]]\+$:\1:;
+		s:^sym \(.*\) -> \(.\+\) [[:digit:]]\+$:$CY\1$NO -> \2:;
+		s:^dir \(.*\)$:$BR\1$NO:"
+}
+
+function info_action_contents() {
+	set_xterm_title "Displaying contents of $1"
+	grep -v '^\(obj\|sym\|dir\) /usr/src/debug\(/\|$\)' \
+		/var/db/pkg/$1/CONTENTS | formatcontentsentry
+}
+
+# Canonicalize a path by removing //, . and .. segments; but don't resolve 
+# symlinks.
+# TODO this may be broken, prove it. (find a path canonicalization algorithm?)
+function canonicalize_path() {
+	path="$1"
+	[[ "$path" == .?(.)/* ]] && path="$PWD/$path"
+	path="${path//\/+(\/)//}"
+	path="${path//\/+(.\/)//}"
+	path="${path%/.}"
+	while [[ "$path" == */../* ]]; do
+		path="${path/\/+([^\/])\/..\///}"
+		if [[ "$path" == /..?(/*) ]]; then
+			echo "$path"
+			echo "Invalid path: $path" | format_error >&2
+			return 1
+		fi
+	done
+	path="${path%/+([^/])/..}"
+	echo "${path:-/}"
+}
+
+function info_action_owners() {
+	path="$(canonicalize_path "$1")"
+	set_xterm_title "Finding owners of $path..."
+	if [[ "$path" == /* ]]; then
+		grep -lx "obj ${path%/} [[:xdigit:]]\+ [[:digit:]]\+\
+\|sym ${path%/} -> .\+ [[:digit:]]\+\
+\|dir ${path%/}" /var/db/pkg/*/*/CONTENTS | while read x ; do
+			x=${x#/var/db/pkg/}; x=${x%/CONTENTS}
+			if [[ "$opt_arg_for_emerge" ]]; then
+				echo "=$x"
+			else
+				echo -n "    "; format_cpv $x
+			fi
+		done
+	else
+		grep -x "obj .*/${path%/} [[:xdigit:]]\+ [[:digit:]]\+\
+\|sym .*/${path%/} -> .\+ [[:digit:]]\+\
+\|dir .*/${path%/}" /var/db/pkg/*/*/CONTENTS \
+		| sed 's!/var/db/pkg/\([^/]\+/[^/]\+\)/CONTENTS:!\1 !' \
+		| ( oldx=""
+		while read x rest; do
+			[[ "$oldx" == "$x" ]] || echo "$(format_cpv $x):"
+			echo -n "    "; formatcontentsentry <<<"$rest"
+			oldx="$x"
+		done
+		)
+	fi
+}
+
+function info_action_category() {
+	echo "    ${CY}${1%/*}${NO}"
+}
+
+function info_action_catpackages() {
+	if ! has $1 $categories; then
+		echo "not a recognised category: $1" | format_error >&2
+		return 1
+	fi
+	(
+		find /var/db/pkg/$1 -mindepth 1 -maxdepth 1 -type d \
+		| while read x; do
+			x=${x##*/}
+			echo ${x%-$VER_SHPAT}
+		done
+		if [[ "$opt_arg_uninstalled" ]]; then
+			for x in $portage_trees; do
+				find $x/$1 -mindepth 1 -maxdepth 1 -type d -not -name '.*' 2>/dev/null\
+				| while read y; do echo ${y##*/}; done
+			done
+		fi
+	) | sort -u | while read x; do echo -n "    "; format_cpv $1/$x; done
+}
+
+# List installed packages providing specified virtual
+# FIXME remove versioned virtual support (gone from portage)
+function info_action_virtuals() {
+	set_xterm_title "Displaying packages providing $1"
+	cpv="$1"; cp="${cpv%-$VER_SHPAT}"; vmlsr="${cpv#$cp-}"
+	allvirtuals | while read virtual providers; do
+		[[ "$virtual" == "$cp" ]] || continue
+		is_first="yes"; done_providers=""
+		for provider in $providers; do
+			has $provider $done_providers && continue
+			done_providers="$done_providers $provider"
+			p_cpv="${provider/#@(<|<=|=|~|>=|>)}"
+			p_vs="${provider%${p_cpv}}"
+			p_cp="${p_cpv%-$VER_SHPAT?(\*)}"
+			p_mlsr="${p_cpv#${p_cp}-}"
+			[[ "$is_first" ]] \
+			&& echo -n $'\t'"${BR}$(pad 35 $provider)${NO}" \
+			|| echo -n $'\t'"$(pad 35 $provider)"
+			is_first=""
+			provided_mlsrs $p_cp | sort -u | mlsr_sort \
+			| while read mlsr; do
+				dep_satisfies_mlsr "$mlsr" "$p_vs" "$p_mlsr" \
+				|| continue
+				if [[ "$cp" == "$cpv" ]]; then
+					col=NO
+				else
+					comm_ver $mlsr $vmlsr; ret=$?
+					if [[ $ret -eq 0 ]]; then
+						col=GR
+					elif [[ $ret -lt 128 ]]; then
+						col=BL
+					else
+						col=RD
+					fi
+				fi
+				echo -n " ${!col}$mlsr${NO}"
+			done
+			echo
+		done
+		break
+	done
+	if [[ "$opt_arg_uninstalled" ]]; then
+		db_grep "\\<$cp\\>" "" \
+		| while read ppv; do
+			has "$cp" $(contingent_provide_for $ppv) \
+				&& echo "	$ppv"
+		done
+	fi
+}
+
+function info_action_provides() {
+	set_xterm_title "Displaying virtuals provided by $1"
+	cpv=$1; cp=${cpv%-$VER_SHPAT}; mlsr="${cpv#$cp-}"
+	for provide in $(contingent_provide_for $cp-$mlsr); do
+		provide_base=${provide%-$VER_SHPAT}
+		if [[ "$provide_base" == "$provide" ]]; then
+			pcpv="$(resolve_depatom $provide_base)" \
+			&& fcpv="$(format_cpv $pcpv)" || fcpv="${RD}!!!${NO}"
+		else
+			pcpv="$(resolve_depatom ">=$provide")" \
+			&& fcpv="$(format_cpv $pcpv)" || fcpv="${RD}!!!${NO}"
+		fi
+		[[ "$cpv" == "$pcpv" ]] \
+		&& echo -n $'\t'"${Gr}$(pad 24 $provide)${NO}" \
+		|| echo -n $'\t'"$(pad 24 $provide)"
+		echo "$fcpv"
+	done
+}
+
+function star_arg() {
+	target=${1%-}; highest_only=$2; installed_only=$3
+	category=${target%/*}
+	ptarget=${target#*/}
+	package=${ptarget%-$VER_SHPAT}
+	vtarget=${ptarget/#$package?(-)}
+	cp=$category/$package
+	RESULT=()
+	while read mlsr; do 
+		[[ "$mlsr" ]] && RESULT[${#RESULT[@]}]="$cp-$mlsr"
+	done <<<"$(
+		(
+			[[ "$installed_only" ]] \
+				|| avail_versions $cp "" "" yes yes
+			provided_mlsrs $cp
+		) | sort -u | grep ^$vtarget | mlsr_sort \
+		| if [[ "$highest_only" ]]; then tail -n 1; else cat; fi)"
+	[[ "$installed_only" ]] && return
+	(( ${#RESULT[@]} > 0 )) && [[ "$highest_only" ]] && return
+	while read mlsr; do
+		[[ "$mlsr" ]] && RESULT[${#RESULT[@]}]="$cp-$mlsr"
+	done <<<"$(
+		avail_versions $cp "" "" | sort -u | grep ^$vtarget \
+		| mlsr_sort \
+		| if [[ "$highest_only" ]]; then tail -n 1; else cat; fi)"
+}
+
+function info_action_search() {
+	trap return SIGPIPE
+	(
+		if [[ "$1" == */* ]]; then
+			cpart="${1%/*}"; ppart="${1#*/}"
+		else
+			cpart="*"; ppart="$1"
+		fi
+		if [[ "$1" != *[*?]* ]]; then
+			ppart="*$ppart*"
+		fi
+		for x in /var/db/pkg/$cpart/$ppart-$VER_SHPAT; do
+			[[ -d "$x" ]] && echo "$x"
+		done
+		if [[ "$opt_arg_uninstalled" ]]; then
+			for x in $portage_trees; do 
+				for y in $x/$cpart/$ppart; do
+					[[ -d "$y" ]] && echo "$y"
+				done
+			done
+		fi
+	) \
+	| while read x; do y=${x%/*}; echo ${y##*/}/${x##*/}; done | sort -u \
+	| while read cp; do echo -n "    "; format_cpv $cp; done
+	trap - SIGPIPE
+}
+
+function expand_arg() {
+	arg="$1"
+	if [[ "${shopt_type[${do_info_shopt_idx}]}" != *@(PNAME|PACKAGE|VIRTUAL)* ]]; then
+		RESULT=("$arg"); return 0
+	fi
+	set_xterm_title "Resolving '$arg'..."
+	if [[ "$arg" != */* ]]; then
+		if [[ "${shopt_type[${do_info_shopt_idx}]}" == "VIRTUAL" ]]; then
+			expand_arg virtual/$arg
+		else
+			results=()
+			for cpkg in $(pv_to_cpv $arg); do
+				expand_arg $cpkg
+				results=("${results[@]}" "${RESULT[@]}")
+			done
+			RESULT=("${results[@]}")
+		fi
+	elif [[ "$arg" == *\* ]]; then
+		star_arg ${arg%\*}
+	elif [[ "$arg" == *-$VER_SHPAT ]]; then
+		RESULT=("$arg")
+	else
+		case "${shopt_type[${do_info_shopt_idx}]}" in
+			XPACKAGE )
+				star_arg $arg "yes" "yes";;
+			PACKAGE | PACKAGE,PNAME )
+				star_arg $arg "yes";;
+			PNAME | PNAME,PACKAGE | VIRTUAL )
+				RESULT=("$arg");;
+			*)
+				format_error <<<"Argument not implemented" >&2
+				RESULT=();;
+		esac
+	fi
+}
+
+function argv_dep() {
+	if [[ "$do_arg_info" == "tree-depends" && "$opt_arg_unique_depends" ]]; then
+		format_error >&2 <<END
+Note: common dependencies will be listed once, under the ${BR}last${NO} package they are depended on by.
+END
+	fi
+	for arg in "$@"; do 
+		expand_arg "${arg#=}"
+		((${#RESULT[@]} > 0)) \
+			|| echo "No matches for '$arg'" | format_error >&2
+		for arg2 in "${RESULT[@]}"; do 
+			(( opt_arg_verbose > 0 )) && echo "$arg2:"; 
+			info_action_$do_arg_info $arg2 "$@"
+		done
+		[[ "${shopt_itype[${do_info_shopt_idx}]}" == LEGION ]] && break
+	done
+	[[ "$do_package_sizes" ]] && pkgsize_summary
+}
+
+function lower() {
+	echo "$*" | tr '[[:upper:]]' '[[:lower:]]'
+}
+
+function upper() {
+	echo "$*" | tr '[[:lower:]]' '[[:upper:]]'
+}
+
+# Pretty much a straight port of the function of the same name in emerge.
+# Only difference is in the order of arguments: call as:
+# userquery "Make your system ROCK LIKE NINJA?" Yes GR 'Hell Yeah!' CY No RD
+# See above for colour codes, or add your own.
+function userquery() {
+	prompt="${BR}$1${NO} "
+	shift
+	if [[ $# -eq 0 ]]; then
+		rprompt="[${GR}Yes${NO}/${RD}No${NO}] "
+		responses=( Yes No )
+	else
+		rprompt="["
+		responses=()
+		((n=$#/2))
+		for ((i=0; i<n; ++i)); do
+			local response=$1; local colour=$2; shift; shift
+			[[ $i -eq 0 ]] || rprompt="$rprompt/"
+			responses=( "${responses[@]}" $response )
+			rprompt="$rprompt${!colour}$response${NO}"
+		done
+		rprompt="$rprompt] "
+	fi
+	echo -n "$prompt"
+	# Ctrl-C
+	trap "echo 'Interrupted.' >&2; exit 0" INT
+	while true; do
+		if read -e -p "$rprompt"; then
+			for ((i=0; i<${#responses[@]}; ++i)); do
+				response="${responses[$i]}"
+				[[ "$REPLY" == "${response:0:${#REPLY}}" ]] \
+				&& return $i
+			done
+			for ((i=0; i<${#responses[@]}; ++i)); do
+				response="${responses[$i]}"
+				[[ "$(upper "$REPLY")" == "$(upper "${response:0:${#REPLY}}")" ]] \
+				&& return $i
+			done
+			echo "Sorry, response '$REPLY' not understood." >&2
+		else
+			# Ctrl-D
+			echo "Interrupted." >&2
+			exit 0
+		fi
+	done
+	trap - INT
+}
+
+function install_new_file() {
+	local new="$1" target="$2"
+	[[ "$(whoami)" == "root" ]] || echo "Please enter your root password or Ctrl+C, Enter to cancel."
+	while :; do
+		su -c 'cat "'"${new}"'" >"'"${target}"'"'
+		case $? in
+			0) return 0;;
+			1) continue;;
+			*) return 1;;
+		esac
+	done
+}
+
+function filter_world() {
+	# TODO gettextise this baby!
+	cat ${WORLD_FILE} \
+	| sort \
+	| tee $temp_dir/oldworld \
+	| ( 
+		while read; do
+# a problem: the context in which world revdeps should be evaluated is that of
+# depclean, but we can't access that without a full tree walk. Only practical
+# difference is that || groups are evaluated to the first already-encountered
+# member, not the first already-installed member. Since we can't hope to 
+# calculate what that is, we exclude || revdeps.
+			if revdeps=$(info_action_reverse-tree "$REPLY" "no" "yes" "safe")
+			then 
+				echo "$REPLY"
+			else
+				(
+					echo "${RD}!!!REDUNDANT ENTRY!!!${NO} ${BR}$REPLY${NO} ${BL}depended on by${NO}:"
+					echo "$revdeps"
+				) >&2
+			fi
+		done | tee $temp_dir/newworld
+	)
+	print_stats
+	ask_install_new_file $temp_dir/oldworld $temp_dir/newworld /var/lib/portage/world "world file"
+}
+
+function filter_etc_file() {
+	local filename="$1" filter=("${@:2}")
+	local newfile="${temp_dir}/${1//\//_}"
+	[[ "$filename" == /* ]] || filename="/etc/portage/$filename"
+	if ! [[ -e "$filename" ]]; then
+		return 0
+	elif [[ -d "$filename" ]]; then
+		while read subfile; do
+			filter_etc_file "$subfile" "${filter[@]}"
+		done < <(find "$filename" -type f -readable)
+		return 0
+	fi
+	echo >&2
+	echo "${BR}Checking $filename for redundant entries...${NO}" >&2
+	local comments="" attached="" result line args
+	while read -r; do
+		if [[ "${REPLY}" == "#"* ]]; then
+			comments="${comments}${REPLY}"$'\n'
+		elif [[ -z "${REPLY}" ]]; then
+			echo "${comments}"
+			comments=""; attached=""
+		else
+			line="$REPLY"
+			while [[ "$REPLY" == *'\' ]]; do 
+				read -r; line="$line"$'\n'"$REPLY"
+			done
+			[[ "$comments" ]] && attached="$comments"; comments=""
+			line_no_comments="${line%%*([[:space:]])#*}"
+			inline_comments="${line:${#line_no_comments}}"
+			if result="$("${filter[@]}" "${line_no_comments}")"; then
+				echo -n "${attached}"
+				[[ "$result" ]] && echo "${result}${inline_comments}" \
+					|| echo "${line}"
+				attached=""
+			else
+				echo "${RD}!!!REDUNDANT ENTRY!!!${NO} ${BR}${line_no_comments}${NO}" >&2
+				echo "${RD}${result}${NO}" >&2
+			fi
+		fi
+	done <"$filename" | tee "$newfile"
+	ask_install_new_file "$filename" "$newfile" "$filename" "$1"
+}
+
+function package_star_filter() {
+	local test="$1" installed_only="$2" message="$3" line="$4"
+	local depatom_args; read -a depatom_args <<<"$line"
+	local depatom="${depatom_args[0]}" args=("${depatom_args[@]:1}")
+	d_cpv="${depatom/#@(<|<=|=|~|>=|>)}"
+	vs="${depatom%${d_cpv}}"
+	local effectual_args=() effectual=""
+	for d_cpv in $([[ "$d_cpv" == */* ]] && echo "$d_cpv" || pv_to_cpv "$d_cpv"); do
+		d_cp="${d_cpv/%-$VER_SHPAT?(\*)}"
+		d_mlsr="${d_cpv##${d_cp}?(-)}"
+		cp="$d_cp"
+		if [[ "$installed_only" ]]; then
+			mlsrs=$(provided_mlsrs "$cp")
+		else
+			mlsrs=$(avail_versions "$cp" "" "" "" "")
+		fi
+		any_processed=""
+		while read mlsr; do
+			[[ "$mlsr" ]] || continue
+			[[ "$d_mlsr" ]] && ! dep_satisfies_mlsr "$mlsr" "$vs" "$d_mlsr" && continue
+			any_processed="yes"
+			used_args=()
+			${test} "$depatom" "$cp" "$mlsr" "${args[@]}" || continue
+			effectual="yes"
+			[[ -z "${args[*]}" ]] && break
+			for ((i=0; i<${#args[@]}; ++i)); do
+				[[ "${effectual_args[$i]}" ]] && continue
+				has "${args[$i]}" "${used_args[@]}" || continue
+				effectual_args[$i]="${args[$i]}"
+			done
+		done <<<"$mlsrs"
+	done
+	if [[ "$effectual" ]]; then
+		if [[ "${args[*]}" && "${effectual_args[*]}" != "${args[*]}" ]]; then
+			local rest_of_line="${line#*([[:space:]])$depatom}"
+			local space="${rest_of_line%%[^[:space:]]*}"
+			echo "$depatom$space${effectual_args[*]}"
+		fi
+		return 0
+	fi
+	if [[ "$any_processed" ]]; then echo "$message"
+	elif [[ "$installed_only" ]]; then echo "no matching packages installed"
+	else echo "no matching packages"; fi
+	return 1
+}
+
+function package_use_filter() {
+	local depatom="$1" cp="$2" mlsr="$3" flags=("${@:4}")
+
+	alluse=$(dbuse)
+	local newflags=()
+	for flag in "${flags[@]}"; do
+		if { [[ "$flag" == -* ]] && has "${flag#-}" $alluse; } \
+			|| { [[ "$flag" != -* ]] && ! has "${flag}" $alluse; }; then
+			newflags[${#newflags[@]}]="$flag"
+		else
+			format_error <<<"flag redundant: ${BR}$cp-$mlsr $flag${NO}" >&2
+		fi
+	done
+	used_args=("${newflags[@]}")
+	[[ "${newflags[*]}" ]]
+}
+
+function package_mask_filter_inner() {
+	local depatom="$1" cp="$2" mlsr="$3" args=("${@:4}")
+	if is_keyword_masked $cp $mlsr $tree; then
+		log_message 1 "$cp-$mlsr keyword masked"
+	elif is_inclusion_masked "$cp" "$mlsr"; then
+		log_message 1 "$cp-$mlsr inclusion masked"
+	elif is_in_maskfile "$cp" "$mlsr" $(etc_portage_files package.unmask); then
+		log_message 1 "$cp-$mlsr unmasked"
+	elif is_in_maskfile "$cp" "$mlsr" "$newfile" $(profile_files_extra package.mask | grep -v /etc/portage/package.mask); then
+		log_message 1 "$cp-$mlsr otherwise masked"
+	else
+		return 0
+	fi
+	return 1
+}
+
+function package_mask_filter() {
+	local depatom="$1"
+	if [[ "$depatom" == -* ]]; then
+		# is the exact depatom in a profile mask?
+		if kill_comments_and_blanks "$newfile" $(profile_files_extra package.mask | grep -vF "$filename") 2>/dev/null | stacking_sort yes | grep -qF "${depatom#-}"; then
+			return 0
+		else
+			echo "no matching line to remove from stack"; return 1
+		fi
+	fi
+	package_star_filter package_mask_filter_inner "" "all matching available packages unmasked or otherwise masked" "$depatom"
+}
+
+function package_unmask_filter() {
+	local depatom="$1" cp="$2" mlsr="$3" args=("${@:4}")
+	if is_keyword_masked $cp $mlsr $tree; then
+		log_message 1 "$cp-$mlsr keyword masked"
+	elif is_inclusion_masked "$cp" "$mlsr"; then
+		log_message 1 "$cp-$mlsr inclusion masked"
+	elif is_in_maskfile "$cp" "$mlsr" "$newfile"; then
+		log_message 1 "$cp-$mlsr already unmasked"
+	elif ! is_in_maskfile "$cp" "$mlsr" $(profile_files_extra package.mask); then
+		log_message 1 "$cp-$mlsr not masked"
+	else
+		return 0
+	fi
+	return 1
+}
+
+function package_keywords_filter() {
+	local depatom="$1" cp="$2" mlsr="$3" keywords=("${@:4}")
+	# do any keywords affect this package?
+	local my_keywords
+	keywords_for $cp-$mlsr "" my_keywords
+	has '*' "${my_keywords[@]}" && return 1
+	for keyword in "${keywords[@]}"; do 
+		case "$keyword" in
+		-\*) # -* in package.keywords: is -* in keywords and no other accept?
+			has "$keyword" "${my_keywords[@]}" || continue
+			( for my_keyword in "${my_keywords[@]}"; do
+				has "$my_keyword" "${ACCEPT_KEYWORDS[@]}" || continue
+				return 1
+			done ) || continue;;
+		-*) # -x in package.keywords: is x in keywords and in accept?
+			has "${keyword#-}" "${my_keywords[@]}" || continue
+			has "${keyword#-}" "${ACCEPT_KEYWORDS[@]}" || continue;;
+		\*) # * in package.keywords: is a stable in keywords and not in accept?
+			( for my_keyword in "${my_keywords[@]}"; do
+				[[ "$my_keyword" == -* ]] && continue
+				[[ "$my_keyword" == ~* ]] && continue
+				has "$my_keyword" "${ACCEPT_KEYWORDS[@]}" && continue
+				return 1
+			done ) && continue;;
+		~\*) # ~* in package.keywords: anything in keywords not in accept?
+			( for my_keyword in "${my_keywords[@]}"; do
+				[[ "$my_keyword" == -* ]] && continue
+				has "$my_keyword" "${ACCEPT_KEYWORDS[@]}" && continue
+				return 1
+			done ) && continue;;
+		*) # a positive keyword: in keywords not in accept?
+			has "$keyword" "${my_keywords[@]}" || continue
+			has "$keyword" "${ACCEPT_KEYWORDS[@]}" && continue;;
+		esac
+		used_args[${#used_args[@]}]="$keyword"
+	done
+	[[ "${used_args[*]}" ]]
+}
+
+function profile_packages_filter() {
+	local pline="$1"
+	if [[ "$pline" == -* ]]; then
+		if kill_comments_and_blanks "$newfile" $(profile_files packages | grep -vF "$filename") 2>/dev/null | stacking_sort yes | grep -qF "${pline#-}"; then
+			return 0
+		else
+			echo "no matching line to remove from stack"; return 1
+		fi
+	else
+		if kill_comments_and_blanks "$newfile" $(profile_files packages | grep -vF "$filename") 2>/dev/null | stacking_sort yes | grep -qF "${pline#-}"; then
+			echo "already on stack"; return 1
+		else
+			return 0
+		fi
+	fi
+}
+
+function bashrc_filter() {
+	local list="$1" out="" omitted=""
+	# Supported syntax: [[ "$CATEGORY/$P" == app-foo/bar-2.1 ]] \
+	# || [[ "$CATEGORY/$PN" == sys-baz/zork ]] \
+	# && ...
+	while read -r; do
+		if [[ "$REPLY" =~ '^(\|\| )?\[\[ ("?)([^ ]*)\2 == ("?)([^ ]*/[^ ]*)\4 \]\] \\' ]]; then
+			local match="${BASH_REMATCH[3]}" target="${BASH_REMATCH[5]}"
+			local cp="${target%-$VER_SHPAT*}" found="" mlsr
+			for mlsr in $(provided_mlsrs "$cp"); do 
+				if (
+					mls="${mlsr%-r+([[:digit:]])}"; rev="${mlsr#$mls-}"
+					PN="${cp##*/}"; P="$PN-$mls"; PV="$mls"; PR="${rev:-r0}"
+					PVR="$mlsr"; PF="$PN-$mlsr"; CATEGORY="${t_cp%/*}"
+					for x in /var/db/pkg/$cp-$mlsr/+([[:upper:]]); do
+						[[ -r "$x" ]] && read ${x##*/} <<<"$(<"$x")"
+					done
+					eval [[ "$match" == "$target" ]]
+				); then found="yes"; break; fi
+			done
+			if [[ "$found" ]]; then
+				log_message 2 "$match == $target found in installed packages"
+				out="${out}${out:+$'\n'}${REPLY}"
+			else
+				log_message 1 "no installed package with $match == $target"
+				omitted="yes"
+			fi
+		elif [[ -z "$omitted" || "$out" || "$REPLY" =~ '^(\|\| )?\[\[' ]]; then
+			out="${out}${out:+$'\n'}${REPLY}"
+		else
+			echo "All tests failed"; return 1
+		fi
+	done <<<"$list"
+	[[ "$omitted" ]] && echo "${out#|| }"
+	return 0
+}
+
+function filter_etc_portage() {
+	filter_etc_file package.use package_star_filter package_use_filter yes "all use flags redundant"
+	filter_etc_file package.mask package_mask_filter
+	filter_etc_file package.unmask package_star_filter package_unmask_filter "" "no matching available packages masked by a package.mask"
+	filter_etc_file package.keywords package_star_filter package_keywords_filter "" "all keywords redundant"
+	filter_etc_file profile/packages profile_packages_filter
+	filter_etc_file bashrc bashrc_filter
+}
+	
+function print_stats() {
+	n=$(wc -l <$temp_dir/newworld)
+	world=$(wc -l <$temp_dir/oldworld)
+	red=$((world - n))
+	sys=$(echo "${allprofilepackages}" | wc -l)
+	inst=$(echo /var/db/pkg/*/*/PF | wc -w)
+	(
+		echo
+		echo \
+	"${space::5-${#world}}${BR}$world${NO} packages in ${YL}world${NO}: " \
+	"${BR}$n${NO} ${GR}valid${NO}, " \
+	"${BR}$red${NO} ${RD}redundant${NO};"
+		echo \
+	"${space::5-${#sys}}${BR}$sys${NO} packages in ${YL}system${NO};"
+		echo \
+	"${space::5-${#inst}}${BR}$inst${NO} packages installed:" \
+	"${BR}$(($sys * 100 / $inst))%${NO} in ${YL}system${NO}," \
+	"${BR}$(($world * 100 / $inst))%${NO} in ${YL}world${NO}," \
+	"${BR}$((($inst - $sys - $world + $red) * 100 / $inst))%${NO} ${FC}deps${NO}."
+	) >&2
+}
+	
+function ask_install_new_file() {
+	local old="$1" new="$2" target="$3" name="$4"
+	local merged="$temp_dir/merged-${old//\//_}"
+	diff -q "$old" "$new" >/dev/null && return
+	case $do_action in
+		pretend ) exit 0;;
+		ask ) while :; do
+			userquery "Install new $name?" Yes GR No RD Diff BL Merge FC
+			case $? in
+				0 ) install_new_file "$new" "$target" && break;;
+				1 ) break;;
+				2 ) diff -u "$old" "$new" | ${PAGER:-less};;
+				3 ) 
+				sdiff -o "$merged" "$old" "$new"
+				[[ $? -eq 2 ]] || cat "$merged" >"$new";;
+			esac
+		done;;
+		force )	install_new_file "$new" "$target";;
+	esac
+}
+
+function inspect_patch_tree_check_data_is_highest_patched() {
+	while read _mlsr mlsr_tree; do
+		mlsr=$_mlsr
+		i=${#mlsrs[@]}
+		mlsrs[$i]=$mlsr
+		mlsr_trees[$i]=$mlsr_tree
+		mlsr_slots[$i]=$(slot_for "$cp-$mlsr" "$mlsr_tree")
+		is_package_masked "$cp" "$mlsr" && mlsr_pmask[$i]="yes"
+		mls="${mlsr%-r+([[:digit:]])}"; rev="${mlsr#$mls-}"
+		local P="$pn-$mls" PN="$pn" PV="$mls" PR="${rev:-r0}" PVR="$mlsr"
+		local PF="$pn-$mlsr" SLOT="${mlsr_slots[$i]}"
+		[[ "$dn" == "$PN" || "$dn" == "$P" || "$dn" == "$P-$PR" \
+			|| "$dn" == "$PN[$SLOT]" || "$PVR" == ${dn#$PN-} ]] \
+			&& mlsr_match[$i]=$mlsr
+	done <<<"$(avail_versions "$cp" yes | mlsr_sort)"
+}
+
+function inspect_patch_tree_check_slots() {
+	local arches=$1 excl_pmask=$2 pd_only=$3
+	local patch_used="" oldslot; unset oldslot
+	[[ "$arches" ]] && local ACCEPT_KEYWORDS=( $arches )
+	for ((i=${#mlsrs[@]}-1; i>=0; --i)); do
+		mlsr=${mlsrs[$i]}; slot=${mlsr_slots[$i]}
+		[[ "${oldslot+set}" && "$slot" == "$oldslot" ]] && continue
+		[[ "$pd_only" && "${mlsr_trees[$i]}" != "$PORTDIR" ]] && continue
+		[[ "$excl_pmask" && "${mlsr_pmask[$i]}" ]] && continue
+		[[ "$arches" ]] && is_keyword_masked "$cp" "$mlsr" && continue
+		[[ "${mlsr_match[$i]}" ]] && { patch_used="yes"; break; }
+		oldslot=$slot
+	done
+	[[ "$patch_used" ]]
+}
+
+function inspect_patch_tree_check_arches() {
+	local pd_only=$1
+	for arch in $(< $PORTDIR/profiles/arch.list); do
+		inspect_patch_tree_check_slots "$arch" "yes" "$pd_only" && break
+		stable="$arch"; arch="~$arch"
+		inspect_patch_tree_check_slots "$stable $arch" "yes" "$pd_only" && break
+	done
+}
+
+function inspect_patch_tree() {
+	local tree="$1" rm_command rmdir_command patchdir
+	if [[ -d "$tree/.svn" ]]; then
+		rm_command="svn rm"; rmdir_command="svn rm"
+	else
+		rm_command="rm"; rmdir_command="rm -r"
+	fi
+	for patchdir in $tree/*/*; do
+		[[ -d "$patchdir" ]] || continue
+		local cdn dn cp pn mlsr="" tree mls rev slot
+		local mlsrs=() mlsr_trees=() mlsr_slots=() mlsr_match=() mlsr_pmask=()
+		cdn=${patchdir#$tree/}; dn=${cdn##*/}
+		cp=${cdn%@(\[*\]|-${VER_SHPAT}?(?(.)\*))}; pn=${cp##*/}
+		if [[ "$cp" == "$cdn" ]]; then
+			log_message 1 "$cdn is a package name, retaining"
+		elif inspect_patch_tree_check_data_is_highest_patched; then
+			log_message 1 "$cdn matches $mlsr, highest version"
+		elif (( ${#mlsr_match[@]} == 0 )); then
+			log_message 1 "$cdn does not match any ebuilds"
+			echo "$rmdir_command '$patchdir'"
+		elif inspect_patch_tree_check_slots "" "" ""; then
+			log_message 1 "$cdn matches $mlsr, best in slot $slot"
+		elif inspect_patch_tree_check_slots "" "yes" ""; then
+			log_message 1 "$cdn matches $mlsr, best unmasked in slot $slot"
+		elif inspect_patch_tree_check_arches ""; then
+			log_message 1 "$cdn matches $mlsr, best in slot $slot on $arch"
+		elif inspect_patch_tree_check_slots "" "" "yes"; then
+			log_message 1 "$cdn matches $mlsr, best in slot $slot in \$PORTDIR"
+		elif inspect_patch_tree_check_slots "" "yes" "yes"; then
+			log_message 1 "$cdn matches $mlsr, best unmasked in slot $slot in \$PORTDIR"
+		elif inspect_patch_tree_check_arches "yes"; then
+			log_message 1 "$cdn matches $mlsr, best in slot $slot on $arch in \$PORTDIR"
+		else
+			echo "$rmdir_command '$patchdir'"
+		fi
+	done
+}
+
+function inspect_overlay_best_in_slot() {
+	local arch=$1 cp=$2 overlay_mlsr=$3 overlay_slot=$4 excl_pmask=$5
+	if [[ "$arch" ]]; then
+		local ACCEPT_KEYWORDS=( $arch )
+		is_keyword_masked "$cp" "$overlay_mlsr" "$overlay" && return 1
+	fi
+	for ((i=${#mlsrs[@]}-1; i>=0; --i)); do
+		local mlsr=${mlsrs[$i]} slot=${mlsr_slots[$i]}
+		[[ "$slot" == "$overlay_slot" ]] || continue
+		[[ "$excl_pmask" && "${mlsr_pmask[$i]}" ]] && continue
+		[[ "$arch" ]] && is_keyword_masked "$cp" "$mlsr" "$PORTDIR" && continue
+		vercmp "$mlsr" "<=" "$overlay_mlsr"; return $?
+	done
+	return 0
+}
+
+function inspect_overlay_best_in_slot_arches() {
+	for arch in $(< $PORTDIR/profiles/arch.list); do
+		inspect_overlay_best_in_slot "$arch" "$@" "yes" && break
+		stable="$arch"; arch="~$arch"
+		inspect_overlay_best_in_slot "$stable $arch" "$@" "yes" && break
+	done
+}
+
+function inspect_overlay() {
+	local overlay="${1%/}"
+	for ebdir in "$overlay"/*/*; do
+		[[ -d "$ebdir" ]] || continue
+		local delete_mlsrs=() keep_any=""
+		cp=${ebdir#$overlay/}; cat=${cp%/*}; pn=${cp#*/}
+		local mlsrs=() mlsr_slots=() mlsr_pmask=()
+		if [[ ! -d "$PORTDIR/$cp" ]]; then
+			log_message 2 "$cp not in \$PORTDIR; ignoring"
+			continue
+		fi
+		while read mlsr mlsr_tree; do
+			[[ "$mlsr_tree" == "$PORTDIR" ]] || continue
+			i=${#mlsrs[@]}
+			mlsrs[$i]=$mlsr
+			mlsr_slots[$i]=$(slot_for "$cp-$mlsr" "$mlsr_tree")
+			is_package_masked "$cp" "$mlsr" && mlsr_pmask[$i]="yes"
+		done <<<"$(avail_versions "$cp" yes | mlsr_sort)"
+		if (( "${#mlsrs[@]}" == 0 )); then
+			log_message 2 "$cp not in \$PORTDIR; ignoring"
+			continue
+		fi
+		for ebuild in "$ebdir"/*.ebuild; do
+			[[ -f "$ebuild" ]] || continue
+			ebuild=${ebuild#$ebdir/}; pv=${ebuild%.ebuild}; cpv=$cat/$pv
+			mlsr=${pv#$pn-}; slot=$(slot_for "$cp-$mlsr" "$overlay")
+			if vercmp "$mlsr" ">=" "${mlsrs[$((${#mlsrs[@]}-1))]}" ]]; then
+				in_message=""
+			elif inspect_overlay_best_in_slot "" "$cp" "$mlsr" "$slot" ""; then
+				in_message="in slot $slot "
+			elif inspect_overlay_best_in_slot "" "$cp" "$mlsr" "$slot" yes; then
+				in_message="unmasked in slot $slot "
+			elif inspect_overlay_best_in_slot_arches "$cp" "$mlsr" "$slot"; then
+				in_message="unmasked in slot $slot on $arch "
+			else
+				delete_mlsrs[${#delete_mlsrs[@]}]=$mlsr
+				log_message 1 "$cp-$mlsr ebuild is redundant"
+				continue
+			fi
+			log_message 1 "$cp-$mlsr best ${in_message}against \$PORTDIR"
+			keep_any="yes"
+		done
+		if [[ -d "$ebdir/.svn" ]]; then
+			rm_command="svn rm"; rmdir_command="svn rm"
+		else
+			rm_command="rm"; rmdir_command="rm -r"
+		fi
+		if [[ ! -f "$ebdir/$ebuild" ]]; then
+			log_message 1 "$ebdir does not contain any ebuilds"
+			echo "$rmdir_command '$ebdir'"
+		elif [[ "$keep_any" ]]; then
+			for mlsr in "${delete_mlsrs[@]}"; do
+				echo "$rm_command '$ebdir/$pn-$mlsr.ebuild' '$ebdir/files/digest-$pn-$mlsr'"
+			done
+		else
+			echo "$rmdir_command '$ebdir'"
+		fi
+	done
+}
+
+function overlay_clean() {
+	if (( $# )); then 
+		for overlay in "$@"; do
+			if ! [[ -d "$overlay" ]]; then
+				format_error <<<"no such directory: $overlay" >&2
+				continue
+			elif [[ "$overlay" == */patches ]]; then
+				inspect_patch_tree $overlay
+			else
+				inspect_overlay $overlay
+			fi
+		done
+	else
+		read -a overlays <<<"${PORTDIR_OVERLAY}"
+		inspect_overlay ${overlays[$((${#overlays[@]}-1))]}
+	fi
+}
+
+function main() { 
+	if [[ "$load_config" ]]; then
+		set_xterm_title "Loading Portage configuration..."
+		load_portage_config
+	fi
+	set_xterm_title "Processing commands..."
+	case "$do_arg_action" in
+		exec ) 
+			time eval "${args[@]}"
+			echo $'\n'"Return value: $?; RESULT: ${RESULT[@]}" >&2;;
+		purge | depclean )
+			my_redundant="$(redundant "${args[@]}")"
+			[[ "${my_redundant}" ]] \
+				&& emerge -vC $portage_action_arg $my_redundant \
+				|| echo "No redundant packages found." | format_error >&2;;
+		spring-clean )
+			makeideal;;
+		pruneworld )
+			filter_world;;
+		filter-etc-portage )
+			filter_etc_portage;;
+		overlay-clean )
+			overlay_clean "${args[@]}";;
+		info )
+			argv_dep "${args[@]}";;
+		* )
+			echo "Nothing to do." | format_error >&2
+			exit 1
+	esac
+}
+
+[[ "$0" == */dep ]] && main

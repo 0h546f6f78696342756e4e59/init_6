@@ -1,0 +1,102 @@
+#!/bin/bash
+# Gentoo Kernel installation script v0.8, 2005-10-13 06:41 UTC
+# Written by Kasper Sandberg
+# Released under the General Public License v2
+
+#source /sbin/functions.sh
+source /usr/lib64/portage/bin/isolated-functions.sh
+
+cd /usr/src/linux
+
+# Find out some info..
+eval $(head -n 4 Makefile | sed -e 's/ //g')
+ARCH=$(uname -m | sed -e s/i.86/i386/g)
+FULLVER=${VERSION}.${PATCHLEVEL}.${SUBLEVEL}${EXTRAVERSION}
+MODULESUPPORT=$(grep "CONFIG_MODULES=y" .config 2>/dev/null)
+
+if [[ -e .config && -e arch/${ARCH}/boot/bzImage ]]; then
+	ISNEWER=$(find .config -newer arch/${ARCH}/boot/bzImage 2>/dev/null)
+else
+	if ! [[ -e .config ]]; then
+		ISNEWER="noconfig"
+	else
+		ISNEWER="yes"
+	fi
+fi
+
+if [[ -e .version ]]; then
+	BUILDNO=$(cat .version)
+else
+	BUILDNO="0"
+fi
+
+rm -fr /tmp/installkernel &>/dev/null
+mkdir /tmp/installkernel &>/dev/null
+
+ebegin "Beginning installation procedure for \"${FULLVER}\""
+	if [[ ${ISNEWER} == "noconfig" ]]; then
+		ebegin " No kernel config found, searching for best availiable config"
+			if [[ -e /proc/config.gz ]]; then
+				einfo "  Foung config from running kernel, updating to match target kernel"
+					zcat /proc/config.gz > .config
+					true | make oldconfig &> /tmp/installkernel/oldconfig.log
+			else
+				einfo "  No suitable custom config found, defaulting to defconfig"
+					cp arch/${ARCH}/defconfig .config
+			fi
+		eend $?
+	fi
+
+	if [[ ${1} == "--menuconfig" ]]; then
+		ebegin " Menuconfig requested, invoking"
+			make menuconfig 2>/dev/null
+		eend $?
+		ISNEWER="yes"
+	fi
+
+	if [[ ${ISNEWER} != "" ]]; then
+		ebegin " Kernel build not uptodate, compiling"
+			make bzImage &> /tmp/installkernel/bzImage.log
+			if [[ ${MODULESUPPORT} != "" ]]; then
+				einfo "  Module support in kernel detected, building modules"
+					make modules &> /tmp/installkernel/modules.log
+			fi
+		eend $?
+		BUILDNO=$(cat .version)
+	fi
+
+	ebegin " Merging kernel to system (Buildnumber: ${BUILDNO})"
+		if [[ $(cat /proc/mounts | grep /boot) == "" && $(cat /etc/fstab | grep /boot) != "" ]]; then
+			ebegin "  Boot partition unmounted, mounting"
+				mount /boot
+			eend $?
+		fi
+		einfo "  Copying bzImage to \"/boot/${FULLVER}-${BUILDNO}\""
+			cp arch/${ARCH}/boot/bzImage /boot/${FULLVER}-${BUILDNO}
+		einfo "  Copying System.map to \"/boot/System.map-${FULLVER}\""
+			cp System.map /boot/System.map-${FULLVER}
+		if [[ ${MODULESUPPORT} != "" ]]; then
+			einfo "  Installing modules to \"/lib/modules/${FULLVER}/\""
+				make modules_install &> /tmp/installkernel/modules_install.log
+		fi
+	eend $?
+
+	if [[ -e /var/lib/module-rebuild/moduledb && $(cat /var/lib/module-rebuild/moduledb | wc -l) -ge 1 ]]; then
+		ebegin " Looking for external kernel modules that need rebuilding"
+			for EXTKERNMOD in $(sed -e 's/.:.://g' /var/lib/module-rebuild/moduledb) ; do
+				if [[ $(find /boot/${FULLVER}-${BUILDNO} -newer /var/db/pkg/${EXTKERNMOD}/environment.bz2 2>/dev/null) != "" ]]; then
+					ebegin "  Recompiling outdated module \"${EXTKERNMOD}\""
+						emerge --oneshot =${EXTKERNMOD} >> /tmp/installkernel/extmodules.log 2>&1
+					eend $?
+				fi
+			done
+		eend $?
+	fi
+
+	if [[ -e "/boot/grub/grub.conf.template" ]]; then
+		ebegin " Grub template found, Editing kernel entry in GRUB"
+			cp /boot/grub/grub.conf.template /boot/grub/grub.conf
+			sed -i s/REPLACEME/${FULLVER}-${BUILDNO}/g /boot/grub/grub.conf
+		eend $?
+	fi
+eend $?
