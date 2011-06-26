@@ -2,7 +2,7 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
-EAPI="2"
+EAPI="4"
 
 inherit git autotools flag-o-matic eutils virtualx
 
@@ -16,9 +16,9 @@ EGIT_BOOTSTRAP="NOCONFIGURE=1; ./autogen.sh"
 
 LICENSE="LGPL-2 LGPL-2.1 BSD"
 SLOT="3"
-KEYWORDS="~alpha ~amd64 ~arm ~ia64 ~ppc ~sparc ~x86 ~x86-fbsd ~x86-freebsd ~amd64-linux ~ia64-linux ~x86-linux ~x86-macos"
-# aqua, geoclue
-IUSE="coverage debug doc +gstreamer +introspection +jit spell"
+KEYWORDS="~alpha ~amd64 ~arm ~ia64 ~sparc ~x86 ~x86-fbsd ~x86-freebsd ~amd64-linux ~ia64-linux ~x86-linux ~x86-macos"
+# geoclue
+IUSE="aqua coverage debug doc +gstreamer +introspection +jit spell"
 
 # use sqlite, svg by default
 # dependency on >=x11-libs/gtk+-2.13:2 for gail
@@ -27,24 +27,22 @@ RDEPEND="
 	dev-libs/libxml2:2
 	dev-libs/libxslt
 	virtual/jpeg
-	media-libs/libpng:0
+	>=media-libs/libpng-1.4:0
 	x11-libs/cairo
 	>=dev-libs/glib-2.27.90:2
-	>=x11-libs/gtk+-3.0:3
+	>=x11-libs/gtk+-3.0:3[aqua=,introspection?]
 	>=dev-libs/icu-3.8.1-r1
-	>=net-libs/libsoup-2.33.6:2.4
-	>=dev-db/sqlite-3
+	>=net-libs/libsoup-2.33.6:2.4[introspection?]
+	dev-db/sqlite:3
 	>=x11-libs/pango-1.12
 
 	gstreamer? (
 		media-libs/gstreamer:0.10
 		>=media-libs/gst-plugins-base-0.10.25:0.10 )
 
-	introspection? (
-		>=dev-libs/gobject-introspection-0.9.5 )
+	introspection? ( >=dev-libs/gobject-introspection-0.9.5 )
 
-	spell? (
-		>=app-text/enchant-0.22 )"
+	spell? ( >=app-text/enchant-0.22 )"
 
 DEPEND="${RDEPEND}
 	>=sys-devel/flex-2.5.33
@@ -63,6 +61,35 @@ pkg_setup() {
 	ewarn "you should abort this installation now and free up some space."
 }
 
+src_prepare() {
+	DOCS="Source/WebKit/gtk/NEWS Source/WebKit/gtk/ChangeLog"
+
+	# FIXME: Fix unaligned accesses on ARM, IA64 and SPARC
+	# https://bugs.webkit.org/show_bug.cgi?id=19775
+##	use sparc && epatch "${FILESDIR}"/${PN}-1.2.3-fix-pool-sparc.patch
+
+	# intermediate MacPorts hack while upstream bug is not fixed properly
+	# https://bugs.webkit.org/show_bug.cgi?id=28727
+	use aqua && epatch "${FILESDIR}"/${PN}-1.2.5-darwin-quartz.patch
+
+	# Fix build on Darwin8 (10.4 Tiger)
+	# XXX: Fails to apply
+	#epatch "${FILESDIR}"/${PN}-1.2.5-darwin8.patch
+
+	# Don't force -O2
+	sed -i 's/-O2//g' "${S}"/configure.ac
+
+	# Don't build tests if not needed, part of bug #343249
+	# XXX: Fails to apply
+	#epatch "${FILESDIR}/${PN}-1.2.5-tests-build.patch"
+
+	# Fix compilation against libpng-1.5
+##	epatch "${FILESDIR}"/${P}-libpng15.patch
+
+	# Prevent maintainer mode from being triggered during make
+	AT_M4DIR=Source/autotools eautoreconf
+}
+
 src_configure() {
 	# It doesn't compile on alpha without this in LDFLAGS
 	use alpha && append-ldflags "-Wl,--no-relax"
@@ -77,8 +104,7 @@ src_configure() {
 
 	# XXX: Check Web Audio support
 	# XXX: webgl fails compilation
-	# XXX: Wtf is WebKit2?
-	
+	# XXX: WebKit2 is the new out-of-process model, doesn't work yet
 	myconf="
 		$(use_enable coverage)
 		$(use_enable debug)
@@ -89,44 +115,36 @@ src_configure() {
 		--disable-webgl
 		--with-gtk=3.0
 		--disable-webkit2
-		--disable-web-sockets"
+		--disable-web-sockets
+		$(use aqua && echo "--with-font-backend=pango --with-target=quartz")"
 		# Aqua support in gtk3 is untested
-		#$(use aqua && echo "--with-font-backend=pango --with-target=quartz")"
 		# Disable web-sockets per bug #326547
-
-	econf ${myconf}
 
 	econf ${myconf}
 }
 
 src_compile() {
-	# XXX: This step is required so we properly build gettext catalogs
-	emake update-po || die "Compile failed"
 	# Fix sandbox error with USE="introspection"
 	# https://bugs.webkit.org/show_bug.cgi?id=35471
-	emake XDG_DATA_HOME="${T}/.local" || die "Compile failed"
+	emake XDG_DATA_HOME="${T}/.local"
 }
 
 src_test() {
 	unset DISPLAY
 	# Tests need virtualx, bug #294691, bug #310695
 	# Set XDG_DATA_HOME for introspection tools, bug #323669
-	Xemake check XDG_DATA_HOME="${T}/.local" || die "Test phase failed"
+	Xemake check XDG_DATA_HOME="${T}/.local"
 }
 
 src_install() {
-	emake DESTDIR="${D}" install || die "Install failed"
-	dodoc ChangeLog || die "dodoc failed"
+	default
 
 	# Remove .la files
-	find "${D}" -name '*.la' -exec rm -f '{}' + || die
+	find "${D}" -name '*.la' -exec rm -f '{}' +
 }
-
 pkg_postinst() {
-
 	echo
 	ewarn "This is experimental and NOT supported by gentoo."
 	ewarn "DO NOT report bugs to Gentoo's bugzilla"
 	echo
-
 }
