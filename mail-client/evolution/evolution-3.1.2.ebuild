@@ -41,7 +41,7 @@ COMMON_DEPEND=">=dev-libs/glib-2.29.4:2
 	>=media-libs/libcanberra-0.25[gtk3]
 	>=x11-libs/libnotify-0.7
 	>=gnome-extra/evolution-data-server-${PV}[weather]
-	>=gnome-extra/gtkhtml-3.31.3:4.0
+	>=gnome-extra/gtkhtml-4.1.2:4.0
 	>=gnome-base/gconf-2:2
 	dev-libs/atk
 	>=dev-libs/libxml2-2.7.3:2
@@ -54,9 +54,9 @@ COMMON_DEPEND=">=dev-libs/glib-2.29.4:2
 	x11-libs/libICE
 
 	clutter? (
-		>=media-libs/clutter-1.0.0:1.0
+		>=media-libs/clutter-1.7.2:1.0
 		>=media-libs/clutter-gtk-0.90:1.0
-		x11-libs/mx )
+		>=x11-libs/mx-1.2.0 )
 	connman? ( net-misc/connman )
 	crypt? ( || (
 		( >=app-crypt/gnupg-2.0.1-r2 ${PINENTRY_DEPEND} )
@@ -145,9 +145,9 @@ pkg_setup() {
 
 src_prepare() {
 	# XXX: useful upstream fixes, will be included in next release
-	epatch "${FILESDIR}/0001-Bug-651039-Always-update-signature-in-composer-on-ac.patch"
-	epatch "${FILESDIR}/0002-Bug-651062-refresh_folders_exec-reports-progress-inc.patch"
-	epatch "${FILESDIR}/0003-Bug-651135-Crash-using-saved-search-with-an-empty-ex.patch"
+#	epatch "${FILESDIR}/0001-Bug-651039-Always-update-signature-in-composer-on-ac.patch"
+#	epatch "${FILESDIR}/0002-Bug-651062-refresh_folders_exec-reports-progress-inc.patch"
+#	epatch "${FILESDIR}/0003-Bug-651135-Crash-using-saved-search-with-an-empty-ex.patch"
 
 	# Use NSS/NSPR only if 'ssl' is enabled.
 	if use ssl ; then

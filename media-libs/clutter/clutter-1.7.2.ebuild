@@ -25,6 +25,7 @@ fi
 
 # NOTE: glx flavour uses libdrm + >=mesa-7.3
 # XXX: uprof needed for profiling
+
 RDEPEND="
 	>=dev-libs/glib-2.26:2
 	>=dev-libs/atk-1.17[introspection?]
