@@ -9,17 +9,22 @@
 =sys-kernel/fc-sources-3.0_rc5
 
 # Andrey Ovcharov <sudormrfhalt@gmail.com>
-# gnome-3.1.2
+# GNOME 3.1.x pre-release packages
+
 # missing dep?
 #checking for /usr/share/hwdata/pnp.ids... no
 #configure: error: *** Unable to find pnp.ids, use --with-pnpids to specify the path.
 =gnome-base/gnome-settings-daemon-3.1.2
 
-# Andrey Ovcharov <sudormrfhalt@gmail.com>
-# gnome-3.1.2
-=dev-libs/glib-2.29.8
-=x11-libs/gtk+-3.1.6
-=gnome-base/gnome-desktop-3.1.2
+>=dev-libs/glib-2.29
+>=dev-libs/gobject-introspection-1.29
+>=gnome-base/gnome-desktop-3.1
+>=gnome-base/gvfs-1.9
+>=media-libs/cogl-1.7
+>=media-libs/clutter-1.7
+>=x11-libs/gtk+-3.1
+>=x11-libs/pango-1.29
+
 =app-editors/gedit-3.1.1
 =gnome-extra/gnome-games-3.1.1
 =gnome-extra/evolution-data-server-3.1.2

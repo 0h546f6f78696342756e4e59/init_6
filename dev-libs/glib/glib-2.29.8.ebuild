@@ -7,6 +7,9 @@ GNOME_TARBALL_SUFFIX="xz"
 PYTHON_DEPEND="2"
 
 inherit autotools gnome.org libtool eutils flag-o-matic pax-utils python virtualx
+if [[ ${PV} = 9999 ]]; then
+	inherit gnome2-live
+fi
 
 DESCRIPTION="The GLib library of C routines"
 HOMEPAGE="http://www.gtk.org/"
@@ -15,19 +18,24 @@ SRC_URI="${SRC_URI}
 
 LICENSE="LGPL-2"
 SLOT="2"
-KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~m68k ~mips ~ppc ~ppc64 ~s390 ~sh ~sparc ~x86 ~sparc-fbsd ~x86-fbsd"
 IUSE="debug doc fam +introspection selinux +static-libs test xattr"
+if [[ ${PV} = 9999 ]]; then
+	KEYWORDS=""
+else
+	KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~m68k ~mips ~ppc ~ppc64 ~s390 ~sh ~sparc ~x86 ~sparc-fbsd ~x86-fbsd"
+fi
 
 RDEPEND="virtual/libiconv
+	>=dev-libs/libffi-3.0.0
 	sys-libs/zlib
 	xattr? ( sys-apps/attr )
 	fam? ( virtual/fam )"
 DEPEND="${RDEPEND}
 	>=sys-devel/gettext-0.11
-	>=dev-util/gtk-doc-am-1.13
+	>=dev-util/gtk-doc-am-1.15
 	doc? (
 		>=dev-libs/libxslt-1.0
-		>=dev-util/gtk-doc-1.13
+		>=dev-util/gtk-doc-1.15
 		~app-text/docbook-xml-dtd-4.1.2 )
 	test? ( dev-util/pkgconfig
 		>=sys-apps/dbus-1.2.14 )
@@ -42,38 +50,31 @@ pkg_setup() {
 }
 
 src_prepare() {
+	[[ ${PV} = 9999 ]] && gnome2-live_src_prepare
 	mv -vf "${WORKDIR}"/pkg-config-*/pkg.m4 "${WORKDIR}"/ || die
 
-#	if use ia64 ; then
-#		# Only apply for < 4.1
-#		local major=$(gcc-major-version)
-#		local minor=$(gcc-minor-version)
-#		if (( major < 4 || ( major == 4 && minor == 0 ) )); then
-#			epatch "${FILESDIR}/glib-2.10.3-ia64-atomic-ops.patch"
-#		fi
-#	fi
+	if use ia64 ; then
+		# Only apply for < 4.1
+		local major=$(gcc-major-version)
+		local minor=$(gcc-minor-version)
+		if (( major < 4 || ( major == 4 && minor == 0 ) )); then
+			epatch "${FILESDIR}/glib-2.10.3-ia64-atomic-ops.patch"
+		fi
+	fi
 
 	# Don't fail gio tests when ran without userpriv, upstream bug 552912
 	# This is only a temporary workaround, remove as soon as possible
-#	epatch "${FILESDIR}/${PN}-2.18.1-workaround-gio-test-failure-without-userpriv.patch"
+	epatch "${FILESDIR}/${PN}-2.18.1-workaround-gio-test-failure-without-userpriv.patch"
 
 	# Fix gmodule issues on fbsd; bug #184301
-#	epatch "${FILESDIR}"/${PN}-2.12.12-fbsd.patch
-
-	# Don't check for python, hence removing the build-time python dep.
-	# We remove the gdb python scripts in src_install due to bug 291328
-#	epatch "${FILESDIR}/${PN}-2.25-punt-python-check.patch"
+	epatch "${FILESDIR}"/${PN}-2.12.12-fbsd.patch
 
 	# Fix test failure when upgrading from 2.22 to 2.24, upstream bug 621368
-#	epatch "${FILESDIR}/${PN}-2.24-assert-test-failure.patch"
+	epatch "${FILESDIR}/${PN}-2.24-assert-test-failure.patch"
 
 	# Do not try to remove files on live filesystem, upstream bug #619274
 	sed 's:^\(.*"/desktop-app-info/delete".*\):/*\1*/:' \
 		-i "${S}"/gio/tests/desktop-app-info.c || die "sed failed"
-
-	# Disable failing tests, upstream bug #???
-#	epatch "${FILESDIR}/${PN}-2.26.0-disable-locale-sensitive-test.patch"
-#	epatch "${FILESDIR}/${PN}-2.26.0-disable-volumemonitor-broken-test.patch"
 
 	# Disable tests requiring dev-util/desktop-file-utils when not installed, bug #286629
 	if ! has_version dev-util/desktop-file-utils ; then
@@ -147,6 +148,8 @@ src_install() {
 	# Don't install gdb python macros, bug 291328
 	rm -rf "${ED}/usr/share/gdb/" "${ED}/usr/share/glib-2.0/gdb/"
 
+	# This is there for git snapshots and the live ebuild, bug 351966
+	emake README || die "emake README failed"
 	dodoc AUTHORS ChangeLog* NEWS* README || die "dodoc failed"
 
 	insinto /usr/share/bash-completion

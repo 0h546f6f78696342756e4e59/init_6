@@ -2,21 +2,29 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
-EAPI="3"
-GNOME_TARBALL_SUFFIX="xz"
+EAPI="4"
 
 inherit eutils flag-o-matic gnome.org gnome2-utils libtool virtualx
+if [[ ${PV} = 9999 ]]; then
+	inherit gnome2-live
+fi
 
 DESCRIPTION="Gimp ToolKit +"
 HOMEPAGE="http://www.gtk.org/"
 
 LICENSE="LGPL-2"
 SLOT="3"
+# NOTE: *-macos support is BROKEN. See `quartz-backend` etc in configure
 # NOTE: This gtk+ has multi-gdk-backend support, see:
 #  * http://blogs.gnome.org/kris/2010/12/29/gdk-3-0-on-mac-os-x/
 #  * http://mail.gnome.org/archives/gtk-devel-list/2010-November/msg00099.html
-IUSE="aqua cups debug doc examples +introspection test vim-syntax xinerama"
-KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~ppc ~ppc64 ~sh ~sparc ~x86 ~x86-fbsd ~x86-freebsd ~x86-interix ~amd64-linux ~x86-linux ~ppc-macos ~x86-macos ~sparc-solaris ~sparc64-solaris ~x64-solaris ~x86-solaris"
+# NOTE: Lots of aqua stuff in this ebuild is probably very broken
+IUSE="aqua colord cups debug doc examples +introspection packagekit test vim-syntax xinerama"
+if [[ ${PV} = 9999 ]]; then
+	KEYWORDS=""
+else
+	KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~mips ~ppc ~ppc64 ~sh ~sparc ~x86 ~x86-fbsd ~x86-freebsd ~x86-interix ~amd64-linux ~x86-linux ~ppc-macos ~x86-macos ~sparc-solaris ~sparc64-solaris ~x64-solaris ~x86-solaris"
+fi
 
 # FIXME: introspection data is built against system installation of gtk+:3
 # NOTE: cairo[svg] dep is due to bug 291283 (not patched to avoid eautoreconf)
@@ -33,11 +41,11 @@ COMMON_DEPEND="!aqua? (
 		x11-libs/libXfixes
 		x11-libs/libXcomposite
 		x11-libs/libXdamage
-		>=x11-libs/cairo-1.10.0[X,glib,svg]
+		>=x11-libs/cairo-1.10.0[X,svg]
 		>=x11-libs/gdk-pixbuf-2.22.0:2[X,introspection?]
 	)
 	aqua? (
-		>=x11-libs/cairo-1.10.0[aqua,glib,svg]
+		>=x11-libs/cairo-1.10.0[aqua,svg]
 		>=x11-libs/gdk-pixbuf-2.22.0:2[introspection?]
 	)
 	xinerama? ( x11-libs/libXinerama )
@@ -47,6 +55,7 @@ COMMON_DEPEND="!aqua? (
 	>=x11-libs/gtk+-2.24:2
 	media-libs/fontconfig
 	x11-misc/shared-mime-info
+	colord? ( >=x11-misc/colord-0.1.9 )
 	cups? ( net-print/cups )
 	introspection? ( >=dev-libs/gobject-introspection-0.10.1 )"
 DEPEND="${COMMON_DEPEND}
@@ -69,7 +78,8 @@ DEPEND="${COMMON_DEPEND}
 		media-fonts/font-misc-misc
 		media-fonts/font-cursor-misc )"
 RDEPEND="${COMMON_DEPEND}
-	!<gnome-base/gail-1000"
+	!<gnome-base/gail-1000
+	packagekit? ( app-portage/packagekit )"
 PDEPEND="vim-syntax? ( app-vim/gtk-syntax )"
 
 strip_builddir() {
@@ -101,27 +111,26 @@ src_prepare() {
 	if ! use test; then
 		# don't waste time building tests
 		strip_builddir SRC_SUBDIRS tests Makefile.am
-		strip_builddir SRC_SUBDIRS tests Makefile.in
+		[[ ${PV} != 9999 ]] && strip_builddir SRC_SUBDIRS tests Makefile.in
 	fi
 
 	if ! use examples; then
 		# don't waste time building demos
 		strip_builddir SRC_SUBDIRS demos Makefile.am
-		strip_builddir SRC_SUBDIRS demos Makefile.in
+		[[ ${PV} != 9999 ]] && strip_builddir SRC_SUBDIRS demos Makefile.in
 	fi
 
-	# http://mail.gnome.org/archives/commits-list/2011-March/msg04372.html
-#	epatch "${FILESDIR}"/${PN}-3.0.8-darwin-quartz.patch
+	[[ ${PV} = 9999 ]] && gnome2-live_src_prepare
 }
 
 src_configure() {
-	# FIXME: PackageKit support
 	# png always on to display icons (foser)
 	local myconf="$(use_enable doc gtk-doc)
 		$(use_enable xinerama)
+		$(use_enable packagekit)
 		$(use_enable cups cups auto)
+		$(use_enable colord)
 		$(use_enable introspection)
-		--disable-packagekit
 		--disable-papi
 		--enable-gtk2-dependency"
 

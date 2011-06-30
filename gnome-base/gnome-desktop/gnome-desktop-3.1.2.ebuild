@@ -2,13 +2,13 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
-EAPI="3"
+EAPI="4"
 GCONF_DEBUG="yes"
 GNOME2_LA_PUNT="yes"
 
 inherit gnome2
 if [[ ${PV} = 9999 ]]; then
-	inherit gnome2-live
+	inherit git-2 gnome2-live
 fi
 
 DESCRIPTION="Libraries for the gnome desktop that are not part of the UI"
@@ -38,7 +38,7 @@ RDEPEND="
 DEPEND="${RDEPEND}
 	~app-text/docbook-xml-dtd-4.1.2
 	>=app-text/gnome-doc-utils-0.3.2
-	>=dev-util/intltool-0.40
+	>=dev-util/intltool-0.40.6
 	>=dev-util/pkgconfig-0.9
 	sys-devel/gettext
 	x11-proto/xproto
@@ -51,11 +51,35 @@ DEPEND="${RDEPEND}
 
 pkg_setup() {
 	DOCS="AUTHORS ChangeLog HACKING NEWS README"
+	# Note: do *not* use "--with-pnp-ids-path" argument. Otherwise, the pnp.ids
+	# file (needed by other packages such as >=gnome-settings-daemon-3.1.2)
+	# will not get installed in ${pnpdatadir} (/usr/share/libgnome-desktop-3.0).
 	G2CONF="${G2CONF}
 		--disable-scrollkeeper
 		--disable-static
-		--with-pnp-ids-path=internal
 		--with-gnome-distributor=Gentoo
 		$(use_enable doc desktop-docs)
 		$(use_enable introspection)"
+}
+
+src_unpack() {
+	gnome2_src_unpack
+
+	if [[ ${PV} = 9999 ]]; then
+		# pnp.ids are only provided with the gnome-desktop tarball;
+		# for the live version, we have to get them from hwdata git
+		unset gnome_desktop_LIVE_BRANCH
+		unset gnome_destkop_LIVE_COMMIT
+		unset gnome_desktop_LIVE_REPO
+		unset EGIT_BRANCH
+		unset EGIT_COMMIT
+		unset EGIT_DIR
+		unset EGIT_MASTER
+		EGIT_PROJECT="gnome-desktop_hwdata"
+		EGIT_REPO_URI="git://git.fedorahosted.org/hwdata.git"
+		EGIT_SOURCEDIR="${WORKDIR}/hwdata"
+		git-2_src_unpack
+		ln -sf "${WORKDIR}/hwdata/pnp.ids" "${S}/libgnome-desktop/" ||
+			die "ln -sf failed"
+	fi
 }
