@@ -1,6 +1,6 @@
 # Copyright 1999-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header: /var/cvsroot/gentoo-x86/gnome-extra/gtkhtml/gtkhtml-3.32.1.ebuild,v 1.1 2010/11/28 14:43:21 pacho Exp $
+# $Header: $
 
 EAPI="3"
 GCONF_DEBUG="no"
