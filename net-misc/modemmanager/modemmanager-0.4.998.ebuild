@@ -3,7 +3,6 @@
 # $Header: $
 
 EAPI="4"
-GNOME_TARBALL_SUFFIX="xz"
 GNOME_ORG_MODULE="ModemManager"
 
 inherit gnome.org eutils
