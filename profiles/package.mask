@@ -10,36 +10,5 @@
 
 # Andrey Ovcharov <sudormrfhalt@gmail.com>
 # GNOME 3.1.x pre-release packages
-
-# missing dep?
-#checking for /usr/share/hwdata/pnp.ids... no
-#configure: error: *** Unable to find pnp.ids, use --with-pnpids to specify the path.
-=gnome-base/gnome-settings-daemon-3.1.2
-
-#>=dev-libs/glib-2.29
-#>=dev-libs/gobject-introspection-1.29
-#>=gnome-base/gnome-desktop-3.1
-#>=gnome-base/gvfs-1.9
-#>=media-libs/cogl-1.7
-#>=media-libs/clutter-1.7
-#>=x11-libs/gtk+-3.1
-#>=x11-libs/pango-1.29
-
-#=app-editors/gedit-3.1.1
-=gnome-extra/gnome-games-3.1.1
-=gnome-extra/evolution-data-server-3.1.2
-=mail-client/evolution-3.1.2
-#=media-gfx/eog-3.1.2
-#=dev-libs/folks-0.5.1
-#=net-im/empathy-3.1.2.1
-#=x11-themes/gnome-themes-standard-3.1.2.1
-#=gnome-extra/gnome-utils-3.1.2
-
-=dev-lang/vala-0.13.0
-
-# Andrey Ovcharov <sudormrfhalt@gmail.com>
-#configure: error: Package requirements (glib-2.0 >= 2.19.0 libxml-2.0 gthread-2.0 gio-2.0 >= 2.17.3 libsoup-2.4 >= 2.26.1 oauth >= 0.9.4) were not met:
-#No package 'oauth' found
-=dev-libs/libgdata-0.9.0
-
-=x11-libs/gtksourceview-3.0.5
+=net-libs/webkit-gtk-1.5.1
+=www-client/epiphany-3.1.2
