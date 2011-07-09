@@ -1,0 +1,13 @@
+
+[Desktop Entry]
+Value=1.0
+Type=Application
+Name=Irssi
+GenericName=Irssi
+Exec=gnome-terminal --maximize --hide-menubar -e "irssi"
+Path=/usr/bin
+Icon=irssi
+StartupNotify=true
+Terminal=true
+TerminalOptions=
+Categories=GNOME;GTK;Network;InstantMessaging;
