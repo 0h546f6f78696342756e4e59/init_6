@@ -33,5 +33,6 @@ RDEPEND="|| (
 		=sys-kernel/xen-sources-2.6*
 		=sys-kernel/zen-sources-2.6*
 		=sys-kernel/fc-sources-2.6*
+		=sys-kernel/fc-sources-3.0*
 		=sys-kernel/rh-sources-2.6*
 	)"

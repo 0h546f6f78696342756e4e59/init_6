@@ -67,6 +67,9 @@ src_prepare() {
 	# XXX: Fails to apply
 	#epatch "${FILESDIR}"/${PN}-1.2.5-darwin8.patch
 
+	epatch "${FILESDIR}"/${PN}-1.3.4-no-execmem.patch
+	epatch "${FILESDIR}"/${PN}-1.1.14-nspluginwrapper.patch
+
 	# Don't force -O2
 	sed -i 's/-O2//g' "${S}"/configure.ac
 

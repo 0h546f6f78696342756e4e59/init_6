@@ -284,7 +284,7 @@ src_prepare() {
 		epatch "${FILESDIR}"/256.35-unified-arch.patch
 
 		# NVidia's version check broke for kernel version 3.0.0
-		epatch "${FILESDIR}"/nvidia-linux-3.0.patch
+#		epatch "${FILESDIR}"/nvidia-linux-3.0.patch
 
 		# If you set this then it's your own fault when stuff breaks :)
 		use custom-cflags && sed -i "s:-O:${CFLAGS}:" "${NV_SRC}"/Makefile.*
