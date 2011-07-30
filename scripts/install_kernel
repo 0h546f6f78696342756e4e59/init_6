@@ -72,7 +72,7 @@ ebegin "Beginning installation procedure for \"${FULLVER}\""
 			eend $?
 		fi
 		einfo "  Copying bzImage to \"/boot/${FULLVER}-${BUILDNO}\""
-			cp arch/${ARCH}/boot/bzImage /boot/${FULLVER}-${BUILDNO}
+			cp arch/${ARCH}/boot/bzImage /boot/vmlinuz-${FULLVER}-${BUILDNO}
 		einfo "  Copying System.map to \"/boot/System.map-${FULLVER}\""
 			cp System.map /boot/System.map-${FULLVER}
 		if [[ ${MODULESUPPORT} != "" ]]; then
