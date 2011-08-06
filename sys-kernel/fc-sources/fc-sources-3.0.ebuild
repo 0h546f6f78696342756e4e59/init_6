@@ -50,37 +50,158 @@ src_unpack() {
 	echo
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-makefile-after_link.patch
+
+#
+# misc small stuff to make things compile
+#
+##	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-compile-fixes.patch
+
+
+# revert patches from upstream that conflict or that we get via other means
+##	EPATCH_OPTS="-R ${S}" epatch "${FILESDIR}"/"${PVR}"/linux-2.6-upstream-reverts.patch -R
+
+
+# Architecture patches
+# x86(-64)
+
+#
+# Intel IOMMU
+#
+
+#
+# PowerPC
+#
+
+#
+# SPARC64
+#
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6.29-sparc-IOC_TYPECHECK.patch
+
+#
+# Exec shield
+#
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
+
+#
+# bugfixes to drivers and filesystems
+#
+
+# ext4
+
+# xfs
+
+# btrfs
+
+
+# eCryptfs
+
+# NFSv4
+
+# USB
+
+# WMI
+
+# ACPI
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-defaults-acpi-video.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-video-dos.patch
 	epatch "${FILESDIR}"/"${PVR}"/acpi-ec-add-delay-before-write.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-debug-infinite-loop.patch
+
+# Various low-impact patches to aid debugging.
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-debug-taint-vm.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-debug-vm-would-have-oomkilled.patch
+
+#
+# PCI
+#
+# enable ASPM by default on hardware we expect to work
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-defaults-aspm.patch
+
+#
+# SCSI Bits.
+#
+
+# ACPI
+
+# ALSA
+
+# Networking
+
+# Misc fixes
+# The input layer spews crap no-one cares about.
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-input-kill-stupid-messages.patch
+
+# stop floppy.ko from autoloading during udev...
 	epatch "${FILESDIR}"/"${PVR}"/die-floppy-die.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6.30-no-pcspkr-modalias.patch
+
+# Allow to use 480600 baud on 16C950 UARTs
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-serial-460800.patch
-###	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-noise.patch
+
+# Silence some useless messages that still get printed with 'quiet'
+##	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-noise.patch
+
+# Make fbcon not show the penguins with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-crash-driver.patch
+
+# Changes to upstream defaults.
+
+
+# /dev/crash driver.
+##	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-crash-driver.patch
+
+# Hack e1000e to work on Montevina SDV
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-e1000-ich9-montevina.patch
+
+# crypto/
+
+# Assorted Virt Fixes
 	epatch "${FILESDIR}"/"${PVR}"/fix_xen_guest_on_old_EC2.patch
+
+# DRM core
+
+# Nouveau DRM
+##	epatch "${FILESDIR}"/"${PVR}"/drm-nouveau-updates.patch
+
+# Intel DRM
+##	epatch "${FILESDIR}"/"${PVR}"/drm-intel-next.patch
 	epatch "${FILESDIR}"/"${PVR}"/drm-intel-make-lvds-work.patch
-###	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
+##	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
+
+# silence the ACPI blacklist code
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-acpi-blacklist.patch
+
+# V4L/DVB updates/fixes/experimental drivers
+#  apply if non-empty
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-fixes.patch
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-update.patch
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-experimental.patch
 #	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-v4l-dvb-uvcvideo-update.patch
+
+# Patches headed upstream
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/add-appleir-usb-driver.patch
-	epatch "${FILESDIR}"/"${PVR}"/neuter_intel_microcode_load.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/udlfb-bind-framebuffer-to-interface.patch
+	epatch "${FILESDIR}"/"${PVR}"/fix-cdc-ncm-dma-stack-vars.patch
+##	epatch "${FILESDIR}"/"${PVR}"/ums-realtek-driver-uses-stack-memory-for-DMA.patch
+	epatch "${FILESDIR}"/"${PVR}"/epoll-fix-spurious-lockdep-warnings.patch
+	epatch "${FILESDIR}"/"${PVR}"/rcu-prevent-early-schedule.patch
+
+# Runtime PM
 #	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-usb-pci-autosuspend.patch
+### Broken by implicit notify support & ACPICA rebase
 ###	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-enable-more-pci-autosuspend.patch
 #	epatch "${FILESDIR}"/"${PVR}"/runtime_pm_fixups.patch
-###	epatch "${FILESDIR}"/"${PVR}"/dmar-disable-when-ricoh-multifunction.patch
-#	epatch "${FILESDIR}"/"${PVR}"/utrace.patch
+
+# rhbz#605888
+##	epatch "${FILESDIR}"/"${PVR}"/dmar-disable-when-ricoh-multifunction.patch
+
+# utrace.
+##	epatch "${FILESDIR}"/"${PVR}"/utrace.patch
 
 # my
 	epatch "${FILESDIR}"/"${PVR}"/font-8x16-iso-latin-1.patch

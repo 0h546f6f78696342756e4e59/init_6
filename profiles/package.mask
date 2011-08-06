@@ -1,7 +1,7 @@
 # Andrey Ovcharov <sudormrfhalt@gmail.com>
 # live ebuild`s
 =media-video/handbrake-9999
-=net-libs/webkit-gtk-9999
+#=net-libs/webkit-gtk-9999
 =sys-kernel/vanilla-sources-9999
 
 # Andrey Ovcharov <sudormrfhalt@gmail.com>
@@ -10,5 +10,5 @@
 
 # Andrey Ovcharov <sudormrfhalt@gmail.com>
 # GNOME 3.1.x pre-release packages
-=net-libs/webkit-gtk-1.5.1
-=www-client/epiphany-3.1.2
+#=net-libs/webkit-gtk-1.5.1
+#=www-client/epiphany-3.1.2

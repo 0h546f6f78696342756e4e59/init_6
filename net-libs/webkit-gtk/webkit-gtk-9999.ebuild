@@ -4,7 +4,7 @@
 
 EAPI="4"
 
-inherit git autotools flag-o-matic eutils virtualx
+inherit git-2 autotools flag-o-matic eutils virtualx
 
 MY_P="webkit-${PV}"
 DESCRIPTION="Open source web browser engine"
@@ -12,7 +12,7 @@ HOMEPAGE="http://www.webkitgtk.org/"
 
 EGIT_REPO_URI="git://git.webkit.org/WebKit.git"
 EGIT_PROJECT="webkit"
-EGIT_BOOTSTRAP="NOCONFIGURE=1; ./autogen.sh"
+EGIT_BOOTSTRAP="NOCONFIGURE=1 ./autogen.sh"
 
 LICENSE="LGPL-2 LGPL-2.1 BSD"
 SLOT="3"
@@ -70,14 +70,14 @@ src_prepare() {
 
 	# intermediate MacPorts hack while upstream bug is not fixed properly
 	# https://bugs.webkit.org/show_bug.cgi?id=28727
-	use aqua && epatch "${FILESDIR}"/${PN}-1.2.5-darwin-quartz.patch
+#	use aqua && epatch "${FILESDIR}"/${PN}-1.2.5-darwin-quartz.patch
 
 	# Fix build on Darwin8 (10.4 Tiger)
 	# XXX: Fails to apply
 	#epatch "${FILESDIR}"/${PN}-1.2.5-darwin8.patch
 
 	# Don't force -O2
-	sed -i 's/-O2//g' "${S}"/configure.ac
+#	sed -i 's/-O2//g' "${S}"/configure.ac
 
 	# Don't build tests if not needed, part of bug #343249
 	# XXX: Fails to apply
@@ -112,10 +112,11 @@ src_configure() {
 		$(use_enable introspection)
 		$(use_enable gstreamer video)
 		$(use_enable jit)
-		--disable-webgl
 		--with-gtk=3.0
 		--disable-webkit2
 		--disable-web-sockets
+		--enable-3d-rendering
+		--enable-webgl
 		$(use aqua && echo "--with-font-backend=pango --with-target=quartz")"
 		# Aqua support in gtk3 is untested
 		# Disable web-sockets per bug #326547
