@@ -1,0 +1,22 @@
+!build? ( sys-apps/sed >=sys-devel/binutils-2.11.90.0.31 ) >=app-arch/rpm2targz-9.0.0.3g
+!build? ( >=sys-libs/ncurses-5.2 sys-devel/make )
+0
+http://ftp.redhat.com/pub/redhat/linux/enterprise/6Client/en/os/SRPMS/kernel-2.6.32-71.18.2.el6.src.rpm http://ftp.redhat.com/pub/redhat/linux/enterprise/6ComputeNode/en/os/SRPMS/kernel-2.6.32-71.18.2.el6.src.rpm http://ftp.redhat.com/pub/redhat/linux/enterprise/6Server/en/os/SRPMS/kernel-2.6.32-71.18.2.el6.src.rpm http://ftp.redhat.com/pub/redhat/linux/enterprise/6Workstation/en/os/SRPMS/kernel-2.6.32-71.18.2.el6.src.rpm
+nomirror
+http://www.redhat.com/
+GPL-2
+Full sources including the Red Hat Enterprise Linux sources patchset for the 2.6 kernel tree
+~x86 ~amd64
+eutils kernel-2 multilib portability rpm toolchain-funcs versionator
+symlink build
+
+!build? ( virtual/dev-manager )
+
+2
+
+compile install postinst postrm preinst prepare setup test unpack
+
+
+
+
+

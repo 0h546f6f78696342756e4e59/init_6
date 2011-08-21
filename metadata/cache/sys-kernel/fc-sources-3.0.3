@@ -1,0 +1,22 @@
+!build? ( sys-apps/sed >=sys-devel/binutils-2.11.90.0.31 )
+!build? ( >=sys-libs/ncurses-5.2 sys-devel/make )
+3.0.3
+mirror://kernel/linux/kernel/v3.0/patch-3.0.3.bz2 mirror://kernel/linux/kernel/v3.0/linux-3.0.tar.bz2
+nomirror
+http://fedoraproject.org/ http://download.fedora.redhat.com/pub/fedora/linux/development/source/SRPMS/
+GPL-2 freedist
+Fedora Core Linux patchset for the 3.0 linux kernel tree
+~amd64 ~x86
+eutils kernel-2 multilib portability toolchain-funcs versionator
+symlink build
+
+!build? ( virtual/dev-manager )
+
+2
+
+compile install postinst postrm preinst setup test unpack
+
+
+
+
+

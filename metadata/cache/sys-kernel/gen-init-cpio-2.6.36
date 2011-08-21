@@ -1,0 +1,22 @@
+
+sys-libs/glibc
+0
+
+
+http://www.kernel.org/
+as-is
+Program to compress initramfs images
+~amd64 ~x86
+
+
+
+
+
+
+
+install unpack
+
+
+
+
+

@@ -1,7 +1,7 @@
 # Andrey Ovcharov <sudormrfhalt@gmail.com>
 # live ebuild`s
 =media-video/handbrake-9999
-#=net-libs/webkit-gtk-9999
+=net-libs/webkit-gtk-9999
 =sys-kernel/vanilla-sources-9999
 
 # Andrey Ovcharov <sudormrfhalt@gmail.com>

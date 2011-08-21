@@ -1,0 +1,22 @@
+dev-lang/yasm dev-lang/python || ( net-misc/wget net-misc/curl ) sys-libs/zlib css? ( media-libs/libdvdcss ) gtk? ( >=x11-libs/gtk+-2.8 dev-libs/dbus-glib net-libs/webkit-gtk x11-libs/libnotify media-libs/gstreamer media-libs/gst-plugins-base ) >=dev-vcs/git-1.6 >=sys-apps/sed-4
+sys-libs/zlib css? ( media-libs/libdvdcss ) gtk? ( >=x11-libs/gtk+-2.8 dev-libs/dbus-glib net-libs/webkit-gtk x11-libs/libnotify media-libs/gstreamer media-libs/gst-plugins-base )
+0
+
+
+http://handbrake.fr/
+GPL-2
+Open-source DVD to MPEG-4 converter
+~amd64 ~x86
+eutils git gnome2-utils multilib portability toolchain-funcs
+css doc gtk
+
+
+
+2
+
+compile configure install postinst postrm preinst prepare unpack
+
+
+
+
+
