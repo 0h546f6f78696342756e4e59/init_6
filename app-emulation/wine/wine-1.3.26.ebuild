@@ -200,8 +200,8 @@ src_install() {
 	insinto /etc/xdg/menus/applications-merged/
 	doins  "${FILESDIR}/wine.menu" || die "doins failed"
 	insinto /usr/share/desktop-directories/
-	doins  "${FILESDIR}/Wine.directory" || die "doexe failed"
-	domenu "${FILESDIR}"/*.desktop || die "doins failed"
+	doins  "${FILESDIR}/Wine.directory" || die "doins failed"
+	domenu "${FILESDIR}"/*.desktop || die "domenu failed"
 	insinto /usr/share/pixmaps/
 	doins "${FILESDIR}"/*.svg || die "doins failed"
 }
