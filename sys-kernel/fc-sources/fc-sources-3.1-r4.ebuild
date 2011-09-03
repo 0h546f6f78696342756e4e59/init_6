@@ -186,8 +186,17 @@ src_unpack() {
 	echo
 	einfo "Apply extra patches" # my
 	echo
-	epatch "${FILESDIR}"/acpi-ec-add-delay-before-write.patch
-	epatch "${FILESDIR}"/font-8x16-iso-latin-1.patch
+	epatch "${FILESDIR}"/acpi-ec-add-delay-before-write.patch # https://bugzilla.kernel.org/show_bug.cgi?id=14733
+	epatch "${FILESDIR}"/font-8x16-iso-latin-1.patch # http://sudormrf.wordpress.com/2010/10/23/ka-ping-yee-iso-latin-1 font-in-linux-kernel/
+	# Gentoo linux logo
+	epatch "${FILESDIR}"/4400_logo_larry_the_cow.patch # http://trac.pentoo.ch/browser/kernel#trunk/3.0.3
+
+	epatch "${FILESDIR}"/channel-negative-one-maxim.patch
+
+	epatch "${FILESDIR}"/fix-i915.patch # fix #19234 i1915 display size
+
+
+	echo
 
 # Unfortunately, it has yet not been ported into 3.0 kernel.
 # Check out here for the progress: http://www.kernel.org/pub/linux/kernel/people/edward/reiser4/
