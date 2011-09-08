@@ -1,0 +1,42 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Mon, 11 Jan 2010 11:06:04 -0500
+Subject: [gfs] VFS: Add forget_all_cached_acls()
+Message-id: <1263207970-7099-3-git-send-email-swhiteho@redhat.com>
+Patchwork-id: 22364
+O-Subject: [PATCH 02/08] VFS: Add forget_all_cached_acls()
+Bugzilla: 546294
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+This is required for cluster filesystems which want to use
+cached ACLs so that they can invalidate the cache when
+required.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Cc: Alexander Viro <aviro@redhat.com>
+Cc: Christoph Hellwig <hch@infradead.org>
+
+diff --git a/include/linux/posix_acl.h b/include/linux/posix_acl.h
+index 065a365..6760816 100644
+--- a/include/linux/posix_acl.h
++++ b/include/linux/posix_acl.h
+@@ -147,6 +147,20 @@ static inline void forget_cached_acl(struct inode *inode, int type)
+ 	if (old != ACL_NOT_CACHED)
+ 		posix_acl_release(old);
+ }
++
++static inline void forget_all_cached_acls(struct inode *inode)
++{
++	struct posix_acl *old_access, *old_default;
++	spin_lock(&inode->i_lock);
++	old_access = inode->i_acl;
++	old_default = inode->i_default_acl;
++	inode->i_acl = inode->i_default_acl = ACL_NOT_CACHED;
++	spin_unlock(&inode->i_lock);
++	if (old_access != ACL_NOT_CACHED)
++		posix_acl_release(old_access);
++	if (old_default != ACL_NOT_CACHED)
++		posix_acl_release(old_default);
++}
+ #endif
+ 
+ static inline void cache_no_acl(struct inode *inode)

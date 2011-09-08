@@ -1,0 +1,42 @@
+From: Rob Evers <revers@redhat.com>
+Date: Thu, 17 Dec 2009 22:20:48 -0500
+Subject: [scsi] scsi_dh_rdac: add two IBM devices to rdac_dev_list
+Message-id: <20091217221301.6161.18712.sendpatchset@localhost.localdomain>
+Patchwork-id: 22098
+O-Subject: [RHEL6.0 PATCH] scsi_dh_rdac: add two IBM devices to rdac_dev_list
+Bugzilla: 528576
+RH-Acked-by: Mike Christie <mchristi@redhat.com>
+RH-Acked-by: Stefan Assmann <sassmann@redhat.com>
+RH-Acked-by: Tomas Henzl <thenzl@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+https://bugzilla.redhat.com/show_bug.cgi?id=528576
+
+Description:
+
+    This patch adds two new IBM storage devices which can use rdac
+    device handlers.
+
+Upstream Status:
+
+    Confirmed upstream
+
+Brew build:
+
+    https://brewweb.devel.redhat.com/taskinfo?taskID=2156045
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/device_handler/scsi_dh_rdac.c b/drivers/scsi/device_handler/scsi_dh_rdac.c
+index 776c385..a076c47 100644
+--- a/drivers/scsi/device_handler/scsi_dh_rdac.c
++++ b/drivers/scsi/device_handler/scsi_dh_rdac.c
+@@ -748,6 +748,8 @@ static const struct scsi_dh_devlist rdac_dev_list[] = {
+ 	{"IBM", "1724"},
+ 	{"IBM", "1726"},
+ 	{"IBM", "1742"},
++	{"IBM", "1745"},
++	{"IBM", "1746"},
+ 	{"IBM", "1814"},
+ 	{"IBM", "1815"},
+ 	{"IBM", "1818"},

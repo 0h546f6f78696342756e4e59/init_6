@@ -1,0 +1,147 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Tue, 15 Dec 2009 16:23:14 -0500
+Subject: [s390] zfcp: fix ELS ADISC handling to prevent QDIO errors
+Message-id: <1260894197-8068-4-git-send-email-brueckner@redhat.com>
+Patchwork-id: 21959
+O-Subject: [RHEL6 PATCH 3/6] [s390] zfcp: fix ELS ADISC handling to prevent QDIO
+	errors
+Bugzilla: 547385
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+When issuing a ELS ADISC to test the connection to a remote port,
+this could lead to a qdio error and adapter recovery.
+The ELS ADISC data does not satisfy the hardware alignment
+requirements, leading to the error and recovery.
+
+Introduce a kmem_cache for the ELS ADISC request data and use
+zfcp_cache_hw_align to align the data like other requests sent
+to the hardware.
+
+Bugzilla
+--------
+BZ 547385
+https://bugzilla.redhat.com/show_bug.cgi?id=547385
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=ee744622c65cd66824e8dd1b9509e515c800de14
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/scsi/zfcp_aux.c b/drivers/s390/scsi/zfcp_aux.c
+index eb69564..c474290 100644
+--- a/drivers/s390/scsi/zfcp_aux.c
++++ b/drivers/s390/scsi/zfcp_aux.c
+@@ -189,6 +189,11 @@ static int __init zfcp_module_init(void)
+ 	mutex_init(&zfcp_data.config_mutex);
+ 	rwlock_init(&zfcp_data.config_lock);
+ 
++	zfcp_data.adisc_cache = zfcp_cache_hw_align("zfcp_adisc",
++					sizeof(struct zfcp_els_adisc));
++	if (!zfcp_data.adisc_cache)
++		goto out_adisc_cache;
++
+ 	zfcp_data.scsi_transport_template =
+ 		fc_attach_transport(&zfcp_transport_functions);
+ 	if (!zfcp_data.scsi_transport_template)
+@@ -216,6 +221,8 @@ out_ccw_register:
+ out_misc:
+ 	fc_release_transport(zfcp_data.scsi_transport_template);
+ out_transport:
++	kmem_cache_destroy(zfcp_data.adisc_cache);
++out_adisc_cache:
+ 	kmem_cache_destroy(zfcp_data.gid_pn_cache);
+ out_gid_cache:
+ 	kmem_cache_destroy(zfcp_data.sr_buffer_cache);
+diff --git a/drivers/s390/scsi/zfcp_def.h b/drivers/s390/scsi/zfcp_def.h
+index 7da2fad..27ac110 100644
+--- a/drivers/s390/scsi/zfcp_def.h
++++ b/drivers/s390/scsi/zfcp_def.h
+@@ -365,6 +365,14 @@ struct zfcp_send_els {
+ 	int status;
+ };
+ 
++struct zfcp_els_adisc {
++	struct zfcp_send_els els;
++	struct scatterlist req;
++	struct scatterlist resp;
++	struct zfcp_ls_adisc ls_adisc;
++	struct zfcp_ls_adisc ls_adisc_acc;
++};
++
+ struct zfcp_wka_port {
+ 	struct zfcp_adapter	*adapter;
+ 	wait_queue_head_t	completion_wq;
+@@ -609,6 +617,7 @@ struct zfcp_data {
+ 	struct kmem_cache	*qtcb_cache;
+ 	struct kmem_cache	*sr_buffer_cache;
+ 	struct kmem_cache	*gid_pn_cache;
++	struct kmem_cache	*adisc_cache;
+ };
+ 
+ /********************** ZFCP SPECIFIC DEFINES ********************************/
+diff --git a/drivers/s390/scsi/zfcp_fc.c b/drivers/s390/scsi/zfcp_fc.c
+index 7f89f44..21da26e 100644
+--- a/drivers/s390/scsi/zfcp_fc.c
++++ b/drivers/s390/scsi/zfcp_fc.c
+@@ -392,14 +392,6 @@ void zfcp_fc_plogi_evaluate(struct zfcp_port *port, struct fsf_plogi *plogi)
+ 		port->supported_classes |= FC_COS_CLASS4;
+ }
+ 
+-struct zfcp_els_adisc {
+-	struct zfcp_send_els els;
+-	struct scatterlist req;
+-	struct scatterlist resp;
+-	struct zfcp_ls_adisc ls_adisc;
+-	struct zfcp_ls_adisc ls_adisc_acc;
+-};
+-
+ static void zfcp_fc_adisc_handler(unsigned long data)
+ {
+ 	struct zfcp_els_adisc *adisc = (struct zfcp_els_adisc *) data;
+@@ -428,15 +420,16 @@ static void zfcp_fc_adisc_handler(unsigned long data)
+  out:
+ 	atomic_clear_mask(ZFCP_STATUS_PORT_LINK_TEST, &port->status);
+ 	zfcp_port_put(port);
+-	kfree(adisc);
++	kmem_cache_free(zfcp_data.adisc_cache, adisc);
+ }
+ 
+ static int zfcp_fc_adisc(struct zfcp_port *port)
+ {
+ 	struct zfcp_els_adisc *adisc;
+ 	struct zfcp_adapter *adapter = port->adapter;
++	int ret;
+ 
+-	adisc = kzalloc(sizeof(struct zfcp_els_adisc), GFP_ATOMIC);
++	adisc = kmem_cache_alloc(zfcp_data.adisc_cache, GFP_ATOMIC);
+ 	if (!adisc)
+ 		return -ENOMEM;
+ 
+@@ -460,7 +453,11 @@ static int zfcp_fc_adisc(struct zfcp_port *port)
+ 	adisc->ls_adisc.wwnn = fc_host_node_name(adapter->scsi_host);
+ 	adisc->ls_adisc.nport_id = fc_host_port_id(adapter->scsi_host);
+ 
+-	return zfcp_fsf_send_els(&adisc->els);
++	ret = zfcp_fsf_send_els(&adisc->els);
++	if (ret)
++		kmem_cache_free(zfcp_data.adisc_cache, adisc);
++
++	return ret;
+ }
+ 
+ void zfcp_fc_link_test_work(struct work_struct *work)

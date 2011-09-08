@@ -1,0 +1,48 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Fri, 29 Jan 2010 15:44:20 -0500
+Subject: [uv] x86: Ensure hub revision set for all ACPI modes
+Message-id: <20100129102905.26138.89875.sendpatchset@sgi-xe250-01.lab.bos.redhat.com>
+Patchwork-id: 23005
+O-Subject: [RHEL6 PATCH 2/2] x86, uv: Ensure hub revision set for all ACPI modes
+Bugzilla: 559752
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+commit 1d2c867c941d635e53e8ad7bf37d060bb5b25ec5
+Author: Russ Anderson <rja@sgi.com>
+Date:   Fri Jan 15 12:09:09 2010 -0600
+
+    x86, uv: Ensure hub revision set for all ACPI modes.
+
+    Ensure that UV hub revision is set for all ACPI modes.
+
+    Signed-off-by: Russ Anderson <rja@sgi.com>
+    LKML-Reference: <20100115180908.GB7757@sgi.com>
+    Signed-off-by: H. Peter Anvin <hpa@zytor.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/apic/x2apic_uv_x.c b/arch/x86/kernel/apic/x2apic_uv_x.c
+index 5f88c0d..8d33a06 100644
+--- a/arch/x86/kernel/apic/x2apic_uv_x.c
++++ b/arch/x86/kernel/apic/x2apic_uv_x.c
+@@ -66,7 +66,10 @@ static int early_get_nodeid(void)
+ 
+ static int __init uv_acpi_madt_oem_check(char *oem_id, char *oem_table_id)
+ {
++	int nodeid;
++
+ 	if (!strcmp(oem_id, "SGI")) {
++		nodeid = early_get_nodeid();
+ 		x86_platform.is_untracked_pat_range =  uv_is_untracked_pat_range;
+ 		if (!strcmp(oem_table_id, "UVL"))
+ 			uv_system_type = UV_LEGACY_APIC;
+@@ -74,7 +77,7 @@ static int __init uv_acpi_madt_oem_check(char *oem_id, char *oem_table_id)
+ 			uv_system_type = UV_X2APIC;
+ 		else if (!strcmp(oem_table_id, "UVH")) {
+ 			__get_cpu_var(x2apic_extra_bits) =
+-				early_get_nodeid() << (UV_APIC_PNODE_SHIFT - 1);
++				nodeid << (UV_APIC_PNODE_SHIFT - 1);
+ 			uv_system_type = UV_NON_UNIQUE_APIC;
+ 			return 1;
+ 		}

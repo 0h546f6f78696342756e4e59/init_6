@@ -1,0 +1,39 @@
+From: Eric Paris <eparis@redhat.com>
+Date: Thu, 25 Feb 2010 15:25:32 -0500
+Subject: [selinux] netlabel: fix corruption of SELinux MLS categories > 127
+Message-id: <1267111532-14637-1-git-send-email-eparis@redhat.com>
+Patchwork-id: 23430
+O-Subject: [PATCH RHEL6] netlabel/selinux: fix corruption of SELinux MLS
+	categories > 127
+Bugzilla: 568370
+RH-Acked-by: David S. Miller <davem@redhat.com>
+
+BZ 568370
+
+The upstream posting is as follows, it is working towards Linus and stable.
+
+>> This fixes corrupted CIPSO packets when SELinux categories greater
+>> than 127 are used.  The bug occured on the second (and later) loops
+>> through the while; the inner for loop through the ebitmap->maps array
+>> used the same index as the NetLabel catmap->bitmap array, even though
+>> the NetLabel bitmap is twice as long as the SELinux bitmap.
+>>
+>> Signed-off-by: Joshua Roys <joshua.roys@gtri.gatech.edu>
+>> Acked-by: Paul Moore <paul.moore@hp.com>
+
+Signed-off-by: Eric Paris <eparis@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/security/selinux/ss/ebitmap.c b/security/selinux/ss/ebitmap.c
+index 68c7348..04b6145 100644
+--- a/security/selinux/ss/ebitmap.c
++++ b/security/selinux/ss/ebitmap.c
+@@ -128,7 +128,7 @@ int ebitmap_netlbl_export(struct ebitmap *ebmap,
+ 			cmap_idx = delta / NETLBL_CATMAP_MAPSIZE;
+ 			cmap_sft = delta % NETLBL_CATMAP_MAPSIZE;
+ 			c_iter->bitmap[cmap_idx]
+-				|= e_iter->maps[cmap_idx] << cmap_sft;
++				|= e_iter->maps[i] << cmap_sft;
+ 		}
+ 		e_iter = e_iter->next;
+ 	}

@@ -1,0 +1,38 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:46 -0500
+Subject: [block] cfq-iosched: fix style issue in cfq_get_avg_queues()
+Message-id: <1260298712-12756-14-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21781
+O-Subject: [RHEL6 PATCH 13/59] cfq-iosched: fix style issue in
+	cfq_get_avg_queues()
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit 5869619cb5b26754574375472fe54a390edf34c7
+Author: Jens Axboe <jens.axboe@oracle.com>
+Date:   Wed Oct 28 09:27:07 2009 +0100
+
+    cfq-iosched: fix style issue in cfq_get_avg_queues()
+
+    Line breaks and bad brace placement.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 2d4dcb0..3ac0dd8 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -393,8 +393,8 @@ cfq_prio_to_slice(struct cfq_data *cfqd, struct cfq_queue *cfqq)
+  * to quickly follows sudden increases and decrease slowly
+  */
+ 
+-static inline unsigned
+-cfq_get_avg_queues(struct cfq_data *cfqd, bool rt) {
++static inline unsigned cfq_get_avg_queues(struct cfq_data *cfqd, bool rt)
++{
+ 	unsigned min_q, max_q;
+ 	unsigned mult  = cfq_hist_divisor - 1;
+ 	unsigned round = cfq_hist_divisor / 2;

@@ -1,0 +1,87 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 11 Dec 2009 20:26:08 -0500
+Subject: [fat] make discard a mount option
+Message-id: <1260563168-6623-3-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21906
+O-Subject: [RHEL6 PATCH 2/2] fat: make discard a mount option
+Bugzilla: 552355
+RH-Acked-by: Eric Sandeen <sandeen@redhat.com>
+
+From: Christoph Hellwig <hch@lst.de>
+
+Related to bug 528046
+
+>From 8c1168ec4cb27e02223bf184e9acd23cad15acf4 Mon Sep 17 00:00:00 2001
+Date: Wed, 18 Nov 2009 18:08:41 +0100
+Subject: [PATCH 11/11] fat: make discard a mount option
+Currently shipping discard capable SSDs and arrays have rather sub-optimal
+implementations of the command and can the use of it can cause massive
+slowdowns.  Make issueing these commands option as it's already in btrfs
+and gfs2.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/fat/fat.h b/fs/fat/fat.h
+index 7db0979..e6efdfa 100644
+--- a/fs/fat/fat.h
++++ b/fs/fat/fat.h
+@@ -44,7 +44,8 @@ struct fat_mount_options {
+ 		 nocase:1,	  /* Does this need case conversion? 0=need case conversion*/
+ 		 usefree:1,	  /* Use free_clusters for FAT32 */
+ 		 tz_utc:1,	  /* Filesystem timestamps are in UTC */
+-		 rodir:1;	  /* allow ATTR_RO for directory */
++		 rodir:1,	  /* allow ATTR_RO for directory */
++		 discard:1;	  /* Issue discard requests on deletions */
+ };
+ 
+ #define FAT_HASH_BITS	8
+diff --git a/fs/fat/fatent.c b/fs/fat/fatent.c
+index a810377..6a202b4 100644
+--- a/fs/fat/fatent.c
++++ b/fs/fat/fatent.c
+@@ -573,8 +573,11 @@ int fat_free_clusters(struct inode *inode, int cluster)
+ 		if (cluster != fatent.entry + 1) {
+ 			int nr_clus = fatent.entry - first_cl + 1;
+ 
+-			sb_issue_discard(sb, fat_clus_to_blknr(sbi, first_cl),
+-					 nr_clus * sbi->sec_per_clus);
++			if (sbi->options.discard) {
++				sb_issue_discard(sb,
++					fat_clus_to_blknr(sbi, first_cl),
++					nr_clus * sbi->sec_per_clus);
++			}
+ 			first_cl = cluster;
+ 		}
+ 
+diff --git a/fs/fat/inode.c b/fs/fat/inode.c
+index 76b7961..2aa89c0 100644
+--- a/fs/fat/inode.c
++++ b/fs/fat/inode.c
+@@ -871,7 +871,7 @@ enum {
+ 	Opt_shortname_winnt, Opt_shortname_mixed, Opt_utf8_no, Opt_utf8_yes,
+ 	Opt_uni_xl_no, Opt_uni_xl_yes, Opt_nonumtail_no, Opt_nonumtail_yes,
+ 	Opt_obsolate, Opt_flush, Opt_tz_utc, Opt_rodir, Opt_err_cont,
+-	Opt_err_panic, Opt_err_ro, Opt_err,
++	Opt_err_panic, Opt_err_ro, Opt_discard, Opt_err,
+ };
+ 
+ static const match_table_t fat_tokens = {
+@@ -910,6 +910,7 @@ static const match_table_t fat_tokens = {
+ 	{Opt_obsolate, "cvf_format=%20s"},
+ 	{Opt_obsolate, "cvf_options=%100s"},
+ 	{Opt_obsolate, "posix"},
++	{Opt_discard, "discard"},
+ 	{Opt_err, NULL},
+ };
+ static const match_table_t msdos_tokens = {
+@@ -1136,6 +1137,9 @@ static int parse_options(char *options, int is_vfat, int silent, int *debug,
+ 		case Opt_rodir:
+ 			opts->rodir = 1;
+ 			break;
++		case Opt_discard:
++			opts->discard = 1;
++			break;
+ 
+ 		/* obsolete mount options */
+ 		case Opt_obsolate:

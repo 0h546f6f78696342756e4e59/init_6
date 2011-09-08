@@ -1,0 +1,101 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:12:07 -0500
+Subject: [kvm] use gfn_to_pfn_memslot in kvm_iommu_map_pages
+Message-id: <20100114171429.027814565@amt.cnet>
+Patchwork-id: 22542
+O-Subject: [RHEL 6 KVM 19/27] KVM: use gfn_to_pfn_memslot in kvm_iommu_map_pages
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 0e0cbd675fdd48afef5afc902b386c5a48da32ff
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Wed Dec 23 14:35:20 2009 -0200
+
+KVM: use gfn_to_pfn_memslot in kvm_iommu_map_pages
+
+So its possible to iommu map a memslot before making it visible to
+kvm.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/kvm_host.h b/include/linux/kvm_host.h
+index 6e622ea..05a3d10 100644
+--- a/include/linux/kvm_host.h
++++ b/include/linux/kvm_host.h
+@@ -439,8 +439,7 @@ void kvm_free_irq_source_id(struct kvm *kvm, int irq_source_id);
+ #define KVM_IOMMU_CACHE_COHERENCY	0x1
+ 
+ #ifdef CONFIG_IOMMU_API
+-int kvm_iommu_map_pages(struct kvm *kvm, gfn_t base_gfn,
+-			unsigned long npages);
++int kvm_iommu_map_pages(struct kvm *kvm, struct kvm_memory_slot *slot);
+ int kvm_iommu_map_guest(struct kvm *kvm);
+ int kvm_iommu_unmap_guest(struct kvm *kvm);
+ int kvm_assign_device(struct kvm *kvm,
+diff --git a/virt/kvm/iommu.c b/virt/kvm/iommu.c
+index bc697a6..cf567d8 100644
+--- a/virt/kvm/iommu.c
++++ b/virt/kvm/iommu.c
+@@ -32,10 +32,10 @@ static int kvm_iommu_unmap_memslots(struct kvm *kvm);
+ static void kvm_iommu_put_pages(struct kvm *kvm,
+ 				gfn_t base_gfn, unsigned long npages);
+ 
+-int kvm_iommu_map_pages(struct kvm *kvm,
+-			gfn_t base_gfn, unsigned long npages)
++int kvm_iommu_map_pages(struct kvm *kvm, struct kvm_memory_slot *slot)
+ {
+-	gfn_t gfn = base_gfn;
++	gfn_t gfn = slot->base_gfn;
++	unsigned long npages = slot->npages;
+ 	pfn_t pfn;
+ 	int i, r = 0;
+ 	struct iommu_domain *domain = kvm->arch.iommu_domain;
+@@ -54,7 +54,7 @@ int kvm_iommu_map_pages(struct kvm *kvm,
+ 		if (iommu_iova_to_phys(domain, gfn_to_gpa(gfn)))
+ 			continue;
+ 
+-		pfn = gfn_to_pfn(kvm, gfn);
++		pfn = gfn_to_pfn_memslot(kvm, slot, gfn);
+ 		r = iommu_map_range(domain,
+ 				    gfn_to_gpa(gfn),
+ 				    pfn_to_hpa(pfn),
+@@ -69,7 +69,7 @@ int kvm_iommu_map_pages(struct kvm *kvm,
+ 	return 0;
+ 
+ unmap_pages:
+-	kvm_iommu_put_pages(kvm, base_gfn, i);
++	kvm_iommu_put_pages(kvm, slot->base_gfn, i);
+ 	return r;
+ }
+ 
+@@ -81,8 +81,7 @@ static int kvm_iommu_map_memslots(struct kvm *kvm)
+ 	slots = kvm->memslots;
+ 
+ 	for (i = 0; i < slots->nmemslots; i++) {
+-		r = kvm_iommu_map_pages(kvm, slots->memslots[i].base_gfn,
+-					slots->memslots[i].npages);
++		r = kvm_iommu_map_pages(kvm, &slots->memslots[i]);
+ 		if (r)
+ 			break;
+ 	}
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index 2c8e062..d4192ef 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -1273,7 +1273,7 @@ skip_lpage:
+ 	spin_unlock(&kvm->mmu_lock);
+ #ifdef CONFIG_DMAR
+ 	/* map the pages in iommu page table */
+-	r = kvm_iommu_map_pages(kvm, base_gfn, npages);
++	r = kvm_iommu_map_pages(kvm, memslot);
+ 	if (r)
+ 		goto out;
+ #endif

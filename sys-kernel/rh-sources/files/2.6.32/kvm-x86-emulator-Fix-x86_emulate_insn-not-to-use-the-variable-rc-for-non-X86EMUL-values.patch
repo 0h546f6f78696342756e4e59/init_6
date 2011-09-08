@@ -1,0 +1,72 @@
+From: Gleb Natapov <gleb@redhat.com>
+Date: Mon, 22 Feb 2010 14:00:02 -0500
+Subject: [kvm] x86 emulator: Fix x86_emulate_insn() not to use the variable rc for non-X86EMUL values
+Message-id: <1266847206-28077-17-git-send-email-gleb@redhat.com>
+Patchwork-id: 23384
+O-Subject: [PATCH 16/20] KVM: x86 emulator: Fix x86_emulate_insn() not to use
+	the variable rc for non-X86EMUL values
+Bugzilla: 560903 560904 563466
+CVE: CVE-2010-0298 CVE-2010-0306 CVE-2010-0419
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+From: Takuya Yoshikawa <yoshikawa.takuya@oss.ntt.co.jp>
+
+This patch makes non-X86EMUL_* family functions not to use
+the variable rc.
+
+Be sure that this changes nothing but makes the purpose of
+the variable rc clearer.
+
+Signed-off-by: Takuya Yoshikawa <yoshikawa.takuya@oss.ntt.co.jp>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index 4c53d53..b7f8bc1 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -2451,9 +2451,9 @@ twobyte_insn:
+ 	case 0x21: /* mov from dr to reg */
+ 		if (c->modrm_mod != 3)
+ 			goto cannot_emulate;
+-		rc = emulator_get_dr(ctxt, c->modrm_reg, &c->regs[c->modrm_rm]);
+-		if (rc)
++		if (emulator_get_dr(ctxt, c->modrm_reg, &c->regs[c->modrm_rm]))
+ 			goto cannot_emulate;
++		rc = X86EMUL_CONTINUE;
+ 		c->dst.type = OP_NONE;	/* no writeback */
+ 		break;
+ 	case 0x22: /* mov reg, cr */
+@@ -2466,18 +2466,16 @@ twobyte_insn:
+ 	case 0x23: /* mov from reg to dr */
+ 		if (c->modrm_mod != 3)
+ 			goto cannot_emulate;
+-		rc = emulator_set_dr(ctxt, c->modrm_reg,
+-				     c->regs[c->modrm_rm]);
+-		if (rc)
++		if (emulator_set_dr(ctxt, c->modrm_reg, c->regs[c->modrm_rm]))
+ 			goto cannot_emulate;
++		rc = X86EMUL_CONTINUE;
+ 		c->dst.type = OP_NONE;	/* no writeback */
+ 		break;
+ 	case 0x30:
+ 		/* wrmsr */
+ 		msr_data = (u32)c->regs[VCPU_REGS_RAX]
+ 			| ((u64)c->regs[VCPU_REGS_RDX] << 32);
+-		rc = kvm_set_msr(ctxt->vcpu, c->regs[VCPU_REGS_RCX], msr_data);
+-		if (rc) {
++		if (kvm_set_msr(ctxt->vcpu, c->regs[VCPU_REGS_RCX], msr_data)) {
+ 			kvm_inject_gp(ctxt->vcpu, 0);
+ 			c->eip = kvm_rip_read(ctxt->vcpu);
+ 		}
+@@ -2486,8 +2484,7 @@ twobyte_insn:
+ 		break;
+ 	case 0x32:
+ 		/* rdmsr */
+-		rc = kvm_get_msr(ctxt->vcpu, c->regs[VCPU_REGS_RCX], &msr_data);
+-		if (rc) {
++		if (kvm_get_msr(ctxt->vcpu, c->regs[VCPU_REGS_RCX], &msr_data)) {
+ 			kvm_inject_gp(ctxt->vcpu, 0);
+ 			c->eip = kvm_rip_read(ctxt->vcpu);
+ 		} else {

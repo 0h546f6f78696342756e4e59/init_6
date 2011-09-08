@@ -1,0 +1,165 @@
+From: Gleb Natapov <gleb@redhat.com>
+Date: Mon, 22 Feb 2010 14:00:06 -0500
+Subject: [kvm] Fix emulate_sys[call, enter, exit]()'s fault handling
+Message-id: <1266847206-28077-21-git-send-email-gleb@redhat.com>
+Patchwork-id: 23387
+O-Subject: [PATCH 20/20] KVM: Fix emulate_sys[call, enter,
+	exit]()'s fault handling
+Bugzilla: 560903 560904 563466
+CVE: CVE-2010-0298 CVE-2010-0306 CVE-2010-0419
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+From: Takuya Yoshikawa <yoshikawa.takuya@oss.ntt.co.jp>
+
+This patch fixes emulate_syscall(), emulate_sysenter() and
+emulate_sysexit() to handle injected faults properly.
+
+Even though original code injects faults in these functions,
+we cannot handle these unless we use the different return
+value from the UNHANDLEABLE case. So this patch use X86EMUL_*
+codes instead of -1 and 0 and makes x86_emulate_insn() to
+handle these propagated faults.
+
+Be sure that, in x86_emulate_insn(), goto cannot_emulate and
+goto done with rc equals X86EMUL_UNHANDLEABLE have same effect.
+
+Signed-off-by: Takuya Yoshikawa <yoshikawa.takuya@oss.ntt.co.jp>
+Signed-off-by: Gleb Natapov <gleb@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index 905ab19..d48aece 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -1551,7 +1551,7 @@ emulate_syscall(struct x86_emulate_ctxt *ctxt)
+ 
+ 	/* syscall is not available in real mode */
+ 	if (ctxt->mode == X86EMUL_MODE_REAL || ctxt->mode == X86EMUL_MODE_VM86)
+-		return -1;
++		return X86EMUL_UNHANDLEABLE;
+ 
+ 	setup_syscalls_segments(ctxt, &cs, &ss);
+ 
+@@ -1588,7 +1588,7 @@ emulate_syscall(struct x86_emulate_ctxt *ctxt)
+ 		ctxt->eflags &= ~(EFLG_VM | EFLG_IF | EFLG_RF);
+ 	}
+ 
+-	return 0;
++	return X86EMUL_CONTINUE;
+ }
+ 
+ static int
+@@ -1601,14 +1601,14 @@ emulate_sysenter(struct x86_emulate_ctxt *ctxt)
+ 	/* inject #GP if in real mode */
+ 	if (ctxt->mode == X86EMUL_MODE_REAL) {
+ 		kvm_inject_gp(ctxt->vcpu, 0);
+-		return -1;
++		return X86EMUL_UNHANDLEABLE;
+ 	}
+ 
+ 	/* XXX sysenter/sysexit have not been tested in 64bit mode.
+ 	* Therefore, we inject an #UD.
+ 	*/
+ 	if (ctxt->mode == X86EMUL_MODE_PROT64)
+-		return -1;
++		return X86EMUL_UNHANDLEABLE;
+ 
+ 	setup_syscalls_segments(ctxt, &cs, &ss);
+ 
+@@ -1617,13 +1617,13 @@ emulate_sysenter(struct x86_emulate_ctxt *ctxt)
+ 	case X86EMUL_MODE_PROT32:
+ 		if ((msr_data & 0xfffc) == 0x0) {
+ 			kvm_inject_gp(ctxt->vcpu, 0);
+-			return -1;
++			return X86EMUL_PROPAGATE_FAULT;
+ 		}
+ 		break;
+ 	case X86EMUL_MODE_PROT64:
+ 		if (msr_data == 0x0) {
+ 			kvm_inject_gp(ctxt->vcpu, 0);
+-			return -1;
++			return X86EMUL_PROPAGATE_FAULT;
+ 		}
+ 		break;
+ 	}
+@@ -1648,7 +1648,7 @@ emulate_sysenter(struct x86_emulate_ctxt *ctxt)
+ 	kvm_x86_ops->get_msr(ctxt->vcpu, MSR_IA32_SYSENTER_ESP, &msr_data);
+ 	c->regs[VCPU_REGS_RSP] = msr_data;
+ 
+-	return 0;
++	return X86EMUL_CONTINUE;
+ }
+ 
+ static int
+@@ -1663,7 +1663,7 @@ emulate_sysexit(struct x86_emulate_ctxt *ctxt)
+ 	if (ctxt->mode == X86EMUL_MODE_REAL ||
+ 	    ctxt->mode == X86EMUL_MODE_VM86) {
+ 		kvm_inject_gp(ctxt->vcpu, 0);
+-		return -1;
++		return X86EMUL_UNHANDLEABLE;
+ 	}
+ 
+ 	setup_syscalls_segments(ctxt, &cs, &ss);
+@@ -1681,7 +1681,7 @@ emulate_sysexit(struct x86_emulate_ctxt *ctxt)
+ 		cs.selector = (u16)(msr_data + 16);
+ 		if ((msr_data & 0xfffc) == 0x0) {
+ 			kvm_inject_gp(ctxt->vcpu, 0);
+-			return -1;
++			return X86EMUL_PROPAGATE_FAULT;
+ 		}
+ 		ss.selector = (u16)(msr_data + 24);
+ 		break;
+@@ -1689,7 +1689,7 @@ emulate_sysexit(struct x86_emulate_ctxt *ctxt)
+ 		cs.selector = (u16)(msr_data + 32);
+ 		if (msr_data == 0x0) {
+ 			kvm_inject_gp(ctxt->vcpu, 0);
+-			return -1;
++			return X86EMUL_PROPAGATE_FAULT;
+ 		}
+ 		ss.selector = cs.selector + 8;
+ 		cs.db = 0;
+@@ -1705,7 +1705,7 @@ emulate_sysexit(struct x86_emulate_ctxt *ctxt)
+ 	c->eip = ctxt->vcpu->arch.regs[VCPU_REGS_RDX];
+ 	c->regs[VCPU_REGS_RSP] = ctxt->vcpu->arch.regs[VCPU_REGS_RCX];
+ 
+-	return 0;
++	return X86EMUL_CONTINUE;
+ }
+ 
+ static bool emulator_bad_iopl(struct x86_emulate_ctxt *ctxt)
+@@ -2418,8 +2418,9 @@ twobyte_insn:
+ 		}
+ 		break;
+ 	case 0x05: 		/* syscall */
+-		if (emulate_syscall(ctxt) == -1)
+-			goto cannot_emulate;
++		rc = emulate_syscall(ctxt);
++		if (rc != X86EMUL_CONTINUE)
++			goto done;
+ 		else
+ 			goto writeback;
+ 		break;
+@@ -2487,14 +2488,16 @@ twobyte_insn:
+ 		c->dst.type = OP_NONE;
+ 		break;
+ 	case 0x34:		/* sysenter */
+-		if (emulate_sysenter(ctxt) == -1)
+-			goto cannot_emulate;
++		rc = emulate_sysenter(ctxt);
++		if (rc != X86EMUL_CONTINUE)
++			goto done;
+ 		else
+ 			goto writeback;
+ 		break;
+ 	case 0x35:		/* sysexit */
+-		if (emulate_sysexit(ctxt) == -1)
+-			goto cannot_emulate;
++		rc = emulate_sysexit(ctxt);
++		if (rc != X86EMUL_CONTINUE)
++			goto done;
+ 		else
+ 			goto writeback;
+ 		break;

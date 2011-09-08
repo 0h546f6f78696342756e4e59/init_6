@@ -1,0 +1,48 @@
+From: John Feeney <jfeeney@redhat.com>
+Date: Fri, 18 Dec 2009 23:09:06 -0500
+Subject: [tpm] autoload tpm_tis driver
+Message-id: <4B2C0B92.8060505@redhat.com>
+Patchwork-id: 22203
+O-Subject: [RHEL6.0 PATCH] autoload tpm_tis driver
+Bugzilla: 531891
+RH-Acked-by: Stefan Assmann <sassmann@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+bz531891
+https://bugzilla.redhat.com/bugzilla/show_bug.cgi?id=531891
+autoload tpm_tis driver
+
+Description of problem:
+The tpm_tis driver does not load at boot on its own.
+
+Solution:
+Allow it to do so.
+
+Upstream status:
+ From the posted upstream patch:
+
+"The tpm_tis driver already has a list of supported pnp_device_ids.
+This patch simply exports that list as a MODULE_DEVICE_TABLE() so that
+the module autoloader will discover and load the module at boottime."
+
+commit: 31bde71c202722a76686c3cf69a254c8a912275a
+
+Brew:
+Successfully built in Brew for all architectures (task_2158675).
+
+Acks would be appreciated. Thanks.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/tpm/tpm_tis.c b/drivers/char/tpm/tpm_tis.c
+index 0b73e4e..c10ab48 100644
+--- a/drivers/char/tpm/tpm_tis.c
++++ b/drivers/char/tpm/tpm_tis.c
+@@ -629,6 +629,7 @@ static struct pnp_device_id tpm_pnp_tbl[] __devinitdata = {
+ 	{"", 0},		/* User Specified */
+ 	{"", 0}			/* Terminator */
+ };
++MODULE_DEVICE_TABLE(pnp, tpm_pnp_tbl);
+ 
+ static __devexit void tpm_tis_pnp_remove(struct pnp_dev *dev)
+ {

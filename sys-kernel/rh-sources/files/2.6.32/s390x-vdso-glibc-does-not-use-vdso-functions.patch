@@ -1,0 +1,52 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Thu, 25 Feb 2010 13:23:19 -0500
+Subject: [s390x] vdso: glibc does not use vdso functions
+Message-id: <20100225132318.GA26983@redhat.com>
+Patchwork-id: 23428
+O-Subject: [RHEL6 PATCH 1/1] [s390] vdso: glibc does not use vdso functions
+Bugzilla: 567755
+RH-Acked-by: Roland McGrath <roland@redhat.com>
+
+Description
+-----------
+The glibc and the kernel disagree about the symbol version for the
+__kernel_gettimeofday, __kernel_clock_gettime, and
+__kernel_clock_getres functions.  The kernel provided vdso defines
+these symbols with version LINUX_2.6.26 but the glibc expects the
+symbols to have version LINUX_2.6.29.
+As a result, gettimofday() and clock_gettime() do not benefit from
+the vdso performance gain.
+
+Since the vdso code went upstream with kernel version 2.6.29 the
+correct symbol version is LINUX_2.6.29.  Correct the symbol version
+in the kernel provided vdso object.
+
+Bugzilla
+--------
+BZ 567755
+https://bugzilla.redhat.com/show_bug.cgi?id=567755
+
+Upstream status of the patch
+----------------------------
+The patch is queued and will be upstream as of kernel version 2.6.34
+http://lkml.org/lkml/2010/2/24/88
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+
+diff --git a/arch/s390/include/asm/vdso.h b/arch/s390/include/asm/vdso.h
+index 7bdd7c8..4a76d94 100644
+--- a/arch/s390/include/asm/vdso.h
++++ b/arch/s390/include/asm/vdso.h
+@@ -7,7 +7,7 @@
+ #define VDSO32_LBASE	0
+ #define VDSO64_LBASE	0
+ 
+-#define VDSO_VERSION_STRING	LINUX_2.6.26
++#define VDSO_VERSION_STRING	LINUX_2.6.29
+ 
+ #ifndef __ASSEMBLY__
+ 

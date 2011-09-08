@@ -1,0 +1,44 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Fri, 5 Feb 2010 19:58:56 -0500
+Subject: [nfs] sunrpc/cache: fix module refcnt leak in a failure path
+Message-id: <4B6C7880.2050606@RedHat.com>
+Patchwork-id: 23162
+O-Subject: [RHEL6][PATCH] sunrpc/cache: fix module refcnt leak in a failure path
+Bugzilla: 562285
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+I was cleaning out my lkml folder and came across this... It
+looks like a reasonable thing todo...
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=562285
+
+steved.
+
+Author: Li Zefan <lizf@cn.fujitsu.com>
+Date:   Fri Feb 5 14:44:00 2010 -0500
+
+    Don't forget to release the module refcnt if seq_open()
+    returns failure.
+
+    Signed-off-by: Li Zefan <lizf@cn.fujitsu.com>
+    Signed-off-by: Steve Dickson <steved@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/net/sunrpc/cache.c b/net/sunrpc/cache.c
+index d6eee29..25f7801 100644
+--- a/net/sunrpc/cache.c
++++ b/net/sunrpc/cache.c
+@@ -1234,8 +1234,10 @@ static int content_open(struct inode *inode, struct file *file,
+ 	if (!cd || !try_module_get(cd->owner))
+ 		return -EACCES;
+ 	han = __seq_open_private(file, &cache_content_op, sizeof(*han));
+-	if (han == NULL)
++	if (han == NULL) {
++		module_put(cd->owner);
+ 		return -ENOMEM;
++	}
+ 
+ 	han->cd = cd;
+ 	return 0;

@@ -1,0 +1,26 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:38 -0500
+Subject: [Fedora] [floppy] remove the floppy pnp modalias
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Kill the floppy.ko pnp modalias. We were surviving just fine without
+autoloading floppy drivers, tyvm.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/block/floppy.c b/drivers/block/floppy.c
+index 5c01f74..5330838 100644
+--- a/drivers/block/floppy.c
++++ b/drivers/block/floppy.c
+@@ -4636,7 +4636,7 @@ static const struct pnp_device_id floppy_pnpids[] = {
+ 	{ "PNP0700", 0 },
+ 	{ }
+ };
+-MODULE_DEVICE_TABLE(pnp, floppy_pnpids);
++/* MODULE_DEVICE_TABLE(pnp, floppy_pnpids); */
+ 
+ #else
+ 

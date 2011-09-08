@@ -1,0 +1,67 @@
+From: Takahiro Yasui <tyasui@redhat.com>
+Date: Tue, 24 Nov 2009 16:27:40 -0500
+Subject: [scsi] devinfo update for Hitachi entries
+Message-id: <4B0C10AE.4040206@redhat.com>
+Patchwork-id: 21479
+O-Subject: [RHEL6 PATCH] scsi devinfo update for Hitachi entries
+Bugzilla: 526763
+RH-Acked-by: Mike Christie <mchristi@redhat.com>
+
+BZ#:
+----
+  https://bugzilla.redhat.com/show_bug.cgi?id=526763
+
+Description:
+-----------
+  The current kernel doesn't work properly for Hitachi some storages
+  when SCSI-2 protocol is used. The main issues are:
+
+    - The storage mode, OPEN- (except for OPEN-E) don't detect a large
+      number of LUs (> 8) and sparse LUs.
+    - The storage mode, OPEN-E, detects ghost LUs.
+    - The storage mode, DF400 and DF500, don't detect a large number
+      of LUs (> 8).
+
+  In addition, DF600 doesn't require any flag because it returns ANSI 03h
+  (SPC), and the flag is backported based on the upstream patch.
+
+Upstream status:
+----------------
+  Merged in scsi-misc
+  commit: 045ba557f522234638262b8b4b4c0081f82937a2
+
+Brew Build:
+-----------
+  https://brewweb.devel.redhat.com/taskinfo?taskID=2092672
+
+Test status:
+------------
+  Patch was tested with kernel-2.6.31-27.el6.2. The flags, OPEN-,
+  DF400/500 and DISK-SUBSYSTEM were set correctly.
+
+Thanks,
+Takahiro yasui
+
+Signed-off-by: Takahiro Yasui <tyasui@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/scsi_devinfo.c b/drivers/scsi/scsi_devinfo.c
+index 93c2622..802e91c 100644
+--- a/drivers/scsi/scsi_devinfo.c
++++ b/drivers/scsi/scsi_devinfo.c
+@@ -168,11 +168,10 @@ static struct {
+ 	{"Generic", "USB SD Reader", "1.00", BLIST_FORCELUN | BLIST_INQUIRY_36},
+ 	{"Generic", "USB Storage-SMC", "0180", BLIST_FORCELUN | BLIST_INQUIRY_36},
+ 	{"Generic", "USB Storage-SMC", "0207", BLIST_FORCELUN | BLIST_INQUIRY_36},
+-	{"HITACHI", "DF400", "*", BLIST_SPARSELUN},
+-	{"HITACHI", "DF500", "*", BLIST_SPARSELUN},
+-	{"HITACHI", "DF600", "*", BLIST_SPARSELUN},
+-	{"HITACHI", "DISK-SUBSYSTEM", "*", BLIST_ATTACH_PQ3 | BLIST_SPARSELUN | BLIST_LARGELUN},
+-	{"HITACHI", "OPEN-E", "*", BLIST_ATTACH_PQ3 | BLIST_SPARSELUN | BLIST_LARGELUN},
++	{"HITACHI", "DF400", "*", BLIST_REPORTLUN2},
++	{"HITACHI", "DF500", "*", BLIST_REPORTLUN2},
++	{"HITACHI", "DISK-SUBSYSTEM", "*", BLIST_REPORTLUN2},
++	{"HITACHI", "OPEN-", "*", BLIST_REPORTLUN2},
+ 	{"HITACHI", "OP-C-", "*", BLIST_SPARSELUN | BLIST_LARGELUN},
+ 	{"HITACHI", "3380-", "*", BLIST_SPARSELUN | BLIST_LARGELUN},
+ 	{"HITACHI", "3390-", "*", BLIST_SPARSELUN | BLIST_LARGELUN},

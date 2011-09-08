@@ -1,0 +1,118 @@
+From: Prarit Bhargava <prarit@redhat.com>
+Date: Tue, 24 Nov 2009 16:27:40 -0500
+Subject: [x86] AMD Northbridge: Verify NB's node is online
+Message-id: <20091116170020.25580.95424.sendpatchset@prarit.bos.redhat.com>
+Patchwork-id: 21383
+O-Subject: [RHEL6 PATCH]: x86: AMD Northbridge: Verify NB's node is online
+Bugzilla: 536759
+RH-Acked-by: Christopher Lalancette <clalance@redhat.com>
+RH-Acked-by: Neil Horman <nhorman@redhat.com>
+
+Fix panic seen on some IBM and HP systems on RHEL6:
+
+Description of problem:
+Kernel failed to boot on hp-dl585g2-01.rhts.bos.redhat.com, but the older
+kernel is working -- 2.6.29.4-1.el6.x86_64.
+
+Welcome to Red Hat Enterprise Linux
+Press 'I' to enter interactive startup.
+Starting udev: BUG: unable to handle kernel NULL pointer dereference at (null)
+IP: [<ffffffff812604c2>] find_next_bit+0x8a/0xc3
+PGD 273d78067 PUD 273d71067 PMD 0
+Oops: 0000 [#1] SMP
+last sysfs file:
+/sys/devices/pci0000:00/0000:00:09.0/0000:01:04.4/usb3/bDeviceClass
+CPU 4
+Modules linked in: hwmon(+) amd64_edac_mod(+) serio_raw edac_core pata_acpi
+ata_generic pata_amd cciss dm_mod [last unloaded: scsi_wait_scan]
+Pid: 542, comm: modprobe Not tainted 2.6.31-34.el6.x86_64 #1 ProLiant DL585 G2
+RIP: 0010:[<ffffffff812604c2>]  [<ffffffff812604c2>] find_next_bit+0x8a/0xc3
+RSP: 0018:ffff880272d7dbe8  EFLAGS: 00010202
+RAX: 0000000000000000 RBX: ffffffff818c19a0 RCX: 0000000000000000
+RDX: 0000000000000000 RSI: 0000000000000008 RDI: 0000000000000008
+RBP: ffff880272d7dbf8 R08: 0000000000000000 R09: 0000000000000000
+R10: ffffffff81e02260 R11: 0000000000000000 R12: 0000000000000000
+R13: ffffffffa0066350 R14: 0000000000000001 R15: 0000000002338aa0
+FS:  00007f9c14071700(0000) GS:ffff880035d7c000(0000) knlGS:0000000000000000
+CS:  0010 DS: 0000 ES: 0000 CR0: 000000008005003b
+CR2: 0000000000000000 CR3: 0000000272d7a000 CR4: 00000000000006e0
+DR0: 0000000000000000 DR1: 0000000000000000 DR2: 0000000000000000
+DR3: 0000000000000000 DR6: 00000000ffff0ff0 DR7: 0000000000000400
+Process modprobe (pid: 542, threadinfo ffff880272d7c000, task ffff880272fb5d80)
+Stack:
+ffff880272d7dc08 0000000019b3fefd ffff880272d7dc28 ffffffff8125ffa1
+<0> ffff880272d7dc28 0000000019b3fefd ffff880276435168 ffff8802764351f8
+<0> ffff880272d7dc78 ffffffff812809d5 ffffffffa0066350 ffff880276435168
+Call Trace:
+[<ffffffff8125ffa1>] cpumask_next_and+0x41/0x64
+[<ffffffff812809d5>] pci_device_probe+0x9d/0x11a
+[<ffffffff8132f746>] driver_probe_device+0xe8/0x225
+[<ffffffff8132f8ea>] __driver_attach+0x67/0xa1
+[<ffffffff8132f883>] ? __driver_attach+0x0/0xa1
+[<ffffffff8132e93f>] bus_for_each_dev+0x63/0xae
+[<ffffffff8132f459>] driver_attach+0x2c/0x42
+[<ffffffff8132f046>] bus_add_driver+0x104/0x27e
+[<ffffffff8132fcde>] driver_register+0xa7/0x12f
+[<ffffffff81280cb4>] __pci_register_driver+0x72/0xf8
+[<ffffffffa0037000>] ? amd64_edac_init+0x0/0x1000 [amd64_edac_mod]
+[<ffffffffa0037066>] amd64_edac_init+0x66/0x1000 [amd64_edac_mod]
+[<ffffffff81082247>] ? up_read+0x35/0x50
+[<ffffffffa0037000>] ? amd64_edac_init+0x0/0x1000 [amd64_edac_mod]
+[<ffffffff8100a0a9>] do_one_initcall+0x7c/0x1b4
+[<ffffffff810a04a7>] sys_init_module+0xe2/0x243
+[<ffffffff81011e42>] system_call_fastpath+0x16/0x1b
+Code: 49 83 c0 40 eb 14 49 8b 01 48 85 c0 75 39 49 83 c1 08 49 83 c0 40 48 83
+ef 40 48 f7 c7 c0 ff ff ff 75 e3 48 85 ff 4c 89 c0 74 23 <49> 8b 01 b9 40 00 00
+00 48 83 ca ff 29 f9 48 d3 ea 48 21 d0 75
+RIP  [<ffffffff812604c2>] find_next_bit+0x8a/0xc3
+
+I put in a printk and commented out the set_dev_node()
+call when and got this output:
+
+ quirk_amd_nb_node: current numa_node = 0x0, would set to val & 7 = 0x0
+ quirk_amd_nb_node: current numa_node = 0x0, would set to val & 7 = 0x1
+ quirk_amd_nb_node: current numa_node = 0x0, would set to val & 7 = 0x2
+ quirk_amd_nb_node: current numa_node = 0x0, would set to val & 7 = 0x3
+
+I.e. the issue appears to be that the HW has set val to a valid
+value, however, the system is only configured for a single
+node -- 0, the others are offline.
+
+Check to see if the node is actually online before setting
+the numa node for an AMD northbridge in quirk_amd_nb_node().
+
+Note: This patch may make it into 2.6.32, but I'm POSTing it anyway.
+
+Successfully tested by me.
+
+Resolves BZ 536759.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/quirks.c b/arch/x86/kernel/quirks.c
+index 6c3b2c6..18093d7 100644
+--- a/arch/x86/kernel/quirks.c
++++ b/arch/x86/kernel/quirks.c
+@@ -499,6 +499,7 @@ static void __init quirk_amd_nb_node(struct pci_dev *dev)
+ {
+ 	struct pci_dev *nb_ht;
+ 	unsigned int devfn;
++	u32 node;
+ 	u32 val;
+ 
+ 	devfn = PCI_DEVFN(PCI_SLOT(dev->devfn), 0);
+@@ -507,7 +508,13 @@ static void __init quirk_amd_nb_node(struct pci_dev *dev)
+ 		return;
+ 
+ 	pci_read_config_dword(nb_ht, 0x60, &val);
+-	set_dev_node(&dev->dev, val & 7);
++	node = val & 7;
++	/*
++	 * Some hardware may return an invalid node ID,
++	 * so check it first:
++	 */
++	if (node_online(node))
++		set_dev_node(&dev->dev, node);
+ 	pci_dev_put(nb_ht);
+ }
+ 

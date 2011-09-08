@@ -1,0 +1,89 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 18 Dec 2009 15:19:00 -0500
+Subject: [s390] cio: setting a device online or offline fails for unknown reasons
+Message-id: <1261149549-27749-5-git-send-email-brueckner@redhat.com>
+Patchwork-id: 22131
+O-Subject: [RHEL6 PATCH 04/13] [s390] cio: setting a device online or offline
+	fails for unknown reasons
+Bugzilla: 548490
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+After a set online or offline operation, an I/O device does no
+longer work.  Conditions that preclude a successful online or
+offline operation are not reported to the user.
+
+Print a warning message, informing users of the error condition
+that was encountered.
+
+Bugzilla
+--------
+BZ 548490
+https://bugzilla.redhat.com/show_bug.cgi?id=548490
+
+Upstream status of the patch
+----------------------------
+The patch is upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=a7ae2c02f5ab7080646a4cc6c01065ae9decad54
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/cio/device.c b/drivers/s390/cio/device.c
+index 9a3a5da..e90b982 100644
+--- a/drivers/s390/cio/device.c
++++ b/drivers/s390/cio/device.c
+@@ -7,6 +7,10 @@
+  *		 Cornelia Huck (cornelia.huck@de.ibm.com)
+  *		 Martin Schwidefsky (schwidefsky@de.ibm.com)
+  */
++
++#define KMSG_COMPONENT "cio"
++#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
++
+ #include <linux/module.h>
+ #include <linux/init.h>
+ #include <linux/spinlock.h>
+@@ -347,6 +351,14 @@ int ccw_device_set_offline(struct ccw_device *cdev)
+ 	spin_unlock_irq(cdev->ccwlock);
+ 	wait_event(cdev->private->wait_q, (dev_fsm_final_state(cdev) ||
+ 		   cdev->private->state == DEV_STATE_DISCONNECTED));
++	/* Inform the user if set offline failed. */
++	if (cdev->private->state == DEV_STATE_BOXED) {
++		pr_warning("%s: The device entered boxed state while "
++			   "being set offline\n", dev_name(&cdev->dev));
++	} else if (cdev->private->state == DEV_STATE_NOT_OPER) {
++		pr_warning("%s: The device stopped operating while "
++			   "being set offline\n", dev_name(&cdev->dev));
++	}
+ 	/* Give up reference from ccw_device_set_online(). */
+ 	put_device(&cdev->dev);
+ 	return 0;
+@@ -407,6 +419,16 @@ int ccw_device_set_online(struct ccw_device *cdev)
+ 	if ((cdev->private->state != DEV_STATE_ONLINE) &&
+ 	    (cdev->private->state != DEV_STATE_W4SENSE)) {
+ 		spin_unlock_irq(cdev->ccwlock);
++		/* Inform the user that set online failed. */
++		if (cdev->private->state == DEV_STATE_BOXED) {
++			pr_warning("%s: Setting the device online failed "
++				   "because it is boxed\n",
++				   dev_name(&cdev->dev));
++		} else if (cdev->private->state == DEV_STATE_NOT_OPER) {
++			pr_warning("%s: Setting the device online failed "
++				   "because it is not operational\n",
++				   dev_name(&cdev->dev));
++		}
+ 		/* Give up online reference since onlining failed. */
+ 		put_device(&cdev->dev);
+ 		return -ENODEV;

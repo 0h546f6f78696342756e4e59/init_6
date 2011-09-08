@@ -1,0 +1,70 @@
+From: Izik Eidus <ieidus@redhat.com>
+Date: Thu, 17 Dec 2009 15:52:07 -0500
+Subject: [ksm] fix ksm.h breakage of nommu build
+Message-id: <1261065127-3342-33-git-send-email-ieidus@redhat.com>
+Patchwork-id: 22076
+O-Subject: [PATCH 32/32] fix ksm.h breakage of nommu build
+Bugzilla: 548586
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+From: Izik Eidus <ieidus@redhat.com>
+
+Commit 5ad6468801d28c4d4ac9f48ec19297817c915f6a "ksm: let shared pages
+be swappable" breaks the build on m68knommu and I suspect on any nommu:
+
+In file included from kernel/fork.c:52:
+include/linux/ksm.h:129: warning: 'enum ttu_flags' declared inside parameter
+list
+include/linux/ksm.h:129: warning: its scope is only this definition or
+declaration, which is probably not what you want
+include/linux/ksm.h:129: error: parameter 2 ('flags') has incomplete type
+make[1]: *** [kernel/fork.o] Error 1
+make[1]: *** Waiting for unfinished jobs....
+
+Let's fix that with CONFIG_MMU around most of the !CONFIG_KSM declarations.
+
+Reported-by: Steven King <sfking@fdwdc.com>
+Signed-off-by: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+Tested-by: Steven King <sfking@fdwdc.com>
+Signed-off-by: Izik Eidus <ieidus@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/ksm.h b/include/linux/ksm.h
+index bed5f16..43bdab7 100644
+--- a/include/linux/ksm.h
++++ b/include/linux/ksm.h
+@@ -94,12 +94,6 @@ void ksm_migrate_page(struct page *newpage, struct page *oldpage);
+ 
+ #else  /* !CONFIG_KSM */
+ 
+-static inline int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
+-		unsigned long end, int advice, unsigned long *vm_flags)
+-{
+-	return 0;
+-}
+-
+ static inline int ksm_fork(struct mm_struct *mm, struct mm_struct *oldmm)
+ {
+ 	return 0;
+@@ -114,6 +108,13 @@ static inline int PageKsm(struct page *page)
+ 	return 0;
+ }
+ 
++#ifdef CONFIG_MMU
++static inline int ksm_madvise(struct vm_area_struct *vma, unsigned long start,
++		unsigned long end, int advice, unsigned long *vm_flags)
++{
++	return 0;
++}
++
+ static inline struct page *ksm_might_need_to_copy(struct page *page,
+ 			struct vm_area_struct *vma, unsigned long address)
+ {
+@@ -140,6 +141,7 @@ static inline int rmap_walk_ksm(struct page *page, int (*rmap_one)(struct page*,
+ static inline void ksm_migrate_page(struct page *newpage, struct page *oldpage)
+ {
+ }
++#endif /* CONFIG_MMU */
+ #endif /* !CONFIG_KSM */
+ 
+ #endif /* __LINUX_KSM_H */

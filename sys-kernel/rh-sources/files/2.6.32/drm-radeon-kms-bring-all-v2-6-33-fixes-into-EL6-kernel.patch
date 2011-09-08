@@ -1,0 +1,4962 @@
+From: Dave Airlie <airlied@redhat.com>
+Date: Tue, 2 Mar 2010 05:20:33 -0500
+Subject: [drm] radeon/kms: bring all v2.6.33 fixes into EL6 kernel
+Message-id: <1267507233-27443-2-git-send-email-airlied@redhat.com>
+Patchwork-id: 23466
+O-Subject: [PATCH 2/2] [PATCH RHEL6] radeon/kms: bring all v2.6.33 fixes into
+	EL6 kernel
+Bugzilla: 547422 554323 566618 569704
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+bz 569704
+
+A lot of stabilisation fixes have gone in upstream for various radeon
+KMS parts. Backport all of this to the current EL6 kernel.
+
+The main fixes involve DisplayPort breakages and an oops in the DDC
+code, 30 sec pauses at boot and a fixes for the rv740 family.
+
+This also brings some post v2.6.33 fixes from the upstream testing tree:
+    rs600 oops fixer
+    atombios parser bug fix
+    more r600/r700 gpu init fixes
+    better PLL quirks + fix for some laptops
+    fix for Dell server cards with RN50
+    fix for Sun servers with hardcoded EDID tables in the BIOS.
+
+this should address:
+https://bugzilla.redhat.com/show_bug.cgi?id=547422
+https://bugzilla.redhat.com/show_bug.cgi?id=554323
+https://bugzilla.redhat.com/show_bug.cgi?id=566618
+
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
+index b6af620..b0a26bc 100644
+--- a/drivers/gpu/drm/drm_edid.c
++++ b/drivers/gpu/drm/drm_edid.c
+@@ -60,8 +60,7 @@
+ #define EDID_QUIRK_FIRST_DETAILED_PREFERRED	(1 << 5)
+ /* use +hsync +vsync for detailed mode */
+ #define EDID_QUIRK_DETAILED_SYNC_PP		(1 << 6)
+-/* define the number of Extension EDID block */
+-#define MAX_EDID_EXT_NUM 4
++
+ 
+ #define LEVEL_DMT	0
+ #define LEVEL_GTF	1
+@@ -114,14 +113,14 @@ static const u8 edid_header[] = {
+ };
+ 
+ /**
+- * edid_is_valid - sanity check EDID data
++ * drm_edid_is_valid - sanity check EDID data
+  * @edid: EDID data
+  *
+  * Sanity check the EDID block by looking at the header, the version number
+  * and the checksum.  Return 0 if the EDID doesn't check out, or 1 if it's
+  * valid.
+  */
+-static bool edid_is_valid(struct edid *edid)
++bool drm_edid_is_valid(struct edid *edid)
+ {
+ 	int i;
+ 	u8 csum = 0;
+@@ -153,6 +152,7 @@ bad:
+ 	}
+ 	return 0;
+ }
++EXPORT_SYMBOL(drm_edid_is_valid);
+ 
+ /**
+  * edid_vendor - match a string against EDID's obfuscated vendor field
+@@ -1102,8 +1102,8 @@ static int add_detailed_info_eedid(struct drm_connector *connector,
+ 	}
+ 
+ 	/* Chose real EDID extension number */
+-	edid_ext_num = edid->extensions > MAX_EDID_EXT_NUM ?
+-		       MAX_EDID_EXT_NUM : edid->extensions;
++	edid_ext_num = edid->extensions > DRM_MAX_EDID_EXT_NUM ?
++		DRM_MAX_EDID_EXT_NUM : edid->extensions;
+ 
+ 	/* Find CEA extension */
+ 	for (i = 0; i < edid_ext_num; i++) {
+@@ -1186,7 +1186,7 @@ static int drm_ddc_read_edid(struct drm_connector *connector,
+ 	if (ret != 0) {
+ 		goto end;
+ 	}
+-	if (!edid_is_valid((struct edid *)buf)) {
++	if (!drm_edid_is_valid((struct edid *)buf)) {
+ 		dev_warn(&connector->dev->pdev->dev, "%s: EDID invalid.\n",
+ 			 drm_get_connector_name(connector));
+ 		ret = -1;
+@@ -1210,7 +1210,7 @@ struct edid *drm_get_edid(struct drm_connector *connector,
+ 	int ret;
+ 	struct edid *edid;
+ 
+-	edid = kmalloc(EDID_LENGTH * (MAX_EDID_EXT_NUM + 1),
++	edid = kmalloc(EDID_LENGTH * (DRM_MAX_EDID_EXT_NUM + 1),
+ 		       GFP_KERNEL);
+ 	if (edid == NULL) {
+ 		dev_warn(&connector->dev->pdev->dev,
+@@ -1228,14 +1228,14 @@ struct edid *drm_get_edid(struct drm_connector *connector,
+ 	if (edid->extensions != 0) {
+ 		int edid_ext_num = edid->extensions;
+ 
+-		if (edid_ext_num > MAX_EDID_EXT_NUM) {
++		if (edid_ext_num > DRM_MAX_EDID_EXT_NUM) {
+ 			dev_warn(&connector->dev->pdev->dev,
+ 				 "The number of extension(%d) is "
+ 				 "over max (%d), actually read number (%d)\n",
+-				 edid_ext_num, MAX_EDID_EXT_NUM,
+-				 MAX_EDID_EXT_NUM);
++				 edid_ext_num, DRM_MAX_EDID_EXT_NUM,
++				 DRM_MAX_EDID_EXT_NUM);
+ 			/* Reset EDID extension number to be read */
+-			edid_ext_num = MAX_EDID_EXT_NUM;
++			edid_ext_num = DRM_MAX_EDID_EXT_NUM;
+ 		}
+ 		/* Read EDID including extensions too */
+ 		ret = drm_ddc_read_edid(connector, adapter, (char *)edid,
+@@ -1278,8 +1278,8 @@ bool drm_detect_hdmi_monitor(struct edid *edid)
+ 		goto end;
+ 
+ 	/* Chose real EDID extension number */
+-	edid_ext_num = edid->extensions > MAX_EDID_EXT_NUM ?
+-		       MAX_EDID_EXT_NUM : edid->extensions;
++	edid_ext_num = edid->extensions > DRM_MAX_EDID_EXT_NUM ?
++		       DRM_MAX_EDID_EXT_NUM : edid->extensions;
+ 
+ 	/* Find CEA extension */
+ 	for (i = 0; i < edid_ext_num; i++) {
+@@ -1336,7 +1336,7 @@ int drm_add_edid_modes(struct drm_connector *connector, struct edid *edid)
+ 	if (edid == NULL) {
+ 		return 0;
+ 	}
+-	if (!edid_is_valid(edid)) {
++	if (!drm_edid_is_valid(edid)) {
+ 		dev_warn(&connector->dev->pdev->dev, "%s: EDID invalid.\n",
+ 			 drm_get_connector_name(connector));
+ 		return 0;
+diff --git a/drivers/gpu/drm/radeon/Kconfig b/drivers/gpu/drm/radeon/Kconfig
+index 5982321..1c02d23 100644
+--- a/drivers/gpu/drm/radeon/Kconfig
++++ b/drivers/gpu/drm/radeon/Kconfig
+@@ -1,10 +1,14 @@
+ config DRM_RADEON_KMS
+-	bool "Enable modesetting on radeon by default"
++	bool "Enable modesetting on radeon by default - NEW DRIVER"
+ 	depends on DRM_RADEON
+ 	help
+-	  Choose this option if you want kernel modesetting enabled by default,
+-	  and you have a new enough userspace to support this. Running old
+-	  userspaces with this enabled will cause pain.
++	  Choose this option if you want kernel modesetting enabled by default.
++
++	  This is a completely new driver. It's only part of the existing drm
++	  for compatibility reasons. It requires an entirely different graphics
++	  stack above it and works very differently from the old drm stack.
++	  i.e. don't enable this unless you know what you are doing it may
++	  cause issues or bugs compared to the previous userspace driver stack.
+ 
+ 	  When kernel modesetting is enabled the IOCTL of radeon/drm
+ 	  driver are considered as invalid and an error message is printed
+diff --git a/drivers/gpu/drm/radeon/atom.c b/drivers/gpu/drm/radeon/atom.c
+index cf31261..d75788f 100644
+--- a/drivers/gpu/drm/radeon/atom.c
++++ b/drivers/gpu/drm/radeon/atom.c
+@@ -24,6 +24,7 @@
+ 
+ #include <linux/module.h>
+ #include <linux/sched.h>
++#include <asm/unaligned.h>
+ 
+ #define ATOM_DEBUG
+ 
+@@ -212,7 +213,9 @@ static uint32_t atom_get_src_int(atom_exec_context *ctx, uint8_t attr,
+ 	case ATOM_ARG_PS:
+ 		idx = U8(*ptr);
+ 		(*ptr)++;
+-		val = le32_to_cpu(ctx->ps[idx]);
++		/* get_unaligned_le32 avoids unaligned accesses from atombios
++		 * tables, noticed on a DEC Alpha. */
++		val = get_unaligned_le32((u32 *)&ctx->ps[idx]);
+ 		if (print)
+ 			DEBUG("PS[0x%02X,0x%04X]", idx, val);
+ 		break;
+@@ -640,7 +643,7 @@ static void atom_op_delay(atom_exec_context *ctx, int *ptr, int arg)
+ 	uint8_t count = U8((*ptr)++);
+ 	SDEBUG("   count: %d\n", count);
+ 	if (arg == ATOM_UNIT_MICROSEC)
+-		schedule_timeout_uninterruptible(usecs_to_jiffies(count));
++		udelay(count);
+ 	else
+ 		schedule_timeout_uninterruptible(msecs_to_jiffies(count));
+ }
+@@ -878,8 +881,6 @@ static void atom_op_shl(atom_exec_context *ctx, int *ptr, int arg)
+ 	uint8_t attr = U8((*ptr)++), shift;
+ 	uint32_t saved, dst;
+ 	int dptr = *ptr;
+-	attr &= 0x38;
+-	attr |= atom_def_dst[attr >> 3] << 6;
+ 	SDEBUG("   dst: ");
+ 	dst = atom_get_dst(ctx, arg, attr, ptr, &saved, 1);
+ 	shift = atom_get_src(ctx, attr, ptr);
+@@ -894,8 +895,6 @@ static void atom_op_shr(atom_exec_context *ctx, int *ptr, int arg)
+ 	uint8_t attr = U8((*ptr)++), shift;
+ 	uint32_t saved, dst;
+ 	int dptr = *ptr;
+-	attr &= 0x38;
+-	attr |= atom_def_dst[attr >> 3] << 6;
+ 	SDEBUG("   dst: ");
+ 	dst = atom_get_dst(ctx, arg, attr, ptr, &saved, 1);
+ 	shift = atom_get_src(ctx, attr, ptr);
+@@ -1122,8 +1121,6 @@ static void atom_execute_table_locked(struct atom_context *ctx, int index, uint3
+ 
+ 	SDEBUG(">> execute %04X (len %d, WS %d, PS %d)\n", base, len, ws, ps);
+ 
+-	/* reset reg block */
+-	ctx->reg_block = 0;
+ 	ectx.ctx = ctx;
+ 	ectx.ps_shift = ps / 4;
+ 	ectx.start = base;
+@@ -1160,6 +1157,12 @@ static void atom_execute_table_locked(struct atom_context *ctx, int index, uint3
+ void atom_execute_table(struct atom_context *ctx, int index, uint32_t * params)
+ {
+ 	mutex_lock(&ctx->mutex);
++	/* reset reg block */
++	ctx->reg_block = 0;
++	/* reset fb window */
++	ctx->fb_base = 0;
++	/* reset io mode */
++	ctx->io_mode = ATOM_IO_MM;
+ 	atom_execute_table_locked(ctx, index, params);
+ 	mutex_unlock(&ctx->mutex);
+ }
+diff --git a/drivers/gpu/drm/radeon/atombios.h b/drivers/gpu/drm/radeon/atombios.h
+index 8e28842..91ad0d1 100644
+--- a/drivers/gpu/drm/radeon/atombios.h
++++ b/drivers/gpu/drm/radeon/atombios.h
+@@ -1141,7 +1141,7 @@ typedef struct _LVDS_ENCODER_CONTROL_PARAMETERS {
+ /* ucTableFormatRevision=1,ucTableContentRevision=2 */
+ typedef struct _LVDS_ENCODER_CONTROL_PARAMETERS_V2 {
+ 	USHORT usPixelClock;	/*  in 10KHz; for bios convenient */
+-	UCHAR ucMisc;		/*  see PANEL_ENCODER_MISC_xx defintions below */
++	UCHAR ucMisc;		/*  see PANEL_ENCODER_MISC_xx definitions below */
+ 	UCHAR ucAction;		/*  0: turn off encoder */
+ 	/*  1: setup and turn on encoder */
+ 	UCHAR ucTruncate;	/*  bit0=0: Disable truncate */
+@@ -1424,7 +1424,7 @@ typedef struct _ATOM_MULTIMEDIA_CONFIG_INFO {
+ /*  Structures used in FirmwareInfoTable */
+ /****************************************************************************/
+ 
+-/*  usBIOSCapability Defintion: */
++/*  usBIOSCapability Definition: */
+ /*  Bit 0 = 0: Bios image is not Posted, =1:Bios image is Posted; */
+ /*  Bit 1 = 0: Dual CRTC is not supported, =1: Dual CRTC is supported; */
+ /*  Bit 2 = 0: Extended Desktop is not supported, =1: Extended Desktop is supported; */
+@@ -2386,7 +2386,7 @@ typedef struct _ATOM_ANALOG_TV_INFO_V1_2 {
+ } ATOM_ANALOG_TV_INFO_V1_2;
+ 
+ /**************************************************************************/
+-/*  VRAM usage and their defintions */
++/*  VRAM usage and their definitions */
+ 
+ /*  One chunk of VRAM used by Bios are for HWICON surfaces,EDID data. */
+ /*  Current Mode timing and Dail Timing and/or STD timing data EACH device. They can be broken down as below. */
+@@ -3046,7 +3046,7 @@ typedef struct _ATOM_ASIC_INTERNAL_SS_INFO {
+ #define ATOM_S0_SYSTEM_POWER_STATE_VALUE_DC     2
+ #define ATOM_S0_SYSTEM_POWER_STATE_VALUE_LITEAC 3
+ 
+-/* Byte aligned defintion for BIOS usage */
++/* Byte aligned definition for BIOS usage */
+ #define ATOM_S0_CRT1_MONOb0             0x01
+ #define ATOM_S0_CRT1_COLORb0            0x02
+ #define ATOM_S0_CRT1_MASKb0             (ATOM_S0_CRT1_MONOb0+ATOM_S0_CRT1_COLORb0)
+@@ -3131,7 +3131,7 @@ typedef struct _ATOM_ASIC_INTERNAL_SS_INFO {
+ #define ATOM_S2_DISPLAY_ROTATION_DEGREE_SHIFT 30
+ #define ATOM_S2_DISPLAY_ROTATION_ANGLE_MASK   0xC0000000L
+ 
+-/* Byte aligned defintion for BIOS usage */
++/* Byte aligned definition for BIOS usage */
+ #define ATOM_S2_TV1_STANDARD_MASKb0     0x0F
+ #define ATOM_S2_CURRENT_BL_LEVEL_MASKb1 0xFF
+ #define ATOM_S2_CRT1_DPMS_STATEb2       0x01
+@@ -3190,7 +3190,7 @@ typedef struct _ATOM_ASIC_INTERNAL_SS_INFO {
+ #define ATOM_S3_ALLOW_FAST_PWR_SWITCH   0x40000000L
+ #define ATOM_S3_RQST_GPU_USE_MIN_PWR    0x80000000L
+ 
+-/* Byte aligned defintion for BIOS usage */
++/* Byte aligned definition for BIOS usage */
+ #define ATOM_S3_CRT1_ACTIVEb0           0x01
+ #define ATOM_S3_LCD1_ACTIVEb0           0x02
+ #define ATOM_S3_TV1_ACTIVEb0            0x04
+@@ -3230,7 +3230,7 @@ typedef struct _ATOM_ASIC_INTERNAL_SS_INFO {
+ #define ATOM_S4_LCD1_REFRESH_MASK       0x0000FF00L
+ #define ATOM_S4_LCD1_REFRESH_SHIFT      8
+ 
+-/* Byte aligned defintion for BIOS usage */
++/* Byte aligned definition for BIOS usage */
+ #define ATOM_S4_LCD1_PANEL_ID_MASKb0	  0x0FF
+ #define ATOM_S4_LCD1_REFRESH_MASKb1		  ATOM_S4_LCD1_PANEL_ID_MASKb0
+ #define ATOM_S4_VRAM_INFO_MASKb2        ATOM_S4_LCD1_PANEL_ID_MASKb0
+@@ -3310,7 +3310,7 @@ typedef struct _ATOM_ASIC_INTERNAL_SS_INFO {
+ #define ATOM_S6_VRI_BRIGHTNESS_CHANGE       0x40000000L
+ #define ATOM_S6_CONFIG_DISPLAY_CHANGE_MASK  0x80000000L
+ 
+-/* Byte aligned defintion for BIOS usage */
++/* Byte aligned definition for BIOS usage */
+ #define ATOM_S6_DEVICE_CHANGEb0         0x01
+ #define ATOM_S6_SCALER_CHANGEb0         0x02
+ #define ATOM_S6_LID_CHANGEb0            0x04
+diff --git a/drivers/gpu/drm/radeon/atombios_crtc.c b/drivers/gpu/drm/radeon/atombios_crtc.c
+index a6dc613..bb45517 100644
+--- a/drivers/gpu/drm/radeon/atombios_crtc.c
++++ b/drivers/gpu/drm/radeon/atombios_crtc.c
+@@ -249,15 +249,13 @@ void atombios_crtc_dpms(struct drm_crtc *crtc, int mode)
+ 		if (ASIC_IS_DCE3(rdev))
+ 			atombios_enable_crtc_memreq(crtc, 1);
+ 		atombios_blank_crtc(crtc, 0);
+-		if (rdev->family < CHIP_R600)
+-			drm_vblank_post_modeset(dev, radeon_crtc->crtc_id);
++		drm_vblank_post_modeset(dev, radeon_crtc->crtc_id);
+ 		radeon_crtc_load_lut(crtc);
+ 		break;
+ 	case DRM_MODE_DPMS_STANDBY:
+ 	case DRM_MODE_DPMS_SUSPEND:
+ 	case DRM_MODE_DPMS_OFF:
+-		if (rdev->family < CHIP_R600)
+-			drm_vblank_pre_modeset(dev, radeon_crtc->crtc_id);
++		drm_vblank_pre_modeset(dev, radeon_crtc->crtc_id);
+ 		atombios_blank_crtc(crtc, 1);
+ 		if (ASIC_IS_DCE3(rdev))
+ 			atombios_enable_crtc_memreq(crtc, 0);
+@@ -309,7 +307,6 @@ atombios_set_crtc_dtd_timing(struct drm_crtc *crtc,
+ 	args.susModeMiscInfo.usAccess = cpu_to_le16(misc);
+ 	args.ucCRTC = radeon_crtc->crtc_id;
+ 
+-	printk("executing set crtc dtd timing\n");
+ 	atom_execute_table(rdev->mode_info.atom_context, index, (uint32_t *)&args);
+ }
+ 
+@@ -349,10 +346,14 @@ static void atombios_crtc_set_timing(struct drm_crtc *crtc,
+ 	args.susModeMiscInfo.usAccess = cpu_to_le16(misc);
+ 	args.ucCRTC = radeon_crtc->crtc_id;
+ 
+-	printk("executing set crtc timing\n");
+ 	atom_execute_table(rdev->mode_info.atom_context, index, (uint32_t *)&args);
+ }
+ 
++union atom_enable_ss {
++	ENABLE_LVDS_SS_PARAMETERS legacy;
++	ENABLE_SPREAD_SPECTRUM_ON_PPLL_PS_ALLOCATION v1;
++};
++
+ static void atombios_set_ss(struct drm_crtc *crtc, int enable)
+ {
+ 	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
+@@ -362,8 +363,7 @@ static void atombios_set_ss(struct drm_crtc *crtc, int enable)
+ 	struct radeon_encoder *radeon_encoder = NULL;
+ 	struct radeon_encoder_atom_dig *dig = NULL;
+ 	int index = GetIndexIntoMasterTable(COMMAND, EnableSpreadSpectrumOnPPLL);
+-	ENABLE_SPREAD_SPECTRUM_ON_PPLL_PS_ALLOCATION args;
+-	ENABLE_LVDS_SS_PARAMETERS legacy_args;
++	union atom_enable_ss args;
+ 	uint16_t percentage = 0;
+ 	uint8_t type = 0, step = 0, delay = 0, range = 0;
+ 
+@@ -390,80 +390,90 @@ static void atombios_set_ss(struct drm_crtc *crtc, int enable)
+ 	if (!radeon_encoder)
+ 		return;
+ 
++	memset(&args, 0, sizeof(args));
+ 	if (ASIC_IS_AVIVO(rdev)) {
+-		memset(&args, 0, sizeof(args));
+-		args.usSpreadSpectrumPercentage = cpu_to_le16(percentage);
+-		args.ucSpreadSpectrumType = type;
+-		args.ucSpreadSpectrumStep = step;
+-		args.ucSpreadSpectrumDelay = delay;
+-		args.ucSpreadSpectrumRange = range;
+-		args.ucPpll = radeon_crtc->crtc_id ? ATOM_PPLL2 : ATOM_PPLL1;
+-		args.ucEnable = enable;
+-		atom_execute_table(rdev->mode_info.atom_context, index, (uint32_t *)&args);
++		args.v1.usSpreadSpectrumPercentage = cpu_to_le16(percentage);
++		args.v1.ucSpreadSpectrumType = type;
++		args.v1.ucSpreadSpectrumStep = step;
++		args.v1.ucSpreadSpectrumDelay = delay;
++		args.v1.ucSpreadSpectrumRange = range;
++		args.v1.ucPpll = radeon_crtc->crtc_id ? ATOM_PPLL2 : ATOM_PPLL1;
++		args.v1.ucEnable = enable;
+ 	} else {
+-		memset(&legacy_args, 0, sizeof(legacy_args));
+-		legacy_args.usSpreadSpectrumPercentage = cpu_to_le16(percentage);
+-		legacy_args.ucSpreadSpectrumType = type;
+-		legacy_args.ucSpreadSpectrumStepSize_Delay = (step & 3) << 2;
+-		legacy_args.ucSpreadSpectrumStepSize_Delay |= (delay & 7) << 4;
+-		legacy_args.ucEnable = enable;
+-		atom_execute_table(rdev->mode_info.atom_context, index, (uint32_t *)&legacy_args);
++		args.legacy.usSpreadSpectrumPercentage = cpu_to_le16(percentage);
++		args.legacy.ucSpreadSpectrumType = type;
++		args.legacy.ucSpreadSpectrumStepSize_Delay = (step & 3) << 2;
++		args.legacy.ucSpreadSpectrumStepSize_Delay |= (delay & 7) << 4;
++		args.legacy.ucEnable = enable;
+ 	}
++	atom_execute_table(rdev->mode_info.atom_context, index, (uint32_t *)&args);
+ }
+ 
+-void atombios_crtc_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
++union adjust_pixel_clock {
++	ADJUST_DISPLAY_PLL_PS_ALLOCATION v1;
++};
++
++static u32 atombios_adjust_pll(struct drm_crtc *crtc,
++			       struct drm_display_mode *mode,
++			       struct radeon_pll *pll)
+ {
+-	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
+ 	struct drm_device *dev = crtc->dev;
+ 	struct radeon_device *rdev = dev->dev_private;
+ 	struct drm_encoder *encoder = NULL;
+ 	struct radeon_encoder *radeon_encoder = NULL;
+-	uint8_t frev, crev;
+-	int index;
+-	SET_PIXEL_CLOCK_PS_ALLOCATION args;
+-	PIXEL_CLOCK_PARAMETERS *spc1_ptr;
+-	PIXEL_CLOCK_PARAMETERS_V2 *spc2_ptr;
+-	PIXEL_CLOCK_PARAMETERS_V3 *spc3_ptr;
+-	uint32_t pll_clock = mode->clock;
+-	uint32_t adjusted_clock;
+-	uint32_t ref_div = 0, fb_div = 0, frac_fb_div = 0, post_div = 0;
+-	struct radeon_pll *pll;
+-	int pll_flags = 0;
++	u32 adjusted_clock = mode->clock;
+ 
+-	memset(&args, 0, sizeof(args));
++	/* reset the pll flags */
++	pll->flags = 0;
++
++	/* select the PLL algo */
++	if (ASIC_IS_AVIVO(rdev)) {
++		if (radeon_new_pll)
++			pll->algo = PLL_ALGO_AVIVO;
++		else
++			pll->algo = PLL_ALGO_LEGACY;
++	} else
++		pll->algo = PLL_ALGO_LEGACY;
+ 
+ 	if (ASIC_IS_AVIVO(rdev)) {
+ 		if ((rdev->family == CHIP_RS600) ||
+ 		    (rdev->family == CHIP_RS690) ||
+ 		    (rdev->family == CHIP_RS740))
+-			pll_flags |= (RADEON_PLL_USE_FRAC_FB_DIV |
+-				      RADEON_PLL_PREFER_CLOSEST_LOWER);
++			pll->flags |= (RADEON_PLL_USE_FRAC_FB_DIV |
++				       RADEON_PLL_PREFER_CLOSEST_LOWER);
+ 
+ 		if (ASIC_IS_DCE32(rdev) && mode->clock > 200000)	/* range limits??? */
+-			pll_flags |= RADEON_PLL_PREFER_HIGH_FB_DIV;
++			pll->flags |= RADEON_PLL_PREFER_HIGH_FB_DIV;
+ 		else
+-			pll_flags |= RADEON_PLL_PREFER_LOW_REF_DIV;
++			pll->flags |= RADEON_PLL_PREFER_LOW_REF_DIV;
+ 	} else {
+-		pll_flags |= RADEON_PLL_LEGACY;
++		pll->flags |= RADEON_PLL_LEGACY;
+ 
+ 		if (mode->clock > 200000)	/* range limits??? */
+-			pll_flags |= RADEON_PLL_PREFER_HIGH_FB_DIV;
++			pll->flags |= RADEON_PLL_PREFER_HIGH_FB_DIV;
+ 		else
+-			pll_flags |= RADEON_PLL_PREFER_LOW_REF_DIV;
++			pll->flags |= RADEON_PLL_PREFER_LOW_REF_DIV;
+ 
+ 	}
+ 
+ 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+ 		if (encoder->crtc == crtc) {
+-			if (!ASIC_IS_AVIVO(rdev)) {
+-				if (encoder->encoder_type !=
+-				    DRM_MODE_ENCODER_DAC)
+-					pll_flags |= RADEON_PLL_NO_ODD_POST_DIV;
+-				if (encoder->encoder_type ==
+-					DRM_MODE_ENCODER_LVDS)
+-					pll_flags |= RADEON_PLL_USE_REF_DIV;
+-			}
+ 			radeon_encoder = to_radeon_encoder(encoder);
++			if (ASIC_IS_AVIVO(rdev)) {
++				/* DVO wants 2x pixel clock if the DVO chip is in 12 bit mode */
++				if (radeon_encoder->encoder_id == ENCODER_OBJECT_ID_INTERNAL_KLDSCP_DVO1)
++					adjusted_clock = mode->clock * 2;
++				/* LVDS PLL quirks */
++				if (encoder->encoder_type == DRM_MODE_ENCODER_LVDS) {
++					struct radeon_encoder_atom_dig *dig = radeon_encoder->enc_priv;
++					pll->algo = dig->pll_algo;
++				}
++			} else {
++				if (encoder->encoder_type != DRM_MODE_ENCODER_DAC)
++					pll->flags |= RADEON_PLL_NO_ODD_POST_DIV;
++				if (encoder->encoder_type == DRM_MODE_ENCODER_LVDS)
++					pll->flags |= RADEON_PLL_USE_REF_DIV;
++			}
+ 			break;
+ 		}
+ 	}
+@@ -473,46 +483,91 @@ void atombios_crtc_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 	 * special hw requirements.
+ 	 */
+ 	if (ASIC_IS_DCE3(rdev)) {
+-		ADJUST_DISPLAY_PLL_PS_ALLOCATION adjust_pll_args;
+-
+-		if (!encoder)
+-			return;
++		union adjust_pixel_clock args;
++		struct radeon_encoder_atom_dig *dig;
++		u8 frev, crev;
++		int index;
+ 
+-		memset(&adjust_pll_args, 0, sizeof(adjust_pll_args));
+-		adjust_pll_args.usPixelClock = cpu_to_le16(mode->clock / 10);
+-		adjust_pll_args.ucTransmitterID = radeon_encoder->encoder_id;
+-		adjust_pll_args.ucEncodeMode = atombios_get_encoder_mode(encoder);
++		if (!radeon_encoder->enc_priv)
++			return adjusted_clock;
++		dig = radeon_encoder->enc_priv;
+ 
+ 		index = GetIndexIntoMasterTable(COMMAND, AdjustDisplayPll);
+-		atom_execute_table(rdev->mode_info.atom_context,
+-				   index, (uint32_t *)&adjust_pll_args);
+-		adjusted_clock = le16_to_cpu(adjust_pll_args.usPixelClock) * 10;
+-	} else {
+-		/* DVO wants 2x pixel clock if the DVO chip is in 12 bit mode */
+-		if (ASIC_IS_AVIVO(rdev) &&
+-		    (radeon_encoder->encoder_id == ENCODER_OBJECT_ID_INTERNAL_KLDSCP_DVO1))
+-			adjusted_clock = mode->clock * 2;
+-		else
+-			adjusted_clock = mode->clock;
++		atom_parse_cmd_header(rdev->mode_info.atom_context, index, &frev,
++				      &crev);
++
++		memset(&args, 0, sizeof(args));
++
++		switch (frev) {
++		case 1:
++			switch (crev) {
++			case 1:
++			case 2:
++				args.v1.usPixelClock = cpu_to_le16(mode->clock / 10);
++				args.v1.ucTransmitterID = radeon_encoder->encoder_id;
++				args.v1.ucEncodeMode = atombios_get_encoder_mode(encoder);
++
++				atom_execute_table(rdev->mode_info.atom_context,
++						   index, (uint32_t *)&args);
++				adjusted_clock = le16_to_cpu(args.v1.usPixelClock) * 10;
++				break;
++			default:
++				DRM_ERROR("Unknown table version %d %d\n", frev, crev);
++				return adjusted_clock;
++			}
++			break;
++		default:
++			DRM_ERROR("Unknown table version %d %d\n", frev, crev);
++			return adjusted_clock;
++		}
+ 	}
++	return adjusted_clock;
++}
++
++union set_pixel_clock {
++	SET_PIXEL_CLOCK_PS_ALLOCATION base;
++	PIXEL_CLOCK_PARAMETERS v1;
++	PIXEL_CLOCK_PARAMETERS_V2 v2;
++	PIXEL_CLOCK_PARAMETERS_V3 v3;
++};
++
++void atombios_crtc_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
++{
++	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
++	struct drm_device *dev = crtc->dev;
++	struct radeon_device *rdev = dev->dev_private;
++	struct drm_encoder *encoder = NULL;
++	struct radeon_encoder *radeon_encoder = NULL;
++	u8 frev, crev;
++	int index;
++	union set_pixel_clock args;
++	u32 pll_clock = mode->clock;
++	u32 ref_div = 0, fb_div = 0, frac_fb_div = 0, post_div = 0;
++	struct radeon_pll *pll;
++	u32 adjusted_clock;
++
++	memset(&args, 0, sizeof(args));
++
++	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
++		if (encoder->crtc == crtc) {
++			radeon_encoder = to_radeon_encoder(encoder);
++			break;
++		}
++	}
++
++	if (!radeon_encoder)
++		return;
+ 
+ 	if (radeon_crtc->crtc_id == 0)
+ 		pll = &rdev->clock.p1pll;
+ 	else
+ 		pll = &rdev->clock.p2pll;
+ 
+-	if (ASIC_IS_AVIVO(rdev)) {
+-		if (radeon_new_pll)
+-			radeon_compute_pll_avivo(pll, adjusted_clock, &pll_clock,
+-						 &fb_div, &frac_fb_div,
+-						 &ref_div, &post_div, pll_flags);
+-		else
+-			radeon_compute_pll(pll, adjusted_clock, &pll_clock,
+-					   &fb_div, &frac_fb_div,
+-					   &ref_div, &post_div, pll_flags);
+-	} else
+-		radeon_compute_pll(pll, adjusted_clock, &pll_clock, &fb_div, &frac_fb_div,
+-				   &ref_div, &post_div, pll_flags);
++	/* adjust pixel clock as needed */
++	adjusted_clock = atombios_adjust_pll(crtc, mode, pll);
++
++	radeon_compute_pll(pll, adjusted_clock, &pll_clock, &fb_div, &frac_fb_div,
++			   &ref_div, &post_div);
+ 
+ 	index = GetIndexIntoMasterTable(COMMAND, SetPixelClock);
+ 	atom_parse_cmd_header(rdev->mode_info.atom_context, index, &frev,
+@@ -522,45 +577,38 @@ void atombios_crtc_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 	case 1:
+ 		switch (crev) {
+ 		case 1:
+-			spc1_ptr = (PIXEL_CLOCK_PARAMETERS *) & args.sPCLKInput;
+-			spc1_ptr->usPixelClock = cpu_to_le16(mode->clock / 10);
+-			spc1_ptr->usRefDiv = cpu_to_le16(ref_div);
+-			spc1_ptr->usFbDiv = cpu_to_le16(fb_div);
+-			spc1_ptr->ucFracFbDiv = frac_fb_div;
+-			spc1_ptr->ucPostDiv = post_div;
+-			spc1_ptr->ucPpll =
++			args.v1.usPixelClock = cpu_to_le16(mode->clock / 10);
++			args.v1.usRefDiv = cpu_to_le16(ref_div);
++			args.v1.usFbDiv = cpu_to_le16(fb_div);
++			args.v1.ucFracFbDiv = frac_fb_div;
++			args.v1.ucPostDiv = post_div;
++			args.v1.ucPpll =
+ 			    radeon_crtc->crtc_id ? ATOM_PPLL2 : ATOM_PPLL1;
+-			spc1_ptr->ucCRTC = radeon_crtc->crtc_id;
+-			spc1_ptr->ucRefDivSrc = 1;
++			args.v1.ucCRTC = radeon_crtc->crtc_id;
++			args.v1.ucRefDivSrc = 1;
+ 			break;
+ 		case 2:
+-			spc2_ptr =
+-			    (PIXEL_CLOCK_PARAMETERS_V2 *) & args.sPCLKInput;
+-			spc2_ptr->usPixelClock = cpu_to_le16(mode->clock / 10);
+-			spc2_ptr->usRefDiv = cpu_to_le16(ref_div);
+-			spc2_ptr->usFbDiv = cpu_to_le16(fb_div);
+-			spc2_ptr->ucFracFbDiv = frac_fb_div;
+-			spc2_ptr->ucPostDiv = post_div;
+-			spc2_ptr->ucPpll =
++			args.v2.usPixelClock = cpu_to_le16(mode->clock / 10);
++			args.v2.usRefDiv = cpu_to_le16(ref_div);
++			args.v2.usFbDiv = cpu_to_le16(fb_div);
++			args.v2.ucFracFbDiv = frac_fb_div;
++			args.v2.ucPostDiv = post_div;
++			args.v2.ucPpll =
+ 			    radeon_crtc->crtc_id ? ATOM_PPLL2 : ATOM_PPLL1;
+-			spc2_ptr->ucCRTC = radeon_crtc->crtc_id;
+-			spc2_ptr->ucRefDivSrc = 1;
++			args.v2.ucCRTC = radeon_crtc->crtc_id;
++			args.v2.ucRefDivSrc = 1;
+ 			break;
+ 		case 3:
+-			if (!encoder)
+-				return;
+-			spc3_ptr =
+-			    (PIXEL_CLOCK_PARAMETERS_V3 *) & args.sPCLKInput;
+-			spc3_ptr->usPixelClock = cpu_to_le16(mode->clock / 10);
+-			spc3_ptr->usRefDiv = cpu_to_le16(ref_div);
+-			spc3_ptr->usFbDiv = cpu_to_le16(fb_div);
+-			spc3_ptr->ucFracFbDiv = frac_fb_div;
+-			spc3_ptr->ucPostDiv = post_div;
+-			spc3_ptr->ucPpll =
++			args.v3.usPixelClock = cpu_to_le16(mode->clock / 10);
++			args.v3.usRefDiv = cpu_to_le16(ref_div);
++			args.v3.usFbDiv = cpu_to_le16(fb_div);
++			args.v3.ucFracFbDiv = frac_fb_div;
++			args.v3.ucPostDiv = post_div;
++			args.v3.ucPpll =
+ 			    radeon_crtc->crtc_id ? ATOM_PPLL2 : ATOM_PPLL1;
+-			spc3_ptr->ucMiscInfo = (radeon_crtc->crtc_id << 2);
+-			spc3_ptr->ucTransmitterId = radeon_encoder->encoder_id;
+-			spc3_ptr->ucEncoderMode =
++			args.v3.ucMiscInfo = (radeon_crtc->crtc_id << 2);
++			args.v3.ucTransmitterId = radeon_encoder->encoder_id;
++			args.v3.ucEncoderMode =
+ 			    atombios_get_encoder_mode(encoder);
+ 			break;
+ 		default:
+@@ -573,7 +621,6 @@ void atombios_crtc_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 		return;
+ 	}
+ 
+-	printk("executing set pll\n");
+ 	atom_execute_table(rdev->mode_info.atom_context, index, (uint32_t *)&args);
+ }
+ 
+@@ -784,8 +831,8 @@ static bool atombios_crtc_mode_fixup(struct drm_crtc *crtc,
+ 
+ static void atombios_crtc_prepare(struct drm_crtc *crtc)
+ {
+-	atombios_crtc_dpms(crtc, DRM_MODE_DPMS_OFF);
+ 	atombios_lock_crtc(crtc, 1);
++	atombios_crtc_dpms(crtc, DRM_MODE_DPMS_OFF);
+ }
+ 
+ static void atombios_crtc_commit(struct drm_crtc *crtc)
+diff --git a/drivers/gpu/drm/radeon/atombios_dp.c b/drivers/gpu/drm/radeon/atombios_dp.c
+index 3eb0ca5..99915a6 100644
+--- a/drivers/gpu/drm/radeon/atombios_dp.c
++++ b/drivers/gpu/drm/radeon/atombios_dp.c
+@@ -332,11 +332,13 @@ bool radeon_process_aux_ch(struct radeon_i2c_chan *chan, u8 *req_bytes,
+ 	PROCESS_AUX_CHANNEL_TRANSACTION_PS_ALLOCATION args;
+ 	int index = GetIndexIntoMasterTable(COMMAND, ProcessAuxChannelTransaction);
+ 	unsigned char *base;
++	int retry_count = 0;
+ 
+ 	memset(&args, 0, sizeof(args));
+ 
+ 	base = (unsigned char *)rdev->mode_info.atom_context->scratch;
+ 
++retry:
+ 	memcpy(base, req_bytes, num_bytes);
+ 
+ 	args.lpAuxRequest = 0;
+@@ -347,10 +349,12 @@ bool radeon_process_aux_ch(struct radeon_i2c_chan *chan, u8 *req_bytes,
+ 
+ 	atom_execute_table(rdev->mode_info.atom_context, index, (uint32_t *)&args);
+ 
+-	if (args.ucReplyStatus) {
+-		DRM_DEBUG("failed to get auxch %02x%02x %02x %02x 0x%02x %02x\n",
++	if (args.ucReplyStatus && !args.ucDataOutLen) {
++		if (args.ucReplyStatus == 0x20 && retry_count++ < 10)
++			goto retry;
++		DRM_DEBUG("failed to get auxch %02x%02x %02x %02x 0x%02x %02x after %d retries\n",
+ 			  req_bytes[1], req_bytes[0], req_bytes[2], req_bytes[3],
+-			  chan->rec.i2c_id, args.ucReplyStatus);
++			  chan->rec.i2c_id, args.ucReplyStatus, retry_count);
+ 		return false;
+ 	}
+ 
+@@ -468,7 +472,7 @@ void radeon_dp_set_link_config(struct drm_connector *connector,
+ 	struct radeon_connector *radeon_connector;
+ 	struct radeon_connector_atom_dig *dig_connector;
+ 
+-	if ((connector->connector_type != DRM_MODE_CONNECTOR_DisplayPort) ||
++	if ((connector->connector_type != DRM_MODE_CONNECTOR_DisplayPort) &&
+ 	    (connector->connector_type != DRM_MODE_CONNECTOR_eDP))
+ 		return;
+ 
+@@ -583,7 +587,7 @@ void dp_link_train(struct drm_encoder *encoder,
+ 	u8 train_set[4];
+ 	int i;
+ 
+-	if ((connector->connector_type != DRM_MODE_CONNECTOR_DisplayPort) ||
++	if ((connector->connector_type != DRM_MODE_CONNECTOR_DisplayPort) &&
+ 	    (connector->connector_type != DRM_MODE_CONNECTOR_eDP))
+ 		return;
+ 
+@@ -596,21 +600,14 @@ void dp_link_train(struct drm_encoder *encoder,
+ 		return;
+ 	dig_connector = radeon_connector->con_priv;
+ 
+-	if (ASIC_IS_DCE32(rdev)) {
+-		if (dig->dig_block)
+-			enc_id |= ATOM_DP_CONFIG_DIG2_ENCODER;
+-		else
+-			enc_id |= ATOM_DP_CONFIG_DIG1_ENCODER;
+-		if (dig_connector->linkb)
+-			enc_id |= ATOM_DP_CONFIG_LINK_B;
+-		else
+-			enc_id |= ATOM_DP_CONFIG_LINK_A;
+-	} else {
+-		if (dig_connector->linkb)
+-			enc_id |= ATOM_DP_CONFIG_DIG2_ENCODER | ATOM_DP_CONFIG_LINK_B;
+-		else
+-			enc_id |= ATOM_DP_CONFIG_DIG1_ENCODER | ATOM_DP_CONFIG_LINK_A;
+-	}
++	if (dig->dig_encoder)
++		enc_id |= ATOM_DP_CONFIG_DIG2_ENCODER;
++	else
++		enc_id |= ATOM_DP_CONFIG_DIG1_ENCODER;
++	if (dig_connector->linkb)
++		enc_id |= ATOM_DP_CONFIG_LINK_B;
++	else
++		enc_id |= ATOM_DP_CONFIG_LINK_A;
+ 
+ 	memset(link_configuration, 0, DP_LINK_CONFIGURATION_SIZE);
+ 	if (dig_connector->dp_clock == 270000)
+diff --git a/drivers/gpu/drm/radeon/r100.c b/drivers/gpu/drm/radeon/r100.c
+index 11c9a3f..597f85b 100644
+--- a/drivers/gpu/drm/radeon/r100.c
++++ b/drivers/gpu/drm/radeon/r100.c
+@@ -354,14 +354,20 @@ u32 r100_get_vblank_counter(struct radeon_device *rdev, int crtc)
+ 		return RREG32(RADEON_CRTC2_CRNT_FRAME);
+ }
+ 
++/* Who ever call radeon_fence_emit should call ring_lock and ask
++ * for enough space (today caller are ib schedule and buffer move) */
+ void r100_fence_ring_emit(struct radeon_device *rdev,
+ 			  struct radeon_fence *fence)
+ {
+-	/* Who ever call radeon_fence_emit should call ring_lock and ask
+-	 * for enough space (today caller are ib schedule and buffer move) */
++	/* We have to make sure that caches are flushed before
++	 * CPU might read something from VRAM. */
++	radeon_ring_write(rdev, PACKET0(RADEON_RB3D_DSTCACHE_CTLSTAT, 0));
++	radeon_ring_write(rdev, RADEON_RB3D_DC_FLUSH_ALL);
++	radeon_ring_write(rdev, PACKET0(RADEON_RB3D_ZCACHE_CTLSTAT, 0));
++	radeon_ring_write(rdev, RADEON_RB3D_ZC_FLUSH_ALL);
+ 	/* Wait until IDLE & CLEAN */
+-	radeon_ring_write(rdev, PACKET0(0x1720, 0));
+-	radeon_ring_write(rdev, (1 << 16) | (1 << 17));
++	radeon_ring_write(rdev, PACKET0(RADEON_WAIT_UNTIL, 0));
++	radeon_ring_write(rdev, RADEON_WAIT_2D_IDLECLEAN | RADEON_WAIT_3D_IDLECLEAN);
+ 	radeon_ring_write(rdev, PACKET0(RADEON_HOST_PATH_CNTL, 0));
+ 	radeon_ring_write(rdev, rdev->config.r100.hdp_cntl |
+ 				RADEON_HDP_READ_BUFFER_INVALIDATE);
+@@ -1695,7 +1701,7 @@ int r100_gui_wait_for_idle(struct radeon_device *rdev)
+ 	}
+ 	for (i = 0; i < rdev->usec_timeout; i++) {
+ 		tmp = RREG32(RADEON_RBBM_STATUS);
+-		if (!(tmp & (1 << 31))) {
++		if (!(tmp & RADEON_RBBM_ACTIVE)) {
+ 			return 0;
+ 		}
+ 		DRM_UDELAY(1);
+@@ -1710,8 +1716,8 @@ int r100_mc_wait_for_idle(struct radeon_device *rdev)
+ 
+ 	for (i = 0; i < rdev->usec_timeout; i++) {
+ 		/* read MC_STATUS */
+-		tmp = RREG32(0x0150);
+-		if (tmp & (1 << 2)) {
++		tmp = RREG32(RADEON_MC_STATUS);
++		if (tmp & RADEON_MC_IDLE) {
+ 			return 0;
+ 		}
+ 		DRM_UDELAY(1);
+@@ -1784,7 +1790,7 @@ int r100_gpu_reset(struct radeon_device *rdev)
+ 	}
+ 	/* Check if GPU is idle */
+ 	status = RREG32(RADEON_RBBM_STATUS);
+-	if (status & (1 << 31)) {
++	if (status & RADEON_RBBM_ACTIVE) {
+ 		DRM_ERROR("Failed to reset GPU (RBBM_STATUS=0x%08X)\n", status);
+ 		return -1;
+ 	}
+@@ -1794,6 +1800,9 @@ int r100_gpu_reset(struct radeon_device *rdev)
+ 
+ void r100_set_common_regs(struct radeon_device *rdev)
+ {
++	struct drm_device *dev = rdev->ddev;
++	bool force_dac2 = false;
++
+ 	/* set these so they don't interfere with anything */
+ 	WREG32(RADEON_OV0_SCALE_CNTL, 0);
+ 	WREG32(RADEON_SUBPIC_CNTL, 0);
+@@ -1802,6 +1811,68 @@ void r100_set_common_regs(struct radeon_device *rdev)
+ 	WREG32(RADEON_DVI_I2C_CNTL_1, 0);
+ 	WREG32(RADEON_CAP0_TRIG_CNTL, 0);
+ 	WREG32(RADEON_CAP1_TRIG_CNTL, 0);
++
++	/* always set up dac2 on rn50 and some rv100 as lots
++	 * of servers seem to wire it up to a VGA port but
++	 * don't report it in the bios connector
++	 * table.
++	 */
++	switch (dev->pdev->device) {
++		/* RN50 */
++	case 0x515e:
++	case 0x5969:
++		force_dac2 = true;
++		break;
++		/* RV100*/
++	case 0x5159:
++	case 0x515a:
++		/* DELL triple head servers */
++		if ((dev->pdev->subsystem_vendor == 0x1028 /* DELL */) &&
++		    ((dev->pdev->subsystem_device == 0x016c) ||
++		     (dev->pdev->subsystem_device == 0x016d) ||
++		     (dev->pdev->subsystem_device == 0x016e) ||
++		     (dev->pdev->subsystem_device == 0x016f) ||
++		     (dev->pdev->subsystem_device == 0x0170) ||
++		     (dev->pdev->subsystem_device == 0x017d) ||
++		     (dev->pdev->subsystem_device == 0x017e) ||
++		     (dev->pdev->subsystem_device == 0x0183) ||
++		     (dev->pdev->subsystem_device == 0x018a) ||
++		     (dev->pdev->subsystem_device == 0x019a)))
++			force_dac2 = true;
++		break;
++	}
++
++	if (force_dac2) {
++		u32 disp_hw_debug = RREG32(RADEON_DISP_HW_DEBUG);
++		u32 tv_dac_cntl = RREG32(RADEON_TV_DAC_CNTL);
++		u32 dac2_cntl = RREG32(RADEON_DAC_CNTL2);
++
++		/* For CRT on DAC2, don't turn it on if BIOS didn't
++		   enable it, even it's detected.
++		*/
++
++		/* force it to crtc0 */
++		dac2_cntl &= ~RADEON_DAC2_DAC_CLK_SEL;
++		dac2_cntl |= RADEON_DAC2_DAC2_CLK_SEL;
++		disp_hw_debug |= RADEON_CRT2_DISP1_SEL;
++
++		/* set up the TV DAC */
++		tv_dac_cntl &= ~(RADEON_TV_DAC_PEDESTAL |
++				 RADEON_TV_DAC_STD_MASK |
++				 RADEON_TV_DAC_RDACPD |
++				 RADEON_TV_DAC_GDACPD |
++				 RADEON_TV_DAC_BDACPD |
++				 RADEON_TV_DAC_BGADJ_MASK |
++				 RADEON_TV_DAC_DACADJ_MASK);
++		tv_dac_cntl |= (RADEON_TV_DAC_NBLANK |
++				RADEON_TV_DAC_NHOLD |
++				RADEON_TV_DAC_STD_PS2 |
++				(0x58 << 16));
++
++		WREG32(RADEON_TV_DAC_CNTL, tv_dac_cntl);
++		WREG32(RADEON_DISP_HW_DEBUG, disp_hw_debug);
++		WREG32(RADEON_DAC_CNTL2, dac2_cntl);
++	}
+ }
+ 
+ /*
+@@ -3369,7 +3440,6 @@ int r100_suspend(struct radeon_device *rdev)
+ 
+ void r100_fini(struct radeon_device *rdev)
+ {
+-	r100_suspend(rdev);
+ 	r100_cp_fini(rdev);
+ 	r100_wb_fini(rdev);
+ 	r100_ib_fini(rdev);
+@@ -3481,13 +3551,12 @@ int r100_init(struct radeon_device *rdev)
+ 	if (r) {
+ 		/* Somethings want wront with the accel init stop accel */
+ 		dev_err(rdev->dev, "Disabling GPU acceleration\n");
+-		r100_suspend(rdev);
+ 		r100_cp_fini(rdev);
+ 		r100_wb_fini(rdev);
+ 		r100_ib_fini(rdev);
++		radeon_irq_kms_fini(rdev);
+ 		if (rdev->flags & RADEON_IS_PCI)
+ 			r100_pci_gart_fini(rdev);
+-		radeon_irq_kms_fini(rdev);
+ 		rdev->accel_working = false;
+ 	}
+ 	return 0;
+diff --git a/drivers/gpu/drm/radeon/r200.c b/drivers/gpu/drm/radeon/r200.c
+index ff1e0cd..1146c99 100644
+--- a/drivers/gpu/drm/radeon/r200.c
++++ b/drivers/gpu/drm/radeon/r200.c
+@@ -31,6 +31,7 @@
+ #include "radeon_reg.h"
+ #include "radeon.h"
+ 
++#include "r100d.h"
+ #include "r200_reg_safe.h"
+ 
+ #include "r100_track.h"
+@@ -79,6 +80,51 @@ static int r200_get_vtx_size_0(uint32_t vtx_fmt_0)
+ 	return vtx_size;
+ }
+ 
++int r200_copy_dma(struct radeon_device *rdev,
++		  uint64_t src_offset,
++		  uint64_t dst_offset,
++		  unsigned num_pages,
++		  struct radeon_fence *fence)
++{
++	uint32_t size;
++	uint32_t cur_size;
++	int i, num_loops;
++	int r = 0;
++
++	/* radeon pitch is /64 */
++	size = num_pages << PAGE_SHIFT;
++	num_loops = DIV_ROUND_UP(size, 0x1FFFFF);
++	r = radeon_ring_lock(rdev, num_loops * 4 + 64);
++	if (r) {
++		DRM_ERROR("radeon: moving bo (%d).\n", r);
++		return r;
++	}
++	/* Must wait for 2D idle & clean before DMA or hangs might happen */
++	radeon_ring_write(rdev, PACKET0(RADEON_WAIT_UNTIL, 0));
++	radeon_ring_write(rdev, (1 << 16));
++	for (i = 0; i < num_loops; i++) {
++		cur_size = size;
++		if (cur_size > 0x1FFFFF) {
++			cur_size = 0x1FFFFF;
++		}
++		size -= cur_size;
++		radeon_ring_write(rdev, PACKET0(0x720, 2));
++		radeon_ring_write(rdev, src_offset);
++		radeon_ring_write(rdev, dst_offset);
++		radeon_ring_write(rdev, cur_size | (1 << 31) | (1 << 30));
++		src_offset += cur_size;
++		dst_offset += cur_size;
++	}
++	radeon_ring_write(rdev, PACKET0(RADEON_WAIT_UNTIL, 0));
++	radeon_ring_write(rdev, RADEON_WAIT_DMA_GUI_IDLE);
++	if (fence) {
++		r = radeon_fence_emit(rdev, fence);
++	}
++	radeon_ring_unlock_commit(rdev);
++	return r;
++}
++
++
+ static int r200_get_vtx_size_1(uint32_t vtx_fmt_1)
+ {
+ 	int vtx_size, i, tex_size;
+diff --git a/drivers/gpu/drm/radeon/r300.c b/drivers/gpu/drm/radeon/r300.c
+index 0051d11..4081c58 100644
+--- a/drivers/gpu/drm/radeon/r300.c
++++ b/drivers/gpu/drm/radeon/r300.c
+@@ -174,18 +174,20 @@ void r300_fence_ring_emit(struct radeon_device *rdev,
+ 	/* Who ever call radeon_fence_emit should call ring_lock and ask
+ 	 * for enough space (today caller are ib schedule and buffer move) */
+ 	/* Write SC register so SC & US assert idle */
+-	radeon_ring_write(rdev, PACKET0(0x43E0, 0));
++	radeon_ring_write(rdev, PACKET0(R300_RE_SCISSORS_TL, 0));
+ 	radeon_ring_write(rdev, 0);
+-	radeon_ring_write(rdev, PACKET0(0x43E4, 0));
++	radeon_ring_write(rdev, PACKET0(R300_RE_SCISSORS_BR, 0));
+ 	radeon_ring_write(rdev, 0);
+ 	/* Flush 3D cache */
+-	radeon_ring_write(rdev, PACKET0(0x4E4C, 0));
+-	radeon_ring_write(rdev, (2 << 0));
+-	radeon_ring_write(rdev, PACKET0(0x4F18, 0));
+-	radeon_ring_write(rdev, (1 << 0));
++	radeon_ring_write(rdev, PACKET0(R300_RB3D_DSTCACHE_CTLSTAT, 0));
++	radeon_ring_write(rdev, R300_RB3D_DC_FLUSH);
++	radeon_ring_write(rdev, PACKET0(R300_RB3D_ZCACHE_CTLSTAT, 0));
++	radeon_ring_write(rdev, R300_ZC_FLUSH);
+ 	/* Wait until IDLE & CLEAN */
+-	radeon_ring_write(rdev, PACKET0(0x1720, 0));
+-	radeon_ring_write(rdev, (1 << 17) | (1 << 16)  | (1 << 9));
++	radeon_ring_write(rdev, PACKET0(RADEON_WAIT_UNTIL, 0));
++	radeon_ring_write(rdev, (RADEON_WAIT_3D_IDLECLEAN |
++				 RADEON_WAIT_2D_IDLECLEAN |
++				 RADEON_WAIT_DMA_GUI_IDLE));
+ 	radeon_ring_write(rdev, PACKET0(RADEON_HOST_PATH_CNTL, 0));
+ 	radeon_ring_write(rdev, rdev->config.r300.hdp_cntl |
+ 				RADEON_HDP_READ_BUFFER_INVALIDATE);
+@@ -198,50 +200,6 @@ void r300_fence_ring_emit(struct radeon_device *rdev,
+ 	radeon_ring_write(rdev, RADEON_SW_INT_FIRE);
+ }
+ 
+-int r300_copy_dma(struct radeon_device *rdev,
+-		  uint64_t src_offset,
+-		  uint64_t dst_offset,
+-		  unsigned num_pages,
+-		  struct radeon_fence *fence)
+-{
+-	uint32_t size;
+-	uint32_t cur_size;
+-	int i, num_loops;
+-	int r = 0;
+-
+-	/* radeon pitch is /64 */
+-	size = num_pages << PAGE_SHIFT;
+-	num_loops = DIV_ROUND_UP(size, 0x1FFFFF);
+-	r = radeon_ring_lock(rdev, num_loops * 4 + 64);
+-	if (r) {
+-		DRM_ERROR("radeon: moving bo (%d).\n", r);
+-		return r;
+-	}
+-	/* Must wait for 2D idle & clean before DMA or hangs might happen */
+-	radeon_ring_write(rdev, PACKET0(RADEON_WAIT_UNTIL, 0 ));
+-	radeon_ring_write(rdev, (1 << 16));
+-	for (i = 0; i < num_loops; i++) {
+-		cur_size = size;
+-		if (cur_size > 0x1FFFFF) {
+-			cur_size = 0x1FFFFF;
+-		}
+-		size -= cur_size;
+-		radeon_ring_write(rdev, PACKET0(0x720, 2));
+-		radeon_ring_write(rdev, src_offset);
+-		radeon_ring_write(rdev, dst_offset);
+-		radeon_ring_write(rdev, cur_size | (1 << 31) | (1 << 30));
+-		src_offset += cur_size;
+-		dst_offset += cur_size;
+-	}
+-	radeon_ring_write(rdev, PACKET0(RADEON_WAIT_UNTIL, 0));
+-	radeon_ring_write(rdev, RADEON_WAIT_DMA_GUI_IDLE);
+-	if (fence) {
+-		r = radeon_fence_emit(rdev, fence);
+-	}
+-	radeon_ring_unlock_commit(rdev);
+-	return r;
+-}
+-
+ void r300_ring_start(struct radeon_device *rdev)
+ {
+ 	unsigned gb_tile_config;
+@@ -281,8 +239,8 @@ void r300_ring_start(struct radeon_device *rdev)
+ 	radeon_ring_write(rdev,
+ 			  RADEON_WAIT_2D_IDLECLEAN |
+ 			  RADEON_WAIT_3D_IDLECLEAN);
+-	radeon_ring_write(rdev, PACKET0(0x170C, 0));
+-	radeon_ring_write(rdev, 1 << 31);
++	radeon_ring_write(rdev, PACKET0(R300_DST_PIPE_CONFIG, 0));
++	radeon_ring_write(rdev, R300_PIPE_AUTO_CONFIG);
+ 	radeon_ring_write(rdev, PACKET0(R300_GB_SELECT, 0));
+ 	radeon_ring_write(rdev, 0);
+ 	radeon_ring_write(rdev, PACKET0(R300_GB_ENABLE, 0));
+@@ -349,8 +307,8 @@ int r300_mc_wait_for_idle(struct radeon_device *rdev)
+ 
+ 	for (i = 0; i < rdev->usec_timeout; i++) {
+ 		/* read MC_STATUS */
+-		tmp = RREG32(0x0150);
+-		if (tmp & (1 << 4)) {
++		tmp = RREG32(RADEON_MC_STATUS);
++		if (tmp & R300_MC_IDLE) {
+ 			return 0;
+ 		}
+ 		DRM_UDELAY(1);
+@@ -395,8 +353,8 @@ void r300_gpu_init(struct radeon_device *rdev)
+ 		       "programming pipes. Bad things might happen.\n");
+ 	}
+ 
+-	tmp = RREG32(0x170C);
+-	WREG32(0x170C, tmp | (1 << 31));
++	tmp = RREG32(R300_DST_PIPE_CONFIG);
++	WREG32(R300_DST_PIPE_CONFIG, tmp | R300_PIPE_AUTO_CONFIG);
+ 
+ 	WREG32(R300_RB2D_DSTCACHE_MODE,
+ 	       R300_DC_AUTOFLUSH_ENABLE |
+@@ -437,8 +395,8 @@ int r300_ga_reset(struct radeon_device *rdev)
+ 			/* GA still busy soft reset it */
+ 			WREG32(0x429C, 0x200);
+ 			WREG32(R300_VAP_PVS_STATE_FLUSH_REG, 0);
+-			WREG32(0x43E0, 0);
+-			WREG32(0x43E4, 0);
++			WREG32(R300_RE_SCISSORS_TL, 0);
++			WREG32(R300_RE_SCISSORS_BR, 0);
+ 			WREG32(0x24AC, 0);
+ 		}
+ 		/* Wait to prevent race in RBBM_STATUS */
+@@ -488,7 +446,7 @@ int r300_gpu_reset(struct radeon_device *rdev)
+ 	}
+ 	/* Check if GPU is idle */
+ 	status = RREG32(RADEON_RBBM_STATUS);
+-	if (status & (1 << 31)) {
++	if (status & RADEON_RBBM_ACTIVE) {
+ 		DRM_ERROR("Failed to reset GPU (RBBM_STATUS=0x%08X)\n", status);
+ 		return -1;
+ 	}
+@@ -506,11 +464,14 @@ void r300_vram_info(struct radeon_device *rdev)
+ 
+ 	/* DDR for all card after R300 & IGP */
+ 	rdev->mc.vram_is_ddr = true;
++
+ 	tmp = RREG32(RADEON_MEM_CNTL);
+-	if (tmp & R300_MEM_NUM_CHANNELS_MASK) {
+-		rdev->mc.vram_width = 128;
+-	} else {
+-		rdev->mc.vram_width = 64;
++	tmp &= R300_MEM_NUM_CHANNELS_MASK;
++	switch (tmp) {
++	case 0: rdev->mc.vram_width = 64; break;
++	case 1: rdev->mc.vram_width = 128; break;
++	case 2: rdev->mc.vram_width = 256; break;
++	default:  rdev->mc.vram_width = 128; break;
+ 	}
+ 
+ 	r100_vram_init_sizes(rdev);
+@@ -704,6 +665,8 @@ static int r300_packet0_check(struct radeon_cs_parser *p,
+ 			tile_flags |= R300_TXO_MACRO_TILE;
+ 		if (reloc->lobj.tiling_flags & RADEON_TILING_MICRO)
+ 			tile_flags |= R300_TXO_MICRO_TILE;
++		else if (reloc->lobj.tiling_flags & RADEON_TILING_MICRO_SQUARE)
++			tile_flags |= R300_TXO_MICRO_TILE_SQUARE;
+ 
+ 		tmp = idx_value + ((u32)reloc->lobj.gpu_offset);
+ 		tmp |= tile_flags;
+@@ -754,6 +717,8 @@ static int r300_packet0_check(struct radeon_cs_parser *p,
+ 			tile_flags |= R300_COLOR_TILE_ENABLE;
+ 		if (reloc->lobj.tiling_flags & RADEON_TILING_MICRO)
+ 			tile_flags |= R300_COLOR_MICROTILE_ENABLE;
++		else if (reloc->lobj.tiling_flags & RADEON_TILING_MICRO_SQUARE)
++			tile_flags |= R300_COLOR_MICROTILE_SQUARE_ENABLE;
+ 
+ 		tmp = idx_value & ~(0x7 << 16);
+ 		tmp |= tile_flags;
+@@ -825,7 +790,9 @@ static int r300_packet0_check(struct radeon_cs_parser *p,
+ 		if (reloc->lobj.tiling_flags & RADEON_TILING_MACRO)
+ 			tile_flags |= R300_DEPTHMACROTILE_ENABLE;
+ 		if (reloc->lobj.tiling_flags & RADEON_TILING_MICRO)
+-			tile_flags |= R300_DEPTHMICROTILE_TILED;;
++			tile_flags |= R300_DEPTHMICROTILE_TILED;
++		else if (reloc->lobj.tiling_flags & RADEON_TILING_MICRO_SQUARE)
++			tile_flags |= R300_DEPTHMICROTILE_TILED_SQUARE;
+ 
+ 		tmp = idx_value & ~(0x7 << 16);
+ 		tmp |= tile_flags;
+@@ -1327,7 +1294,6 @@ int r300_suspend(struct radeon_device *rdev)
+ 
+ void r300_fini(struct radeon_device *rdev)
+ {
+-	r300_suspend(rdev);
+ 	r100_cp_fini(rdev);
+ 	r100_wb_fini(rdev);
+ 	r100_ib_fini(rdev);
+@@ -1418,15 +1384,15 @@ int r300_init(struct radeon_device *rdev)
+ 	if (r) {
+ 		/* Somethings want wront with the accel init stop accel */
+ 		dev_err(rdev->dev, "Disabling GPU acceleration\n");
+-		r300_suspend(rdev);
+ 		r100_cp_fini(rdev);
+ 		r100_wb_fini(rdev);
+ 		r100_ib_fini(rdev);
++		radeon_irq_kms_fini(rdev);
+ 		if (rdev->flags & RADEON_IS_PCIE)
+ 			rv370_pcie_gart_fini(rdev);
+ 		if (rdev->flags & RADEON_IS_PCI)
+ 			r100_pci_gart_fini(rdev);
+-		radeon_irq_kms_fini(rdev);
++		radeon_agp_fini(rdev);
+ 		rdev->accel_working = false;
+ 	}
+ 	return 0;
+diff --git a/drivers/gpu/drm/radeon/r300_reg.h b/drivers/gpu/drm/radeon/r300_reg.h
+index 1735a2b..1a0d536 100644
+--- a/drivers/gpu/drm/radeon/r300_reg.h
++++ b/drivers/gpu/drm/radeon/r300_reg.h
+@@ -952,6 +952,7 @@
+ #       define R300_TXO_ENDIAN_HALFDW_SWAP       (3 << 0)
+ #       define R300_TXO_MACRO_TILE               (1 << 2)
+ #       define R300_TXO_MICRO_TILE               (1 << 3)
++#       define R300_TXO_MICRO_TILE_SQUARE        (2 << 3)
+ #       define R300_TXO_OFFSET_MASK              0xffffffe0
+ #       define R300_TXO_OFFSET_SHIFT             5
+ 	/* END: Guess from R200 */
+@@ -1360,6 +1361,7 @@
+ #       define R300_COLORPITCH_MASK              0x00001FF8 /* GUESS */
+ #       define R300_COLOR_TILE_ENABLE            (1 << 16) /* GUESS */
+ #       define R300_COLOR_MICROTILE_ENABLE       (1 << 17) /* GUESS */
++#       define R300_COLOR_MICROTILE_SQUARE_ENABLE (2 << 17)
+ #       define R300_COLOR_ENDIAN_NO_SWAP         (0 << 18) /* GUESS */
+ #       define R300_COLOR_ENDIAN_WORD_SWAP       (1 << 18) /* GUESS */
+ #       define R300_COLOR_ENDIAN_DWORD_SWAP      (2 << 18) /* GUESS */
+diff --git a/drivers/gpu/drm/radeon/r420.c b/drivers/gpu/drm/radeon/r420.c
+index 4526faa..12ebbdb 100644
+--- a/drivers/gpu/drm/radeon/r420.c
++++ b/drivers/gpu/drm/radeon/r420.c
+@@ -69,7 +69,8 @@ void r420_pipes_init(struct radeon_device *rdev)
+ 	unsigned num_pipes;
+ 
+ 	/* GA_ENHANCE workaround TCL deadlock issue */
+-	WREG32(0x4274, (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3));
++	WREG32(R300_GA_ENHANCE, R300_GA_DEADLOCK_CNTL | R300_GA_FASTSYNC_CNTL |
++	       (1 << 2) | (1 << 3));
+ 	/* add idle wait as per freedesktop.org bug 24041 */
+ 	if (r100_gui_wait_for_idle(rdev)) {
+ 		printk(KERN_WARNING "Failed to wait GUI idle while "
+@@ -97,17 +98,17 @@ void r420_pipes_init(struct radeon_device *rdev)
+ 		tmp = (7 << 1);
+ 		break;
+ 	}
+-	WREG32(0x42C8, (1 << num_pipes) - 1);
++	WREG32(R500_SU_REG_DEST, (1 << num_pipes) - 1);
+ 	/* Sub pixel 1/12 so we can have 4K rendering according to doc */
+-	tmp |= (1 << 4) | (1 << 0);
+-	WREG32(0x4018, tmp);
++	tmp |= R300_TILE_SIZE_16 | R300_ENABLE_TILING;
++	WREG32(R300_GB_TILE_CONFIG, tmp);
+ 	if (r100_gui_wait_for_idle(rdev)) {
+ 		printk(KERN_WARNING "Failed to wait GUI idle while "
+ 		       "programming pipes. Bad things might happen.\n");
+ 	}
+ 
+-	tmp = RREG32(0x170C);
+-	WREG32(0x170C, tmp | (1 << 31));
++	tmp = RREG32(R300_DST_PIPE_CONFIG);
++	WREG32(R300_DST_PIPE_CONFIG, tmp | R300_PIPE_AUTO_CONFIG);
+ 
+ 	WREG32(R300_RB2D_DSTCACHE_MODE,
+ 	       RREG32(R300_RB2D_DSTCACHE_MODE) |
+@@ -389,16 +390,15 @@ int r420_init(struct radeon_device *rdev)
+ 	if (r) {
+ 		/* Somethings want wront with the accel init stop accel */
+ 		dev_err(rdev->dev, "Disabling GPU acceleration\n");
+-		r420_suspend(rdev);
+ 		r100_cp_fini(rdev);
+ 		r100_wb_fini(rdev);
+ 		r100_ib_fini(rdev);
++		radeon_irq_kms_fini(rdev);
+ 		if (rdev->flags & RADEON_IS_PCIE)
+ 			rv370_pcie_gart_fini(rdev);
+ 		if (rdev->flags & RADEON_IS_PCI)
+ 			r100_pci_gart_fini(rdev);
+ 		radeon_agp_fini(rdev);
+-		radeon_irq_kms_fini(rdev);
+ 		rdev->accel_working = false;
+ 	}
+ 	return 0;
+diff --git a/drivers/gpu/drm/radeon/r520.c b/drivers/gpu/drm/radeon/r520.c
+index 9a18907..ddf5731 100644
+--- a/drivers/gpu/drm/radeon/r520.c
++++ b/drivers/gpu/drm/radeon/r520.c
+@@ -294,13 +294,12 @@ int r520_init(struct radeon_device *rdev)
+ 	if (r) {
+ 		/* Somethings want wront with the accel init stop accel */
+ 		dev_err(rdev->dev, "Disabling GPU acceleration\n");
+-		rv515_suspend(rdev);
+ 		r100_cp_fini(rdev);
+ 		r100_wb_fini(rdev);
+ 		r100_ib_fini(rdev);
++		radeon_irq_kms_fini(rdev);
+ 		rv370_pcie_gart_fini(rdev);
+ 		radeon_agp_fini(rdev);
+-		radeon_irq_kms_fini(rdev);
+ 		rdev->accel_working = false;
+ 	}
+ 	return 0;
+diff --git a/drivers/gpu/drm/radeon/r600.c b/drivers/gpu/drm/radeon/r600.c
+index d0bd117..6875593 100644
+--- a/drivers/gpu/drm/radeon/r600.c
++++ b/drivers/gpu/drm/radeon/r600.c
+@@ -353,23 +353,14 @@ void r600_hpd_fini(struct radeon_device *rdev)
+ /*
+  * R600 PCIE GART
+  */
+-int r600_gart_clear_page(struct radeon_device *rdev, int i)
+-{
+-	void __iomem *ptr = (void *)rdev->gart.table.vram.ptr;
+-	u64 pte;
+-
+-	if (i < 0 || i > rdev->gart.num_gpu_pages)
+-		return -EINVAL;
+-	pte = 0;
+-	writeq(pte, ((void __iomem *)ptr) + (i * 8));
+-	return 0;
+-}
+-
+ void r600_pcie_gart_tlb_flush(struct radeon_device *rdev)
+ {
+ 	unsigned i;
+ 	u32 tmp;
+ 
++	/* flush hdp cache so updates hit vram */
++	WREG32(R_005480_HDP_MEM_COHERENCY_FLUSH_CNTL, 0x1);
++
+ 	WREG32(VM_CONTEXT0_INVALIDATION_LOW_ADDR, rdev->mc.gtt_start >> 12);
+ 	WREG32(VM_CONTEXT0_INVALIDATION_HIGH_ADDR, (rdev->mc.gtt_end - 1) >> 12);
+ 	WREG32(VM_CONTEXT0_REQUEST_RESPONSE, REQUEST_TYPE(1));
+@@ -674,11 +665,11 @@ int r600_mc_init(struct radeon_device *rdev)
+ 		 * AGP so that GPU can catch out of VRAM/AGP access
+ 		 */
+ 		if (rdev->mc.gtt_location > rdev->mc.mc_vram_size) {
+-			/* Enought place before */
++			/* Enough place before */
+ 			rdev->mc.vram_location = rdev->mc.gtt_location -
+ 							rdev->mc.mc_vram_size;
+ 		} else if (tmp > rdev->mc.mc_vram_size) {
+-			/* Enought place after */
++			/* Enough place after */
+ 			rdev->mc.vram_location = rdev->mc.gtt_location +
+ 							rdev->mc.gtt_size;
+ 		} else {
+@@ -981,6 +972,9 @@ void r600_gpu_init(struct radeon_device *rdev)
+ {
+ 	u32 tiling_config;
+ 	u32 ramcfg;
++	u32 backend_map;
++	u32 cc_rb_backend_disable;
++	u32 cc_gc_shader_pipe_config;
+ 	u32 tmp;
+ 	int i, j;
+ 	u32 sq_config;
+@@ -1101,24 +1095,33 @@ void r600_gpu_init(struct radeon_device *rdev)
+ 		tiling_config |= SAMPLE_SPLIT(tmp);
+ 	}
+ 	tiling_config |= BANK_SWAPS(1);
+-	tmp = r600_get_tile_pipe_to_backend_map(rdev->config.r600.max_tile_pipes,
+-						rdev->config.r600.max_backends,
+-						(0xff << rdev->config.r600.max_backends) & 0xff);
+-	tiling_config |= BACKEND_MAP(tmp);
++
++	cc_rb_backend_disable = RREG32(CC_RB_BACKEND_DISABLE) & 0x00ff0000;
++	cc_rb_backend_disable |=
++		BACKEND_DISABLE((R6XX_MAX_BACKENDS_MASK << rdev->config.r600.max_backends) & R6XX_MAX_BACKENDS_MASK);
++
++	cc_gc_shader_pipe_config = RREG32(CC_GC_SHADER_PIPE_CONFIG) & 0xffffff00;
++	cc_gc_shader_pipe_config |=
++		INACTIVE_QD_PIPES((R6XX_MAX_PIPES_MASK << rdev->config.r600.max_pipes) & R6XX_MAX_PIPES_MASK);
++	cc_gc_shader_pipe_config |=
++		INACTIVE_SIMDS((R6XX_MAX_SIMDS_MASK << rdev->config.r600.max_simds) & R6XX_MAX_SIMDS_MASK);
++
++	backend_map = r600_get_tile_pipe_to_backend_map(rdev->config.r600.max_tile_pipes,
++							(R6XX_MAX_BACKENDS -
++							 r600_count_pipe_bits((cc_rb_backend_disable &
++									       R6XX_MAX_BACKENDS_MASK) >> 16)),
++							(cc_rb_backend_disable >> 16));
++
++	tiling_config |= BACKEND_MAP(backend_map);
+ 	WREG32(GB_TILING_CONFIG, tiling_config);
+ 	WREG32(DCP_TILING_CONFIG, tiling_config & 0xffff);
+ 	WREG32(HDP_TILING_CONFIG, tiling_config & 0xffff);
+ 
+-	tmp = BACKEND_DISABLE((R6XX_MAX_BACKENDS_MASK << rdev->config.r600.max_backends) & R6XX_MAX_BACKENDS_MASK);
+-	WREG32(CC_RB_BACKEND_DISABLE, tmp);
+-
+ 	/* Setup pipes */
+-	tmp = INACTIVE_QD_PIPES((R6XX_MAX_PIPES_MASK << rdev->config.r600.max_pipes) & R6XX_MAX_PIPES_MASK);
+-	tmp |= INACTIVE_SIMDS((R6XX_MAX_SIMDS_MASK << rdev->config.r600.max_simds) & R6XX_MAX_SIMDS_MASK);
+-	WREG32(CC_GC_SHADER_PIPE_CONFIG, tmp);
+-	WREG32(GC_USER_SHADER_PIPE_CONFIG, tmp);
++	WREG32(CC_RB_BACKEND_DISABLE, cc_rb_backend_disable);
++	WREG32(CC_GC_SHADER_PIPE_CONFIG, cc_gc_shader_pipe_config);
+ 
+-	tmp = R6XX_MAX_BACKENDS - r600_count_pipe_bits(tmp & INACTIVE_QD_PIPES_MASK);
++	tmp = R6XX_MAX_PIPES - r600_count_pipe_bits((cc_gc_shader_pipe_config & INACTIVE_QD_PIPES_MASK) >> 8);
+ 	WREG32(VGT_OUT_DEALLOC_CNTL, (tmp * 4) & DEALLOC_DIST_MASK);
+ 	WREG32(VGT_VERTEX_REUSE_BLOCK_CNTL, ((tmp * 4) - 2) & VTX_REUSE_DEPTH_MASK);
+ 
+@@ -1654,6 +1657,12 @@ void r600_ring_init(struct radeon_device *rdev, unsigned ring_size)
+ 	rdev->cp.align_mask = 16 - 1;
+ }
+ 
++void r600_cp_fini(struct radeon_device *rdev)
++{
++	r600_cp_stop(rdev);
++	radeon_ring_fini(rdev);
++}
++
+ 
+ /*
+  * GPU scratch registers helpers function.
+@@ -1777,34 +1786,40 @@ void r600_fence_ring_emit(struct radeon_device *rdev,
+ 			  struct radeon_fence *fence)
+ {
+ 	/* Also consider EVENT_WRITE_EOP.  it handles the interrupts + timestamps + events */
++
++	radeon_ring_write(rdev, PACKET3(PACKET3_EVENT_WRITE, 0));
++	radeon_ring_write(rdev, CACHE_FLUSH_AND_INV_EVENT);
++	/* wait for 3D idle clean */
++	radeon_ring_write(rdev, PACKET3(PACKET3_SET_CONFIG_REG, 1));
++	radeon_ring_write(rdev, (WAIT_UNTIL - PACKET3_SET_CONFIG_REG_OFFSET) >> 2);
++	radeon_ring_write(rdev, WAIT_3D_IDLE_bit | WAIT_3D_IDLECLEAN_bit);
+ 	/* Emit fence sequence & fire IRQ */
+ 	radeon_ring_write(rdev, PACKET3(PACKET3_SET_CONFIG_REG, 1));
+ 	radeon_ring_write(rdev, ((rdev->fence_drv.scratch_reg - PACKET3_SET_CONFIG_REG_OFFSET) >> 2));
+ 	radeon_ring_write(rdev, fence->seq);
+-	radeon_ring_write(rdev, PACKET0(R_005480_HDP_MEM_COHERENCY_FLUSH_CNTL, 0));
+-	radeon_ring_write(rdev, 1);
+ 	/* CP_INTERRUPT packet 3 no longer exists, use packet 0 */
+ 	radeon_ring_write(rdev, PACKET0(CP_INT_STATUS, 0));
+ 	radeon_ring_write(rdev, RB_INT_STAT);
+ }
+ 
+-int r600_copy_dma(struct radeon_device *rdev,
+-		  uint64_t src_offset,
+-		  uint64_t dst_offset,
+-		  unsigned num_pages,
+-		  struct radeon_fence *fence)
+-{
+-	/* FIXME: implement */
+-	return 0;
+-}
+-
+ int r600_copy_blit(struct radeon_device *rdev,
+ 		   uint64_t src_offset, uint64_t dst_offset,
+ 		   unsigned num_pages, struct radeon_fence *fence)
+ {
+-	r600_blit_prepare_copy(rdev, num_pages * RADEON_GPU_PAGE_SIZE);
++	int r;
++
++	mutex_lock(&rdev->r600_blit.mutex);
++	rdev->r600_blit.vb_ib = NULL;
++	r = r600_blit_prepare_copy(rdev, num_pages * RADEON_GPU_PAGE_SIZE);
++	if (r) {
++		if (rdev->r600_blit.vb_ib)
++			radeon_ib_free(rdev, &rdev->r600_blit.vb_ib);
++		mutex_unlock(&rdev->r600_blit.mutex);
++		return r;
++	}
+ 	r600_kms_blit_copy(rdev, src_offset, dst_offset, num_pages * RADEON_GPU_PAGE_SIZE);
+ 	r600_blit_done_copy(rdev, fence);
++	mutex_unlock(&rdev->r600_blit.mutex);
+ 	return 0;
+ }
+ 
+@@ -1860,26 +1875,25 @@ int r600_startup(struct radeon_device *rdev)
+ 			return r;
+ 	}
+ 	r600_gpu_init(rdev);
+-
+-	if (!rdev->r600_blit.shader_obj) {
+-		r = r600_blit_init(rdev);
++	r = r600_blit_init(rdev);
++	if (r) {
++		r600_blit_fini(rdev);
++		rdev->asic->copy = NULL;
++		dev_warn(rdev->dev, "failed blitter (%d) falling back to memcpy\n", r);
++	}
++	/* pin copy shader into vram */
++	if (rdev->r600_blit.shader_obj) {
++		r = radeon_bo_reserve(rdev->r600_blit.shader_obj, false);
++		if (unlikely(r != 0))
++			return r;
++		r = radeon_bo_pin(rdev->r600_blit.shader_obj, RADEON_GEM_DOMAIN_VRAM,
++				&rdev->r600_blit.shader_gpu_addr);
++		radeon_bo_unreserve(rdev->r600_blit.shader_obj);
+ 		if (r) {
+-			DRM_ERROR("radeon: failed blitter (%d).\n", r);
++			dev_err(rdev->dev, "(%d) pin blit object failed\n", r);
+ 			return r;
+ 		}
+ 	}
+-
+-	r = radeon_bo_reserve(rdev->r600_blit.shader_obj, false);
+-	if (unlikely(r != 0))
+-		return r;
+-	r = radeon_bo_pin(rdev->r600_blit.shader_obj, RADEON_GEM_DOMAIN_VRAM,
+-			&rdev->r600_blit.shader_gpu_addr);
+-	radeon_bo_unreserve(rdev->r600_blit.shader_obj);
+-	if (r) {
+-		dev_err(rdev->dev, "(%d) pin blit object failed\n", r);
+-		return r;
+-	}
+-
+ 	/* Enable IRQ */
+ 	r = r600_irq_init(rdev);
+ 	if (r) {
+@@ -1944,6 +1958,13 @@ int r600_resume(struct radeon_device *rdev)
+ 		DRM_ERROR("radeon: failled testing IB (%d).\n", r);
+ 		return r;
+ 	}
++
++	r = r600_audio_init(rdev);
++	if (r) {
++		DRM_ERROR("radeon: audio resume failed\n");
++		return r;
++	}
++
+ 	return r;
+ }
+ 
+@@ -1951,6 +1972,7 @@ int r600_suspend(struct radeon_device *rdev)
+ {
+ 	int r;
+ 
++	r600_audio_fini(rdev);
+ 	/* FIXME: we should wait for ring to be empty */
+ 	r600_cp_stop(rdev);
+ 	rdev->cp.ready = false;
+@@ -2055,9 +2077,11 @@ int r600_init(struct radeon_device *rdev)
+ 	rdev->accel_working = true;
+ 	r = r600_startup(rdev);
+ 	if (r) {
+-		r600_suspend(rdev);
++		dev_err(rdev->dev, "disabling GPU acceleration\n");
++		r600_cp_fini(rdev);
+ 		r600_wb_fini(rdev);
+-		radeon_ring_fini(rdev);
++		r600_irq_fini(rdev);
++		radeon_irq_kms_fini(rdev);
+ 		r600_pcie_gart_fini(rdev);
+ 		rdev->accel_working = false;
+ 	}
+@@ -2083,20 +2107,17 @@ int r600_init(struct radeon_device *rdev)
+ 
+ void r600_fini(struct radeon_device *rdev)
+ {
+-	/* Suspend operations */
+-	r600_suspend(rdev);
+-
+ 	r600_audio_fini(rdev);
+ 	r600_blit_fini(rdev);
++	r600_cp_fini(rdev);
++	r600_wb_fini(rdev);
+ 	r600_irq_fini(rdev);
+ 	radeon_irq_kms_fini(rdev);
+-	radeon_ring_fini(rdev);
+-	r600_wb_fini(rdev);
+ 	r600_pcie_gart_fini(rdev);
++	radeon_agp_fini(rdev);
+ 	radeon_gem_fini(rdev);
+ 	radeon_fence_driver_fini(rdev);
+ 	radeon_clocks_fini(rdev);
+-	radeon_agp_fini(rdev);
+ 	radeon_bo_fini(rdev);
+ 	radeon_atombios_fini(rdev);
+ 	kfree(rdev->bios);
+@@ -2900,3 +2921,18 @@ int r600_debugfs_mc_info_init(struct radeon_device *rdev)
+ 	return 0;
+ #endif
+ }
++
++/**
++ * r600_ioctl_wait_idle - flush host path cache on wait idle ioctl
++ * rdev: radeon device structure
++ * bo: buffer object struct which userspace is waiting for idle
++ *
++ * Some R6XX/R7XX doesn't seems to take into account HDP flush performed
++ * through ring buffer, this leads to corruption in rendering, see
++ * http://bugzilla.kernel.org/show_bug.cgi?id=15186 to avoid this we
++ * directly perform HDP flush by writing register through MMIO.
++ */
++void r600_ioctl_wait_idle(struct radeon_device *rdev, struct radeon_bo *bo)
++{
++	WREG32(R_005480_HDP_MEM_COHERENCY_FLUSH_CNTL, 0x1);
++}
+diff --git a/drivers/gpu/drm/radeon/r600_audio.c b/drivers/gpu/drm/radeon/r600_audio.c
+index 99e2c38..0dcb690 100644
+--- a/drivers/gpu/drm/radeon/r600_audio.c
++++ b/drivers/gpu/drm/radeon/r600_audio.c
+@@ -35,7 +35,7 @@
+  */
+ static int r600_audio_chipset_supported(struct radeon_device *rdev)
+ {
+-	return rdev->family >= CHIP_R600
++	return (rdev->family >= CHIP_R600 && rdev->family < CHIP_RV710)
+ 		|| rdev->family == CHIP_RS600
+ 		|| rdev->family == CHIP_RS690
+ 		|| rdev->family == CHIP_RS740;
+@@ -261,7 +261,6 @@ void r600_audio_fini(struct radeon_device *rdev)
+ 	if (!r600_audio_chipset_supported(rdev))
+ 		return;
+ 
+-	WREG32_P(R600_AUDIO_ENABLE, 0x0, ~0x81000000);
+-
+ 	del_timer(&rdev->audio_timer);
++	WREG32_P(R600_AUDIO_ENABLE, 0x0, ~0x81000000);
+ }
+diff --git a/drivers/gpu/drm/radeon/r600_blit.c b/drivers/gpu/drm/radeon/r600_blit.c
+index 5ea4323..f4fb88e 100644
+--- a/drivers/gpu/drm/radeon/r600_blit.c
++++ b/drivers/gpu/drm/radeon/r600_blit.c
+@@ -49,7 +49,7 @@ set_render_target(drm_radeon_private_t *dev_priv, int format, int w, int h, u64
+ 	RING_LOCALS;
+ 	DRM_DEBUG("\n");
+ 
+-	h = (h + 7) & ~7;
++	h = ALIGN(h, 8);
+ 	if (h < 8)
+ 		h = 8;
+ 
+diff --git a/drivers/gpu/drm/radeon/r600_blit_kms.c b/drivers/gpu/drm/radeon/r600_blit_kms.c
+index 2bedce4..f6c6c77 100644
+--- a/drivers/gpu/drm/radeon/r600_blit_kms.c
++++ b/drivers/gpu/drm/radeon/r600_blit_kms.c
+@@ -25,7 +25,7 @@ set_render_target(struct radeon_device *rdev, int format,
+ 	u32 cb_color_info;
+ 	int pitch, slice;
+ 
+-	h = (h + 7) & ~7;
++	h = ALIGN(h, 8);
+ 	if (h < 8)
+ 		h = 8;
+ 
+@@ -396,15 +396,13 @@ set_default_state(struct radeon_device *rdev)
+ 				    NUM_ES_STACK_ENTRIES(num_es_stack_entries));
+ 
+ 	/* emit an IB pointing at default state */
+-	dwords = (rdev->r600_blit.state_len + 0xf) & ~0xf;
++	dwords = ALIGN(rdev->r600_blit.state_len, 0x10);
+ 	gpu_addr = rdev->r600_blit.shader_gpu_addr + rdev->r600_blit.state_offset;
+ 	radeon_ring_write(rdev, PACKET3(PACKET3_INDIRECT_BUFFER, 2));
+ 	radeon_ring_write(rdev, gpu_addr & 0xFFFFFFFC);
+ 	radeon_ring_write(rdev, upper_32_bits(gpu_addr) & 0xFF);
+ 	radeon_ring_write(rdev, dwords);
+ 
+-	radeon_ring_write(rdev, PACKET3(PACKET3_EVENT_WRITE, 0));
+-	radeon_ring_write(rdev, CACHE_FLUSH_AND_INV_EVENT);
+ 	/* SQ config */
+ 	radeon_ring_write(rdev, PACKET3(PACKET3_SET_CONFIG_REG, 6));
+ 	radeon_ring_write(rdev, (SQ_CONFIG - PACKET3_SET_CONFIG_REG_OFFSET) >> 2);
+@@ -449,6 +447,7 @@ int r600_blit_init(struct radeon_device *rdev)
+ 	u32 packet2s[16];
+ 	int num_packet2s = 0;
+ 
++	mutex_init(&rdev->r600_blit.mutex);
+ 	rdev->r600_blit.state_offset = 0;
+ 
+ 	if (rdev->family >= CHIP_RV770)
+@@ -542,9 +541,6 @@ int r600_vb_ib_get(struct radeon_device *rdev)
+ void r600_vb_ib_put(struct radeon_device *rdev)
+ {
+ 	radeon_fence_emit(rdev, rdev->r600_blit.vb_ib->fence);
+-	mutex_lock(&rdev->ib_pool.mutex);
+-	list_add_tail(&rdev->r600_blit.vb_ib->list, &rdev->ib_pool.scheduled_ibs);
+-	mutex_unlock(&rdev->ib_pool.mutex);
+ 	radeon_ib_free(rdev, &rdev->r600_blit.vb_ib);
+ }
+ 
+@@ -557,7 +553,8 @@ int r600_blit_prepare_copy(struct radeon_device *rdev, int size_bytes)
+ 	int dwords_per_loop = 76, num_loops;
+ 
+ 	r = r600_vb_ib_get(rdev);
+-	WARN_ON(r);
++	if (r)
++		return r;
+ 
+ 	/* set_render_target emits 2 extra dwords on rv6xx */
+ 	if (rdev->family > CHIP_R600 && rdev->family < CHIP_RV770)
+@@ -579,11 +576,12 @@ int r600_blit_prepare_copy(struct radeon_device *rdev, int size_bytes)
+ 	ring_size = num_loops * dwords_per_loop;
+ 	/* set default  + shaders */
+ 	ring_size += 40; /* shaders + def state */
+-	ring_size += 7; /* fence emit for VB IB */
++	ring_size += 10; /* fence emit for VB IB */
+ 	ring_size += 5; /* done copy */
+-	ring_size += 7; /* fence emit for done copy */
++	ring_size += 10; /* fence emit for done copy */
+ 	r = radeon_ring_lock(rdev, ring_size);
+-	WARN_ON(r);
++	if (r)
++		return r;
+ 
+ 	set_default_state(rdev); /* 14 */
+ 	set_shaders(rdev); /* 26 */
+@@ -594,13 +592,6 @@ void r600_blit_done_copy(struct radeon_device *rdev, struct radeon_fence *fence)
+ {
+ 	int r;
+ 
+-	radeon_ring_write(rdev, PACKET3(PACKET3_EVENT_WRITE, 0));
+-	radeon_ring_write(rdev, CACHE_FLUSH_AND_INV_EVENT);
+-	/* wait for 3D idle clean */
+-	radeon_ring_write(rdev, PACKET3(PACKET3_SET_CONFIG_REG, 1));
+-	radeon_ring_write(rdev, (WAIT_UNTIL - PACKET3_SET_CONFIG_REG_OFFSET) >> 2);
+-	radeon_ring_write(rdev, WAIT_3D_IDLE_bit | WAIT_3D_IDLECLEAN_bit);
+-
+ 	if (rdev->r600_blit.vb_ib)
+ 		r600_vb_ib_put(rdev);
+ 
+diff --git a/drivers/gpu/drm/radeon/r600_blit_shaders.c b/drivers/gpu/drm/radeon/r600_blit_shaders.c
+index d745e81..a112c59 100644
+--- a/drivers/gpu/drm/radeon/r600_blit_shaders.c
++++ b/drivers/gpu/drm/radeon/r600_blit_shaders.c
+@@ -9,11 +9,6 @@ const u32 r6xx_default_state[] =
+ 	0xc0012800,
+ 	0x80000000,
+ 	0x80000000,
+-	0xc0004600,
+-	0x00000016,
+-	0xc0016800,
+-	0x00000010,
+-	0x00028000,
+ 	0xc0016800,
+ 	0x00000010,
+ 	0x00008000,
+@@ -531,11 +526,6 @@ const u32 r7xx_default_state[] =
+ 	0xc0012800,
+ 	0x80000000,
+ 	0x80000000,
+-	0xc0004600,
+-	0x00000016,
+-	0xc0016800,
+-	0x00000010,
+-	0x00028000,
+ 	0xc0016800,
+ 	0x00000010,
+ 	0x00008000,
+diff --git a/drivers/gpu/drm/radeon/r600_cp.c b/drivers/gpu/drm/radeon/r600_cp.c
+index 6d5a711..768461f 100644
+--- a/drivers/gpu/drm/radeon/r600_cp.c
++++ b/drivers/gpu/drm/radeon/r600_cp.c
+@@ -734,8 +734,8 @@ static void r600_gfx_init(struct drm_device *dev,
+ 	u32 hdp_host_path_cntl;
+ 	u32 backend_map;
+ 	u32 gb_tiling_config = 0;
+-	u32 cc_rb_backend_disable = 0;
+-	u32 cc_gc_shader_pipe_config = 0;
++	u32 cc_rb_backend_disable;
++	u32 cc_gc_shader_pipe_config;
+ 	u32 ramcfg;
+ 
+ 	/* setup chip specs */
+@@ -857,18 +857,22 @@ static void r600_gfx_init(struct drm_device *dev,
+ 
+ 	gb_tiling_config |= R600_BANK_SWAPS(1);
+ 
+-	backend_map = r600_get_tile_pipe_to_backend_map(dev_priv->r600_max_tile_pipes,
+-							dev_priv->r600_max_backends,
+-							(0xff << dev_priv->r600_max_backends) & 0xff);
+-	gb_tiling_config |= R600_BACKEND_MAP(backend_map);
++	cc_rb_backend_disable = RADEON_READ(R600_CC_RB_BACKEND_DISABLE) & 0x00ff0000;
++	cc_rb_backend_disable |=
++		R600_BACKEND_DISABLE((R6XX_MAX_BACKENDS_MASK << dev_priv->r600_max_backends) & R6XX_MAX_BACKENDS_MASK);
+ 
+-	cc_gc_shader_pipe_config =
++	cc_gc_shader_pipe_config = RADEON_READ(R600_CC_GC_SHADER_PIPE_CONFIG) & 0xffffff00;
++	cc_gc_shader_pipe_config |=
+ 		R600_INACTIVE_QD_PIPES((R6XX_MAX_PIPES_MASK << dev_priv->r600_max_pipes) & R6XX_MAX_PIPES_MASK);
+ 	cc_gc_shader_pipe_config |=
+ 		R600_INACTIVE_SIMDS((R6XX_MAX_SIMDS_MASK << dev_priv->r600_max_simds) & R6XX_MAX_SIMDS_MASK);
+ 
+-	cc_rb_backend_disable =
+-		R600_BACKEND_DISABLE((R6XX_MAX_BACKENDS_MASK << dev_priv->r600_max_backends) & R6XX_MAX_BACKENDS_MASK);
++	backend_map = r600_get_tile_pipe_to_backend_map(dev_priv->r600_max_tile_pipes,
++							(R6XX_MAX_BACKENDS -
++							 r600_count_pipe_bits((cc_rb_backend_disable &
++									       R6XX_MAX_BACKENDS_MASK) >> 16)),
++							(cc_rb_backend_disable >> 16));
++	gb_tiling_config |= R600_BACKEND_MAP(backend_map);
+ 
+ 	RADEON_WRITE(R600_GB_TILING_CONFIG,      gb_tiling_config);
+ 	RADEON_WRITE(R600_DCP_TILING_CONFIG,    (gb_tiling_config & 0xffff));
+@@ -879,7 +883,7 @@ static void r600_gfx_init(struct drm_device *dev,
+ 	RADEON_WRITE(R600_GC_USER_SHADER_PIPE_CONFIG, cc_gc_shader_pipe_config);
+ 
+ 	num_qd_pipes =
+-		R6XX_MAX_BACKENDS - r600_count_pipe_bits(cc_gc_shader_pipe_config & R600_INACTIVE_QD_PIPES_MASK);
++		R6XX_MAX_PIPES - r600_count_pipe_bits((cc_gc_shader_pipe_config & R600_INACTIVE_QD_PIPES_MASK) >> 8);
+ 	RADEON_WRITE(R600_VGT_OUT_DEALLOC_CNTL, (num_qd_pipes * 4) & R600_DEALLOC_DIST_MASK);
+ 	RADEON_WRITE(R600_VGT_VERTEX_REUSE_BLOCK_CNTL, ((num_qd_pipes * 4) - 2) & R600_VTX_REUSE_DEPTH_MASK);
+ 
+@@ -1151,7 +1155,8 @@ static void r600_gfx_init(struct drm_device *dev,
+ 
+ }
+ 
+-static u32 r700_get_tile_pipe_to_backend_map(u32 num_tile_pipes,
++static u32 r700_get_tile_pipe_to_backend_map(drm_radeon_private_t *dev_priv,
++					     u32 num_tile_pipes,
+ 					     u32 num_backends,
+ 					     u32 backend_disable_mask)
+ {
+@@ -1162,6 +1167,7 @@ static u32 r700_get_tile_pipe_to_backend_map(u32 num_tile_pipes,
+ 	u32 swizzle_pipe[R7XX_MAX_PIPES];
+ 	u32 cur_backend;
+ 	u32 i;
++	bool force_no_swizzle;
+ 
+ 	if (num_tile_pipes > R7XX_MAX_PIPES)
+ 		num_tile_pipes = R7XX_MAX_PIPES;
+@@ -1191,6 +1197,18 @@ static u32 r700_get_tile_pipe_to_backend_map(u32 num_tile_pipes,
+ 	if (enabled_backends_count != num_backends)
+ 		num_backends = enabled_backends_count;
+ 
++	switch (dev_priv->flags & RADEON_FAMILY_MASK) {
++	case CHIP_RV770:
++	case CHIP_RV730:
++		force_no_swizzle = false;
++		break;
++	case CHIP_RV710:
++	case CHIP_RV740:
++	default:
++		force_no_swizzle = true;
++		break;
++	}
++
+ 	memset((uint8_t *)&swizzle_pipe[0], 0, sizeof(u32) * R7XX_MAX_PIPES);
+ 	switch (num_tile_pipes) {
+ 	case 1:
+@@ -1201,49 +1219,100 @@ static u32 r700_get_tile_pipe_to_backend_map(u32 num_tile_pipes,
+ 		swizzle_pipe[1] = 1;
+ 		break;
+ 	case 3:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 1;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 1;
++		}
+ 		break;
+ 	case 4:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 3;
+-		swizzle_pipe[3] = 1;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 3;
++			swizzle_pipe[3] = 1;
++		}
+ 		break;
+ 	case 5:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 4;
+-		swizzle_pipe[3] = 1;
+-		swizzle_pipe[4] = 3;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++			swizzle_pipe[4] = 4;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 4;
++			swizzle_pipe[3] = 1;
++			swizzle_pipe[4] = 3;
++		}
+ 		break;
+ 	case 6:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 4;
+-		swizzle_pipe[3] = 5;
+-		swizzle_pipe[4] = 3;
+-		swizzle_pipe[5] = 1;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++			swizzle_pipe[4] = 4;
++			swizzle_pipe[5] = 5;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 4;
++			swizzle_pipe[3] = 5;
++			swizzle_pipe[4] = 3;
++			swizzle_pipe[5] = 1;
++		}
+ 		break;
+ 	case 7:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 4;
+-		swizzle_pipe[3] = 6;
+-		swizzle_pipe[4] = 3;
+-		swizzle_pipe[5] = 1;
+-		swizzle_pipe[6] = 5;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++			swizzle_pipe[4] = 4;
++			swizzle_pipe[5] = 5;
++			swizzle_pipe[6] = 6;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 4;
++			swizzle_pipe[3] = 6;
++			swizzle_pipe[4] = 3;
++			swizzle_pipe[5] = 1;
++			swizzle_pipe[6] = 5;
++		}
+ 		break;
+ 	case 8:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 4;
+-		swizzle_pipe[3] = 6;
+-		swizzle_pipe[4] = 3;
+-		swizzle_pipe[5] = 1;
+-		swizzle_pipe[6] = 7;
+-		swizzle_pipe[7] = 5;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++			swizzle_pipe[4] = 4;
++			swizzle_pipe[5] = 5;
++			swizzle_pipe[6] = 6;
++			swizzle_pipe[7] = 7;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 4;
++			swizzle_pipe[3] = 6;
++			swizzle_pipe[4] = 3;
++			swizzle_pipe[5] = 1;
++			swizzle_pipe[6] = 7;
++			swizzle_pipe[7] = 5;
++		}
+ 		break;
+ 	}
+ 
+@@ -1264,8 +1333,10 @@ static void r700_gfx_init(struct drm_device *dev,
+ 			  drm_radeon_private_t *dev_priv)
+ {
+ 	int i, j, num_qd_pipes;
++	u32 ta_aux_cntl;
+ 	u32 sx_debug_1;
+ 	u32 smx_dc_ctl0;
++	u32 db_debug3;
+ 	u32 num_gs_verts_per_thread;
+ 	u32 vgt_gs_per_es;
+ 	u32 gs_prim_buffer_depth = 0;
+@@ -1276,8 +1347,8 @@ static void r700_gfx_init(struct drm_device *dev,
+ 	u32 sq_dyn_gpr_size_simd_ab_0;
+ 	u32 backend_map;
+ 	u32 gb_tiling_config = 0;
+-	u32 cc_rb_backend_disable = 0;
+-	u32 cc_gc_shader_pipe_config = 0;
++	u32 cc_rb_backend_disable;
++	u32 cc_gc_shader_pipe_config;
+ 	u32 mc_arb_ramcfg;
+ 	u32 db_debug4;
+ 
+@@ -1428,18 +1499,26 @@ static void r700_gfx_init(struct drm_device *dev,
+ 
+ 	gb_tiling_config |= R600_BANK_SWAPS(1);
+ 
+-	backend_map = r700_get_tile_pipe_to_backend_map(dev_priv->r600_max_tile_pipes,
+-							dev_priv->r600_max_backends,
+-							(0xff << dev_priv->r600_max_backends) & 0xff);
+-	gb_tiling_config |= R600_BACKEND_MAP(backend_map);
++	cc_rb_backend_disable = RADEON_READ(R600_CC_RB_BACKEND_DISABLE) & 0x00ff0000;
++	cc_rb_backend_disable |=
++		R600_BACKEND_DISABLE((R7XX_MAX_BACKENDS_MASK << dev_priv->r600_max_backends) & R7XX_MAX_BACKENDS_MASK);
+ 
+-	cc_gc_shader_pipe_config =
++	cc_gc_shader_pipe_config = RADEON_READ(R600_CC_GC_SHADER_PIPE_CONFIG) & 0xffffff00;
++	cc_gc_shader_pipe_config |=
+ 		R600_INACTIVE_QD_PIPES((R7XX_MAX_PIPES_MASK << dev_priv->r600_max_pipes) & R7XX_MAX_PIPES_MASK);
+ 	cc_gc_shader_pipe_config |=
+ 		R600_INACTIVE_SIMDS((R7XX_MAX_SIMDS_MASK << dev_priv->r600_max_simds) & R7XX_MAX_SIMDS_MASK);
+ 
+-	cc_rb_backend_disable =
+-		R600_BACKEND_DISABLE((R7XX_MAX_BACKENDS_MASK << dev_priv->r600_max_backends) & R7XX_MAX_BACKENDS_MASK);
++	if ((dev_priv->flags & RADEON_FAMILY_MASK) == CHIP_RV740)
++		backend_map = 0x28;
++	else
++		backend_map = r700_get_tile_pipe_to_backend_map(dev_priv,
++								dev_priv->r600_max_tile_pipes,
++								(R7XX_MAX_BACKENDS -
++								 r600_count_pipe_bits((cc_rb_backend_disable &
++										       R7XX_MAX_BACKENDS_MASK) >> 16)),
++								(cc_rb_backend_disable >> 16));
++	gb_tiling_config |= R600_BACKEND_MAP(backend_map);
+ 
+ 	RADEON_WRITE(R600_GB_TILING_CONFIG,      gb_tiling_config);
+ 	RADEON_WRITE(R600_DCP_TILING_CONFIG,    (gb_tiling_config & 0xffff));
+@@ -1447,16 +1526,13 @@ static void r700_gfx_init(struct drm_device *dev,
+ 
+ 	RADEON_WRITE(R600_CC_RB_BACKEND_DISABLE,      cc_rb_backend_disable);
+ 	RADEON_WRITE(R600_CC_GC_SHADER_PIPE_CONFIG,   cc_gc_shader_pipe_config);
+-	RADEON_WRITE(R600_GC_USER_SHADER_PIPE_CONFIG, cc_gc_shader_pipe_config);
+ 
+ 	RADEON_WRITE(R700_CC_SYS_RB_BACKEND_DISABLE, cc_rb_backend_disable);
+ 	RADEON_WRITE(R700_CGTS_SYS_TCC_DISABLE, 0);
+ 	RADEON_WRITE(R700_CGTS_TCC_DISABLE, 0);
+-	RADEON_WRITE(R700_CGTS_USER_SYS_TCC_DISABLE, 0);
+-	RADEON_WRITE(R700_CGTS_USER_TCC_DISABLE, 0);
+ 
+ 	num_qd_pipes =
+-		R7XX_MAX_BACKENDS - r600_count_pipe_bits(cc_gc_shader_pipe_config & R600_INACTIVE_QD_PIPES_MASK);
++		R7XX_MAX_PIPES - r600_count_pipe_bits((cc_gc_shader_pipe_config & R600_INACTIVE_QD_PIPES_MASK) >> 8);
+ 	RADEON_WRITE(R600_VGT_OUT_DEALLOC_CNTL, (num_qd_pipes * 4) & R600_DEALLOC_DIST_MASK);
+ 	RADEON_WRITE(R600_VGT_VERTEX_REUSE_BLOCK_CNTL, ((num_qd_pipes * 4) - 2) & R600_VTX_REUSE_DEPTH_MASK);
+ 
+@@ -1466,10 +1542,8 @@ static void r700_gfx_init(struct drm_device *dev,
+ 
+ 	RADEON_WRITE(R600_CP_MEQ_THRESHOLDS, R700_STQ_SPLIT(0x30));
+ 
+-	RADEON_WRITE(R600_TA_CNTL_AUX, (R600_DISABLE_CUBE_ANISO |
+-					R600_SYNC_GRADIENT |
+-					R600_SYNC_WALKER |
+-					R600_SYNC_ALIGNER));
++	ta_aux_cntl = RADEON_READ(R600_TA_CNTL_AUX);
++	RADEON_WRITE(R600_TA_CNTL_AUX, ta_aux_cntl | R600_DISABLE_CUBE_ANISO);
+ 
+ 	sx_debug_1 = RADEON_READ(R700_SX_DEBUG_1);
+ 	sx_debug_1 |= R700_ENABLE_NEW_SMX_ADDRESS;
+@@ -1480,14 +1554,28 @@ static void r700_gfx_init(struct drm_device *dev,
+ 	smx_dc_ctl0 |= R700_CACHE_DEPTH((dev_priv->r700_sx_num_of_sets * 64) - 1);
+ 	RADEON_WRITE(R600_SMX_DC_CTL0, smx_dc_ctl0);
+ 
+-	RADEON_WRITE(R700_SMX_EVENT_CTL, (R700_ES_FLUSH_CTL(4) |
+-					  R700_GS_FLUSH_CTL(4) |
+-					  R700_ACK_FLUSH_CTL(3) |
+-					  R700_SYNC_FLUSH_CTL));
++	if ((dev_priv->flags & RADEON_FAMILY_MASK) != CHIP_RV740)
++		RADEON_WRITE(R700_SMX_EVENT_CTL, (R700_ES_FLUSH_CTL(4) |
++						  R700_GS_FLUSH_CTL(4) |
++						  R700_ACK_FLUSH_CTL(3) |
++						  R700_SYNC_FLUSH_CTL));
+ 
+-	if ((dev_priv->flags & RADEON_FAMILY_MASK) == CHIP_RV770)
+-		RADEON_WRITE(R700_DB_DEBUG3, R700_DB_CLK_OFF_DELAY(0x1f));
+-	else {
++	db_debug3 = RADEON_READ(R700_DB_DEBUG3);
++	db_debug3 &= ~R700_DB_CLK_OFF_DELAY(0x1f);
++	switch (dev_priv->flags & RADEON_FAMILY_MASK) {
++	case CHIP_RV770:
++	case CHIP_RV740:
++		db_debug3 |= R700_DB_CLK_OFF_DELAY(0x1f);
++		break;
++	case CHIP_RV710:
++	case CHIP_RV730:
++	default:
++		db_debug3 |= R700_DB_CLK_OFF_DELAY(2);
++		break;
++	}
++	RADEON_WRITE(R700_DB_DEBUG3, db_debug3);
++
++	if ((dev_priv->flags & RADEON_FAMILY_MASK) != CHIP_RV770) {
+ 		db_debug4 = RADEON_READ(RV700_DB_DEBUG4);
+ 		db_debug4 |= RV700_DISABLE_TILE_COVERED_FOR_PS_ITER;
+ 		RADEON_WRITE(RV700_DB_DEBUG4, db_debug4);
+@@ -1516,10 +1604,10 @@ static void r700_gfx_init(struct drm_device *dev,
+ 			    R600_ALU_UPDATE_FIFO_HIWATER(0x8));
+ 	switch (dev_priv->flags & RADEON_FAMILY_MASK) {
+ 	case CHIP_RV770:
+-		sq_ms_fifo_sizes |= R600_FETCH_FIFO_HIWATER(0x1);
+-		break;
+ 	case CHIP_RV730:
+ 	case CHIP_RV710:
++		sq_ms_fifo_sizes |= R600_FETCH_FIFO_HIWATER(0x1);
++		break;
+ 	case CHIP_RV740:
+ 	default:
+ 		sq_ms_fifo_sizes |= R600_FETCH_FIFO_HIWATER(0x4);
+diff --git a/drivers/gpu/drm/radeon/r600_cs.c b/drivers/gpu/drm/radeon/r600_cs.c
+index 9cc4ba8..e4c45ec 100644
+--- a/drivers/gpu/drm/radeon/r600_cs.c
++++ b/drivers/gpu/drm/radeon/r600_cs.c
+@@ -562,7 +562,7 @@ static int r600_packet3_check(struct radeon_cs_parser *p,
+ 						return -EINVAL;
+ 					}
+ 					ib[idx+1+i] = track->cb_color0_base_last;
+-					printk_once(KERN_WARNING "You have old & broken userspace "
++					printk_once(KERN_WARNING "radeon: You have old & broken userspace "
+ 						"please consider updating mesa & xf86-video-ati\n");
+ 				} else {
+ 					r = r600_cs_packet_next_reloc(p, &reloc);
+diff --git a/drivers/gpu/drm/radeon/radeon.h b/drivers/gpu/drm/radeon/radeon.h
+index f7df1a7..6cb2eef 100644
+--- a/drivers/gpu/drm/radeon/radeon.h
++++ b/drivers/gpu/drm/radeon/radeon.h
+@@ -96,6 +96,7 @@ extern int radeon_audio;
+  * symbol;
+  */
+ #define RADEON_MAX_USEC_TIMEOUT		100000	/* 100 ms */
++/* RADEON_IB_POOL_SIZE must be a power of 2 */
+ #define RADEON_IB_POOL_SIZE		16
+ #define RADEON_DEBUGFS_MAX_NUM_FILES	32
+ #define RADEONFB_CONN_LIMIT		4
+@@ -363,11 +364,12 @@ void radeon_irq_kms_sw_irq_put(struct radeon_device *rdev);
+  */
+ struct radeon_ib {
+ 	struct list_head	list;
+-	unsigned long		idx;
++	unsigned		idx;
+ 	uint64_t		gpu_addr;
+ 	struct radeon_fence	*fence;
+-	uint32_t	*ptr;
++	uint32_t		*ptr;
+ 	uint32_t		length_dw;
++	bool			free;
+ };
+ 
+ /*
+@@ -377,10 +379,9 @@ struct radeon_ib {
+ struct radeon_ib_pool {
+ 	struct mutex		mutex;
+ 	struct radeon_bo	*robj;
+-	struct list_head	scheduled_ibs;
+ 	struct radeon_ib	ibs[RADEON_IB_POOL_SIZE];
+ 	bool			ready;
+-	DECLARE_BITMAP(alloc_bm, RADEON_IB_POOL_SIZE);
++	unsigned		head_id;
+ };
+ 
+ struct radeon_cp {
+@@ -416,6 +417,7 @@ struct r600_ih {
+ };
+ 
+ struct r600_blit {
++	struct mutex		mutex;
+ 	struct radeon_bo	*shader_obj;
+ 	u64 shader_gpu_addr;
+ 	u32 vs_offset, ps_offset;
+@@ -660,6 +662,13 @@ struct radeon_asic {
+ 	void (*hpd_fini)(struct radeon_device *rdev);
+ 	bool (*hpd_sense)(struct radeon_device *rdev, enum radeon_hpd_id hpd);
+ 	void (*hpd_set_polarity)(struct radeon_device *rdev, enum radeon_hpd_id hpd);
++	/* ioctl hw specific callback. Some hw might want to perform special
++	 * operation on specific ioctl. For instance on wait idle some hw
++	 * might want to perform and HDP flush through MMIO as it seems that
++	 * some R6XX/R7XX hw doesn't take HDP flush into account if programmed
++	 * through ring.
++	 */
++	void (*ioctl_wait_idle)(struct radeon_device *rdev, struct radeon_bo *bo);
+ };
+ 
+ /*
+@@ -821,6 +830,7 @@ struct radeon_device {
+ 	struct r600_ih ih; /* r6/700 interrupt ring */
+ 	struct workqueue_struct *wq;
+ 	struct work_struct hotplug_work;
++	int num_crtc; /* number of crtcs */
+ 
+ 	/* audio stuff */
+ 	struct timer_list	audio_timer;
+@@ -1142,6 +1152,7 @@ extern bool r600_card_posted(struct radeon_device *rdev);
+ extern void r600_cp_stop(struct radeon_device *rdev);
+ extern void r600_ring_init(struct radeon_device *rdev, unsigned ring_size);
+ extern int r600_cp_resume(struct radeon_device *rdev);
++extern void r600_cp_fini(struct radeon_device *rdev);
+ extern int r600_count_pipe_bits(uint32_t val);
+ extern int r600_gart_clear_page(struct radeon_device *rdev, int i);
+ extern int r600_mc_wait_for_idle(struct radeon_device *rdev);
+diff --git a/drivers/gpu/drm/radeon/radeon_agp.c b/drivers/gpu/drm/radeon/radeon_agp.c
+index c9ad7f5..c0681a5 100644
+--- a/drivers/gpu/drm/radeon/radeon_agp.c
++++ b/drivers/gpu/drm/radeon/radeon_agp.c
+@@ -133,13 +133,6 @@ int radeon_agp_init(struct radeon_device *rdev)
+ 	bool is_v3;
+ 	int ret;
+ 
+-	if (rdev->ddev->agp->agp_info.aper_size < 32) {
+-		dev_warn(rdev->dev, "AGP aperture to small (%dM) "
+-			"need at least 32M, disabling AGP\n",
+-			rdev->ddev->agp->agp_info.aper_size);
+-		return -EINVAL;
+-	}
+-
+ 	/* Acquire AGP. */
+ 	if (!rdev->ddev->agp->acquired) {
+ 		ret = drm_agp_acquire(rdev->ddev);
+@@ -151,9 +144,19 @@ int radeon_agp_init(struct radeon_device *rdev)
+ 
+ 	ret = drm_agp_info(rdev->ddev, &info);
+ 	if (ret) {
++		drm_agp_release(rdev->ddev);
+ 		DRM_ERROR("Unable to get AGP info: %d\n", ret);
+ 		return ret;
+ 	}
++
++	if (rdev->ddev->agp->agp_info.aper_size < 32) {
++		drm_agp_release(rdev->ddev);
++		dev_warn(rdev->dev, "AGP aperture too small (%zuM) "
++			"need at least 32M, disabling AGP\n",
++			rdev->ddev->agp->agp_info.aper_size);
++		return -EINVAL;
++	}
++
+ 	mode.mode = info.mode;
+ 	agp_status = (RREG32(RADEON_AGP_STATUS) | RADEON_AGPv3_MODE) & mode.mode;
+ 	is_v3 = !!(agp_status & RADEON_AGPv3_MODE);
+@@ -228,6 +231,7 @@ int radeon_agp_init(struct radeon_device *rdev)
+ 	ret = drm_agp_enable(rdev->ddev, mode);
+ 	if (ret) {
+ 		DRM_ERROR("Unable to enable AGP (mode = 0x%lx)\n", mode.mode);
++		drm_agp_release(rdev->ddev);
+ 		return ret;
+ 	}
+ 
+diff --git a/drivers/gpu/drm/radeon/radeon_asic.h b/drivers/gpu/drm/radeon/radeon_asic.h
+index f2fbd2e..e407b2a 100644
+--- a/drivers/gpu/drm/radeon/radeon_asic.h
++++ b/drivers/gpu/drm/radeon/radeon_asic.h
+@@ -43,7 +43,7 @@ void radeon_atom_set_memory_clock(struct radeon_device *rdev, uint32_t mem_clock
+ void radeon_atom_set_clock_gating(struct radeon_device *rdev, int enable);
+ 
+ /*
+- * r100,rv100,rs100,rv200,rs200,r200,rv250,rs300,rv280
++ * r100,rv100,rs100,rv200,rs200
+  */
+ extern int r100_init(struct radeon_device *rdev);
+ extern void r100_fini(struct radeon_device *rdev);
+@@ -117,6 +117,52 @@ static struct radeon_asic r100_asic = {
+ 	.hpd_fini = &r100_hpd_fini,
+ 	.hpd_sense = &r100_hpd_sense,
+ 	.hpd_set_polarity = &r100_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
++};
++
++/*
++ * r200,rv250,rs300,rv280
++ */
++extern int r200_copy_dma(struct radeon_device *rdev,
++			uint64_t src_offset,
++			uint64_t dst_offset,
++			unsigned num_pages,
++			struct radeon_fence *fence);
++static struct radeon_asic r200_asic = {
++	.init = &r100_init,
++	.fini = &r100_fini,
++	.suspend = &r100_suspend,
++	.resume = &r100_resume,
++	.vga_set_state = &r100_vga_set_state,
++	.gpu_reset = &r100_gpu_reset,
++	.gart_tlb_flush = &r100_pci_gart_tlb_flush,
++	.gart_set_page = &r100_pci_gart_set_page,
++	.cp_commit = &r100_cp_commit,
++	.ring_start = &r100_ring_start,
++	.ring_test = &r100_ring_test,
++	.ring_ib_execute = &r100_ring_ib_execute,
++	.irq_set = &r100_irq_set,
++	.irq_process = &r100_irq_process,
++	.get_vblank_counter = &r100_get_vblank_counter,
++	.fence_ring_emit = &r100_fence_ring_emit,
++	.cs_parse = &r100_cs_parse,
++	.copy_blit = &r100_copy_blit,
++	.copy_dma = &r200_copy_dma,
++	.copy = &r100_copy_blit,
++	.get_engine_clock = &radeon_legacy_get_engine_clock,
++	.set_engine_clock = &radeon_legacy_set_engine_clock,
++	.get_memory_clock = &radeon_legacy_get_memory_clock,
++	.set_memory_clock = NULL,
++	.set_pcie_lanes = NULL,
++	.set_clock_gating = &radeon_legacy_set_clock_gating,
++	.set_surface_reg = r100_set_surface_reg,
++	.clear_surface_reg = r100_clear_surface_reg,
++	.bandwidth_update = &r100_bandwidth_update,
++	.hpd_init = &r100_hpd_init,
++	.hpd_fini = &r100_hpd_fini,
++	.hpd_sense = &r100_hpd_sense,
++	.hpd_set_polarity = &r100_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
+ };
+ 
+ 
+@@ -137,11 +183,7 @@ extern int rv370_pcie_gart_set_page(struct radeon_device *rdev, int i, uint64_t
+ extern uint32_t rv370_pcie_rreg(struct radeon_device *rdev, uint32_t reg);
+ extern void rv370_pcie_wreg(struct radeon_device *rdev, uint32_t reg, uint32_t v);
+ extern void rv370_set_pcie_lanes(struct radeon_device *rdev, int lanes);
+-extern int r300_copy_dma(struct radeon_device *rdev,
+-			uint64_t src_offset,
+-			uint64_t dst_offset,
+-			unsigned num_pages,
+-			struct radeon_fence *fence);
++
+ static struct radeon_asic r300_asic = {
+ 	.init = &r300_init,
+ 	.fini = &r300_fini,
+@@ -161,7 +203,7 @@ static struct radeon_asic r300_asic = {
+ 	.fence_ring_emit = &r300_fence_ring_emit,
+ 	.cs_parse = &r300_cs_parse,
+ 	.copy_blit = &r100_copy_blit,
+-	.copy_dma = &r300_copy_dma,
++	.copy_dma = &r200_copy_dma,
+ 	.copy = &r100_copy_blit,
+ 	.get_engine_clock = &radeon_legacy_get_engine_clock,
+ 	.set_engine_clock = &radeon_legacy_set_engine_clock,
+@@ -176,6 +218,45 @@ static struct radeon_asic r300_asic = {
+ 	.hpd_fini = &r100_hpd_fini,
+ 	.hpd_sense = &r100_hpd_sense,
+ 	.hpd_set_polarity = &r100_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
++};
++
++
++static struct radeon_asic r300_asic_pcie = {
++	.init = &r300_init,
++	.fini = &r300_fini,
++	.suspend = &r300_suspend,
++	.resume = &r300_resume,
++	.vga_set_state = &r100_vga_set_state,
++	.gpu_reset = &r300_gpu_reset,
++	.gart_tlb_flush = &rv370_pcie_gart_tlb_flush,
++	.gart_set_page = &rv370_pcie_gart_set_page,
++	.cp_commit = &r100_cp_commit,
++	.ring_start = &r300_ring_start,
++	.ring_test = &r100_ring_test,
++	.ring_ib_execute = &r100_ring_ib_execute,
++	.irq_set = &r100_irq_set,
++	.irq_process = &r100_irq_process,
++	.get_vblank_counter = &r100_get_vblank_counter,
++	.fence_ring_emit = &r300_fence_ring_emit,
++	.cs_parse = &r300_cs_parse,
++	.copy_blit = &r100_copy_blit,
++	.copy_dma = &r200_copy_dma,
++	.copy = &r100_copy_blit,
++	.get_engine_clock = &radeon_legacy_get_engine_clock,
++	.set_engine_clock = &radeon_legacy_set_engine_clock,
++	.get_memory_clock = &radeon_legacy_get_memory_clock,
++	.set_memory_clock = NULL,
++	.set_pcie_lanes = &rv370_set_pcie_lanes,
++	.set_clock_gating = &radeon_legacy_set_clock_gating,
++	.set_surface_reg = r100_set_surface_reg,
++	.clear_surface_reg = r100_clear_surface_reg,
++	.bandwidth_update = &r100_bandwidth_update,
++	.hpd_init = &r100_hpd_init,
++	.hpd_fini = &r100_hpd_fini,
++	.hpd_sense = &r100_hpd_sense,
++	.hpd_set_polarity = &r100_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
+ };
+ 
+ /*
+@@ -204,7 +285,7 @@ static struct radeon_asic r420_asic = {
+ 	.fence_ring_emit = &r300_fence_ring_emit,
+ 	.cs_parse = &r300_cs_parse,
+ 	.copy_blit = &r100_copy_blit,
+-	.copy_dma = &r300_copy_dma,
++	.copy_dma = &r200_copy_dma,
+ 	.copy = &r100_copy_blit,
+ 	.get_engine_clock = &radeon_atom_get_engine_clock,
+ 	.set_engine_clock = &radeon_atom_set_engine_clock,
+@@ -219,6 +300,7 @@ static struct radeon_asic r420_asic = {
+ 	.hpd_fini = &r100_hpd_fini,
+ 	.hpd_sense = &r100_hpd_sense,
+ 	.hpd_set_polarity = &r100_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
+ };
+ 
+ 
+@@ -252,7 +334,7 @@ static struct radeon_asic rs400_asic = {
+ 	.fence_ring_emit = &r300_fence_ring_emit,
+ 	.cs_parse = &r300_cs_parse,
+ 	.copy_blit = &r100_copy_blit,
+-	.copy_dma = &r300_copy_dma,
++	.copy_dma = &r200_copy_dma,
+ 	.copy = &r100_copy_blit,
+ 	.get_engine_clock = &radeon_legacy_get_engine_clock,
+ 	.set_engine_clock = &radeon_legacy_set_engine_clock,
+@@ -267,6 +349,7 @@ static struct radeon_asic rs400_asic = {
+ 	.hpd_fini = &r100_hpd_fini,
+ 	.hpd_sense = &r100_hpd_sense,
+ 	.hpd_set_polarity = &r100_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
+ };
+ 
+ 
+@@ -310,7 +393,7 @@ static struct radeon_asic rs600_asic = {
+ 	.fence_ring_emit = &r300_fence_ring_emit,
+ 	.cs_parse = &r300_cs_parse,
+ 	.copy_blit = &r100_copy_blit,
+-	.copy_dma = &r300_copy_dma,
++	.copy_dma = &r200_copy_dma,
+ 	.copy = &r100_copy_blit,
+ 	.get_engine_clock = &radeon_atom_get_engine_clock,
+ 	.set_engine_clock = &radeon_atom_set_engine_clock,
+@@ -318,11 +401,14 @@ static struct radeon_asic rs600_asic = {
+ 	.set_memory_clock = &radeon_atom_set_memory_clock,
+ 	.set_pcie_lanes = NULL,
+ 	.set_clock_gating = &radeon_atom_set_clock_gating,
++	.set_surface_reg = r100_set_surface_reg,
++	.clear_surface_reg = r100_clear_surface_reg,
+ 	.bandwidth_update = &rs600_bandwidth_update,
+ 	.hpd_init = &rs600_hpd_init,
+ 	.hpd_fini = &rs600_hpd_fini,
+ 	.hpd_sense = &rs600_hpd_sense,
+ 	.hpd_set_polarity = &rs600_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
+ };
+ 
+ 
+@@ -355,8 +441,8 @@ static struct radeon_asic rs690_asic = {
+ 	.fence_ring_emit = &r300_fence_ring_emit,
+ 	.cs_parse = &r300_cs_parse,
+ 	.copy_blit = &r100_copy_blit,
+-	.copy_dma = &r300_copy_dma,
+-	.copy = &r300_copy_dma,
++	.copy_dma = &r200_copy_dma,
++	.copy = &r200_copy_dma,
+ 	.get_engine_clock = &radeon_atom_get_engine_clock,
+ 	.set_engine_clock = &radeon_atom_set_engine_clock,
+ 	.get_memory_clock = &radeon_atom_get_memory_clock,
+@@ -370,6 +456,7 @@ static struct radeon_asic rs690_asic = {
+ 	.hpd_fini = &rs600_hpd_fini,
+ 	.hpd_sense = &rs600_hpd_sense,
+ 	.hpd_set_polarity = &rs600_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
+ };
+ 
+ 
+@@ -406,7 +493,7 @@ static struct radeon_asic rv515_asic = {
+ 	.fence_ring_emit = &r300_fence_ring_emit,
+ 	.cs_parse = &r300_cs_parse,
+ 	.copy_blit = &r100_copy_blit,
+-	.copy_dma = &r300_copy_dma,
++	.copy_dma = &r200_copy_dma,
+ 	.copy = &r100_copy_blit,
+ 	.get_engine_clock = &radeon_atom_get_engine_clock,
+ 	.set_engine_clock = &radeon_atom_set_engine_clock,
+@@ -421,6 +508,7 @@ static struct radeon_asic rv515_asic = {
+ 	.hpd_fini = &rs600_hpd_fini,
+ 	.hpd_sense = &rs600_hpd_sense,
+ 	.hpd_set_polarity = &rs600_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
+ };
+ 
+ 
+@@ -448,7 +536,7 @@ static struct radeon_asic r520_asic = {
+ 	.fence_ring_emit = &r300_fence_ring_emit,
+ 	.cs_parse = &r300_cs_parse,
+ 	.copy_blit = &r100_copy_blit,
+-	.copy_dma = &r300_copy_dma,
++	.copy_dma = &r200_copy_dma,
+ 	.copy = &r100_copy_blit,
+ 	.get_engine_clock = &radeon_atom_get_engine_clock,
+ 	.set_engine_clock = &radeon_atom_set_engine_clock,
+@@ -463,6 +551,7 @@ static struct radeon_asic r520_asic = {
+ 	.hpd_fini = &rs600_hpd_fini,
+ 	.hpd_sense = &rs600_hpd_sense,
+ 	.hpd_set_polarity = &rs600_hpd_set_polarity,
++	.ioctl_wait_idle = NULL,
+ };
+ 
+ /*
+@@ -504,6 +593,7 @@ void r600_hpd_fini(struct radeon_device *rdev);
+ bool r600_hpd_sense(struct radeon_device *rdev, enum radeon_hpd_id hpd);
+ void r600_hpd_set_polarity(struct radeon_device *rdev,
+ 			   enum radeon_hpd_id hpd);
++extern void r600_ioctl_wait_idle(struct radeon_device *rdev, struct radeon_bo *bo);
+ 
+ static struct radeon_asic r600_asic = {
+ 	.init = &r600_init,
+@@ -538,6 +628,7 @@ static struct radeon_asic r600_asic = {
+ 	.hpd_fini = &r600_hpd_fini,
+ 	.hpd_sense = &r600_hpd_sense,
+ 	.hpd_set_polarity = &r600_hpd_set_polarity,
++	.ioctl_wait_idle = r600_ioctl_wait_idle,
+ };
+ 
+ /*
+@@ -582,6 +673,7 @@ static struct radeon_asic rv770_asic = {
+ 	.hpd_fini = &r600_hpd_fini,
+ 	.hpd_sense = &r600_hpd_sense,
+ 	.hpd_set_polarity = &r600_hpd_set_polarity,
++	.ioctl_wait_idle = r600_ioctl_wait_idle,
+ };
+ 
+ #endif
+diff --git a/drivers/gpu/drm/radeon/radeon_atombios.c b/drivers/gpu/drm/radeon/radeon_atombios.c
+index a472186..c3580de 100644
+--- a/drivers/gpu/drm/radeon/radeon_atombios.c
++++ b/drivers/gpu/drm/radeon/radeon_atombios.c
+@@ -206,6 +206,15 @@ static bool radeon_atom_apply_quirks(struct drm_device *dev,
+ 			*connector_type = DRM_MODE_CONNECTOR_DVID;
+ 	}
+ 
++	/* Asrock RS600 board lists the DVI port as HDMI */
++	if ((dev->pdev->device == 0x7941) &&
++	    (dev->pdev->subsystem_vendor == 0x1849) &&
++	    (dev->pdev->subsystem_device == 0x7941)) {
++		if ((*connector_type == DRM_MODE_CONNECTOR_HDMIA) &&
++		    (supported_device == ATOM_DEVICE_DFP3_SUPPORT))
++			*connector_type = DRM_MODE_CONNECTOR_DVID;
++	}
++
+ 	/* a-bit f-i90hd - ciaranm on #radeonhd - this board has no DVI */
+ 	if ((dev->pdev->device == 0x7941) &&
+ 	    (dev->pdev->subsystem_vendor == 0x147b) &&
+@@ -232,14 +241,6 @@ static bool radeon_atom_apply_quirks(struct drm_device *dev,
+ 			return false;
+ 	}
+ 
+-	/* HIS X1300 is DVI+VGA, not DVI+DVI */
+-	if ((dev->pdev->device == 0x7146) &&
+-	    (dev->pdev->subsystem_vendor == 0x17af) &&
+-	    (dev->pdev->subsystem_device == 0x2058)) {
+-		if (supported_device == ATOM_DEVICE_DFP1_SUPPORT)
+-			return false;
+-	}
+-
+ 	/* Gigabyte X1300 is DVI+VGA, not DVI+DVI */
+ 	if ((dev->pdev->device == 0x7142) &&
+ 	    (dev->pdev->subsystem_vendor == 0x1458) &&
+@@ -295,6 +296,15 @@ static bool radeon_atom_apply_quirks(struct drm_device *dev,
+ 			*connector_type = DRM_MODE_CONNECTOR_DVID;
+ 	}
+ 
++	/* XFX Pine Group device rv730 reports no VGA DDC lines
++	 * even though they are wired up to record 0x93
++	 */
++	if ((dev->pdev->device == 0x9498) &&
++	    (dev->pdev->subsystem_vendor == 0x1682) &&
++	    (dev->pdev->subsystem_device == 0x2452)) {
++		struct radeon_device *rdev = dev->dev_private;
++		*i2c_bus = radeon_lookup_i2c_gpio(rdev, 0x93);
++	}
+ 	return true;
+ }
+ 
+@@ -1081,6 +1091,30 @@ static struct radeon_atom_ss *radeon_atombios_get_ss_info(struct
+ 	return ss;
+ }
+ 
++static void radeon_atom_apply_lvds_quirks(struct drm_device *dev,
++					  struct radeon_encoder_atom_dig *lvds)
++{
++
++	/* Toshiba A300-1BU laptop panel doesn't like new pll divider algo */
++	if ((dev->pdev->device == 0x95c4) &&
++	    (dev->pdev->subsystem_vendor == 0x1179) &&
++	    (dev->pdev->subsystem_device == 0xff50)) {
++		if ((lvds->native_mode.hdisplay == 1280) &&
++		    (lvds->native_mode.vdisplay == 800))
++			lvds->pll_algo = PLL_ALGO_LEGACY;
++	}
++
++	/* Dell Studio 15 laptop panel doesn't like new pll divider algo */
++	if ((dev->pdev->device == 0x95c4) &&
++	    (dev->pdev->subsystem_vendor == 0x1028) &&
++	    (dev->pdev->subsystem_device == 0x029f)) {
++		if ((lvds->native_mode.hdisplay == 1280) &&
++		    (lvds->native_mode.vdisplay == 800))
++			lvds->pll_algo = PLL_ALGO_LEGACY;
++	}
++
++}
++
+ union lvds_info {
+ 	struct _ATOM_LVDS_INFO info;
+ 	struct _ATOM_LVDS_INFO_V12 info_12;
+@@ -1151,6 +1185,17 @@ struct radeon_encoder_atom_dig *radeon_atombios_get_lvds_info(struct
+ 
+ 		lvds->ss = radeon_atombios_get_ss_info(encoder, lvds_info->info.ucSS_Id);
+ 
++		if (ASIC_IS_AVIVO(rdev)) {
++			if (radeon_new_pll)
++				lvds->pll_algo = PLL_ALGO_AVIVO;
++			else
++				lvds->pll_algo = PLL_ALGO_LEGACY;
++		} else
++			lvds->pll_algo = PLL_ALGO_LEGACY;
++
++		/* LVDS quirks */
++		radeon_atom_apply_lvds_quirks(dev, lvds);
++
+ 		encoder->native_mode = lvds->native_mode;
+ 	}
+ 	return lvds;
+diff --git a/drivers/gpu/drm/radeon/radeon_benchmark.c b/drivers/gpu/drm/radeon/radeon_benchmark.c
+index 4ddfd4b..7932dc4 100644
+--- a/drivers/gpu/drm/radeon/radeon_benchmark.c
++++ b/drivers/gpu/drm/radeon/radeon_benchmark.c
+@@ -65,31 +65,42 @@ void radeon_benchmark_move(struct radeon_device *rdev, unsigned bsize,
+ 	if (r) {
+ 		goto out_cleanup;
+ 	}
+-	start_jiffies = jiffies;
+-	for (i = 0; i < n; i++) {
+-		r = radeon_fence_create(rdev, &fence);
+-		if (r) {
+-			goto out_cleanup;
++
++	/* r100 doesn't have dma engine so skip the test */
++	if (rdev->asic->copy_dma) {
++
++		start_jiffies = jiffies;
++		for (i = 0; i < n; i++) {
++			r = radeon_fence_create(rdev, &fence);
++			if (r) {
++				goto out_cleanup;
++			}
++
++			r = radeon_copy_dma(rdev, saddr, daddr,
++					size / RADEON_GPU_PAGE_SIZE, fence);
++
++			if (r) {
++				goto out_cleanup;
++			}
++			r = radeon_fence_wait(fence, false);
++			if (r) {
++				goto out_cleanup;
++			}
++			radeon_fence_unref(&fence);
+ 		}
+-		r = radeon_copy_dma(rdev, saddr, daddr, size / RADEON_GPU_PAGE_SIZE, fence);
+-		if (r) {
+-			goto out_cleanup;
++		end_jiffies = jiffies;
++		time = end_jiffies - start_jiffies;
++		time = jiffies_to_msecs(time);
++		if (time > 0) {
++			i = ((n * size) >> 10) / time;
++			printk(KERN_INFO "radeon: dma %u bo moves of %ukb from"
++					" %d to %d in %lums (%ukb/ms %ukb/s %uM/s)\n",
++					n, size >> 10,
++					sdomain, ddomain, time,
++					i, i * 1000, (i * 1000) / 1024);
+ 		}
+-		r = radeon_fence_wait(fence, false);
+-		if (r) {
+-			goto out_cleanup;
+-		}
+-		radeon_fence_unref(&fence);
+-	}
+-	end_jiffies = jiffies;
+-	time = end_jiffies - start_jiffies;
+-	time = jiffies_to_msecs(time);
+-	if (time > 0) {
+-		i = ((n * size) >> 10) / time;
+-		printk(KERN_INFO "radeon: dma %u bo moves of %ukb from %d to %d"
+-		       " in %lums (%ukb/ms %ukb/s %uM/s)\n", n, size >> 10,
+-		       sdomain, ddomain, time, i, i * 1000, (i * 1000) / 1024);
+ 	}
++
+ 	start_jiffies = jiffies;
+ 	for (i = 0; i < n; i++) {
+ 		r = radeon_fence_create(rdev, &fence);
+diff --git a/drivers/gpu/drm/radeon/radeon_bios.c b/drivers/gpu/drm/radeon/radeon_bios.c
+index 9069217..26856ed 100644
+--- a/drivers/gpu/drm/radeon/radeon_bios.c
++++ b/drivers/gpu/drm/radeon/radeon_bios.c
+@@ -411,6 +411,12 @@ bool radeon_get_bios(struct radeon_device *rdev)
+ 		goto free_bios;
+ 	}
+ 
++	tmp = RBIOS16(0x18);
++	if (RBIOS8(tmp + 0x14) != 0x0) {
++		DRM_INFO("Not an x86 BIOS ROM, not using.\n");
++		goto free_bios;
++	}
++
+ 	rdev->bios_header_start = RBIOS16(0x48);
+ 	if (!rdev->bios_header_start) {
+ 		goto free_bios;
+diff --git a/drivers/gpu/drm/radeon/radeon_clocks.c b/drivers/gpu/drm/radeon/radeon_clocks.c
+index 812f24d..73c4405 100644
+--- a/drivers/gpu/drm/radeon/radeon_clocks.c
++++ b/drivers/gpu/drm/radeon/radeon_clocks.c
+@@ -56,7 +56,7 @@ uint32_t radeon_legacy_get_engine_clock(struct radeon_device *rdev)
+ 	else if (post_div == 3)
+ 		sclk >>= 2;
+ 	else if (post_div == 4)
+-		sclk >>= 4;
++		sclk >>= 3;
+ 
+ 	return sclk;
+ }
+@@ -86,7 +86,7 @@ uint32_t radeon_legacy_get_memory_clock(struct radeon_device *rdev)
+ 	else if (post_div == 3)
+ 		mclk >>= 2;
+ 	else if (post_div == 4)
+-		mclk >>= 4;
++		mclk >>= 3;
+ 
+ 	return mclk;
+ }
+diff --git a/drivers/gpu/drm/radeon/radeon_combios.c b/drivers/gpu/drm/radeon/radeon_combios.c
+index 579c892..437df41 100644
+--- a/drivers/gpu/drm/radeon/radeon_combios.c
++++ b/drivers/gpu/drm/radeon/radeon_combios.c
+@@ -150,6 +150,9 @@ static uint16_t combios_get_table_offset(struct drm_device *dev,
+ 	int rev;
+ 	uint16_t offset = 0, check_offset;
+ 
++	if (!rdev->bios)
++		return 0;
++
+ 	switch (table) {
+ 		/* absolute offset tables */
+ 	case COMBIOS_ASIC_INIT_1_TABLE:
+@@ -443,6 +446,39 @@ static uint16_t combios_get_table_offset(struct drm_device *dev,
+ 
+ }
+ 
++bool radeon_combios_check_hardcoded_edid(struct radeon_device *rdev)
++{
++	int edid_info;
++	struct edid *edid;
++	edid_info = combios_get_table_offset(rdev->ddev, COMBIOS_HARDCODED_EDID_TABLE);
++	if (!edid_info)
++		return false;
++
++	edid = kmalloc(EDID_LENGTH * (DRM_MAX_EDID_EXT_NUM + 1),
++		       GFP_KERNEL);
++	if (edid == NULL)
++		return false;
++
++	memcpy((unsigned char *)edid,
++	       (unsigned char *)(rdev->bios + edid_info), EDID_LENGTH);
++
++	if (!drm_edid_is_valid(edid)) {
++		kfree(edid);
++		return false;
++	}
++
++	rdev->mode_info.bios_hardcoded_edid = edid;
++	return true;
++}
++
++struct edid *
++radeon_combios_get_hardcoded_edid(struct radeon_device *rdev)
++{
++	if (rdev->mode_info.bios_hardcoded_edid)
++		return rdev->mode_info.bios_hardcoded_edid;
++	return NULL;
++}
++
+ static struct radeon_i2c_bus_rec combios_setup_i2c_bus(struct radeon_device *rdev,
+ 						       int ddc_line)
+ {
+@@ -527,9 +563,6 @@ bool radeon_combios_get_clock_info(struct drm_device *dev)
+ 	int8_t rev;
+ 	uint16_t sclk, mclk;
+ 
+-	if (rdev->bios == NULL)
+-		return false;
+-
+ 	pll_info = combios_get_table_offset(dev, COMBIOS_PLL_INFO_TABLE);
+ 	if (pll_info) {
+ 		rev = RBIOS8(pll_info);
+@@ -654,9 +687,6 @@ struct radeon_encoder_primary_dac *radeon_combios_get_primary_dac_info(struct
+ 	if (!p_dac)
+ 		return NULL;
+ 
+-	if (rdev->bios == NULL)
+-		goto out;
+-
+ 	/* check CRT table */
+ 	dac_info = combios_get_table_offset(dev, COMBIOS_CRT_INFO_TABLE);
+ 	if (dac_info) {
+@@ -673,7 +703,6 @@ struct radeon_encoder_primary_dac *radeon_combios_get_primary_dac_info(struct
+ 		found = 1;
+ 	}
+ 
+-out:
+ 	if (!found) /* fallback to defaults */
+ 		radeon_legacy_get_primary_dac_info_from_table(rdev, p_dac);
+ 
+@@ -687,9 +716,6 @@ radeon_combios_get_tv_info(struct radeon_device *rdev)
+ 	uint16_t tv_info;
+ 	enum radeon_tv_std tv_std = TV_STD_NTSC;
+ 
+-	if (rdev->bios == NULL)
+-		return tv_std;
+-
+ 	tv_info = combios_get_table_offset(dev, COMBIOS_TV_INFO_TABLE);
+ 	if (tv_info) {
+ 		if (RBIOS8(tv_info + 6) == 'T') {
+@@ -793,9 +819,6 @@ struct radeon_encoder_tv_dac *radeon_combios_get_tv_dac_info(struct
+ 	if (!tv_dac)
+ 		return NULL;
+ 
+-	if (rdev->bios == NULL)
+-		goto out;
+-
+ 	/* first check TV table */
+ 	dac_info = combios_get_table_offset(dev, COMBIOS_TV_INFO_TABLE);
+ 	if (dac_info) {
+@@ -857,7 +880,6 @@ struct radeon_encoder_tv_dac *radeon_combios_get_tv_dac_info(struct
+ 		}
+ 	}
+ 
+-out:
+ 	if (!found) /* fallback to defaults */
+ 		radeon_legacy_get_tv_dac_info_from_table(rdev, tv_dac);
+ 
+@@ -945,11 +967,6 @@ struct radeon_encoder_lvds *radeon_combios_get_lvds_info(struct radeon_encoder
+ 	int tmp, i;
+ 	struct radeon_encoder_lvds *lvds = NULL;
+ 
+-	if (rdev->bios == NULL) {
+-		lvds = radeon_legacy_get_lvds_info_from_regs(rdev);
+-		goto out;
+-	}
+-
+ 	lcd_info = combios_get_table_offset(dev, COMBIOS_LCD_INFO_TABLE);
+ 
+ 	if (lcd_info) {
+@@ -971,8 +988,7 @@ struct radeon_encoder_lvds *radeon_combios_get_lvds_info(struct radeon_encoder
+ 			 lvds->native_mode.vdisplay);
+ 
+ 		lvds->panel_vcc_delay = RBIOS16(lcd_info + 0x2c);
+-		if (lvds->panel_vcc_delay > 2000 || lvds->panel_vcc_delay < 0)
+-			lvds->panel_vcc_delay = 2000;
++		lvds->panel_vcc_delay = min_t(u16, lvds->panel_vcc_delay, 2000);
+ 
+ 		lvds->panel_pwr_delay = RBIOS8(lcd_info + 0x24);
+ 		lvds->panel_digon_delay = RBIOS16(lcd_info + 0x38) & 0xf;
+@@ -1051,7 +1067,7 @@ struct radeon_encoder_lvds *radeon_combios_get_lvds_info(struct radeon_encoder
+ 		DRM_INFO("No panel info found in BIOS\n");
+ 		lvds = radeon_legacy_get_lvds_info_from_regs(rdev);
+ 	}
+-out:
++
+ 	if (lvds)
+ 		encoder->native_mode = lvds->native_mode;
+ 	return lvds;
+@@ -1103,9 +1119,6 @@ bool radeon_legacy_get_tmds_info_from_combios(struct radeon_encoder *encoder,
+ 	int i, n;
+ 	uint8_t ver;
+ 
+-	if (rdev->bios == NULL)
+-		return false;
+-
+ 	tmds_info = combios_get_table_offset(dev, COMBIOS_DFP_INFO_TABLE);
+ 
+ 	if (tmds_info) {
+@@ -1185,9 +1198,6 @@ bool radeon_legacy_get_ext_tmds_info_from_combios(struct radeon_encoder *encoder
+ 	enum radeon_combios_ddc gpio;
+ 	struct radeon_i2c_bus_rec i2c_bus;
+ 
+-	if (rdev->bios == NULL)
+-		return false;
+-
+ 	tmds->i2c_bus = NULL;
+ 	if (rdev->flags & RADEON_IS_IGP) {
+ 		offset = combios_get_table_offset(dev, COMBIOS_I2C_INFO_TABLE);
+@@ -1910,9 +1920,6 @@ bool radeon_get_legacy_connector_info_from_bios(struct drm_device *dev)
+ 	struct radeon_i2c_bus_rec ddc_i2c;
+ 	struct radeon_hpd hpd;
+ 
+-	if (rdev->bios == NULL)
+-		return false;
+-
+ 	conn_info = combios_get_table_offset(dev, COMBIOS_CONNECTOR_INFO_TABLE);
+ 	if (conn_info) {
+ 		for (i = 0; i < 4; i++) {
+@@ -2339,9 +2346,6 @@ bool radeon_combios_external_tmds_setup(struct drm_encoder *encoder)
+ 	uint32_t reg, val, and_mask, or_mask;
+ 	struct radeon_encoder_ext_tmds *tmds = radeon_encoder->enc_priv;
+ 
+-	if (rdev->bios == NULL)
+-		return false;
+-
+ 	if (!tmds)
+ 		return false;
+ 
+diff --git a/drivers/gpu/drm/radeon/radeon_connectors.c b/drivers/gpu/drm/radeon/radeon_connectors.c
+index 5526641..65f8194 100644
+--- a/drivers/gpu/drm/radeon/radeon_connectors.c
++++ b/drivers/gpu/drm/radeon/radeon_connectors.c
+@@ -580,16 +580,18 @@ static enum drm_connector_status radeon_vga_detect(struct drm_connector *connect
+ 	struct radeon_connector *radeon_connector = to_radeon_connector(connector);
+ 	struct drm_encoder *encoder;
+ 	struct drm_encoder_helper_funcs *encoder_funcs;
+-	bool dret;
++	bool dret = false;
+ 	enum drm_connector_status ret = connector_status_disconnected;
+ 
+ 	encoder = radeon_best_single_encoder(connector);
+ 	if (!encoder)
+ 		ret = connector_status_disconnected;
+ 
+-	radeon_i2c_do_lock(radeon_connector->ddc_bus, 1);
+-	dret = radeon_ddc_probe(radeon_connector);
+-	radeon_i2c_do_lock(radeon_connector->ddc_bus, 0);
++	if (radeon_connector->ddc_bus) {
++		radeon_i2c_do_lock(radeon_connector->ddc_bus, 1);
++		dret = radeon_ddc_probe(radeon_connector);
++		radeon_i2c_do_lock(radeon_connector->ddc_bus, 0);
++	}
+ 	if (dret) {
+ 		if (radeon_connector->edid) {
+ 			kfree(radeon_connector->edid);
+@@ -740,11 +742,13 @@ static enum drm_connector_status radeon_dvi_detect(struct drm_connector *connect
+ 	struct drm_mode_object *obj;
+ 	int i;
+ 	enum drm_connector_status ret = connector_status_disconnected;
+-	bool dret;
++	bool dret = false;
+ 
+-	radeon_i2c_do_lock(radeon_connector->ddc_bus, 1);
+-	dret = radeon_ddc_probe(radeon_connector);
+-	radeon_i2c_do_lock(radeon_connector->ddc_bus, 0);
++	if (radeon_connector->ddc_bus) {
++		radeon_i2c_do_lock(radeon_connector->ddc_bus, 1);
++		dret = radeon_ddc_probe(radeon_connector);
++		radeon_i2c_do_lock(radeon_connector->ddc_bus, 0);
++	}
+ 	if (dret) {
+ 		if (radeon_connector->edid) {
+ 			kfree(radeon_connector->edid);
+@@ -776,7 +780,7 @@ static enum drm_connector_status radeon_dvi_detect(struct drm_connector *connect
+ 			 * connected and the DVI port disconnected.  If the edid doesn't
+ 			 * say HDMI, vice versa.
+ 			 */
+-			if (radeon_connector->shared_ddc && connector_status_connected) {
++			if (radeon_connector->shared_ddc && (ret == connector_status_connected)) {
+ 				struct drm_device *dev = connector->dev;
+ 				struct drm_connector *list_connector;
+ 				struct radeon_connector *list_radeon_connector;
+@@ -1056,8 +1060,7 @@ radeon_add_atom_connector(struct drm_device *dev,
+ 			return;
+ 		}
+ 		if (radeon_connector->ddc_bus && i2c_bus->valid) {
+-			if (memcmp(&radeon_connector->ddc_bus->rec, i2c_bus,
+-				    sizeof(struct radeon_i2c_bus_rec)) == 0) {
++			if (radeon_connector->ddc_bus->rec.i2c_id == i2c_bus->i2c_id) {
+ 				radeon_connector->shared_ddc = true;
+ 				shared_ddc = true;
+ 			}
+@@ -1343,7 +1346,7 @@ radeon_add_legacy_connector(struct drm_device *dev,
+ 				radeon_connector->dac_load_detect = false;
+ 			drm_connector_attach_property(&radeon_connector->base,
+ 						      rdev->mode_info.load_detect_property,
+-						      1);
++						      radeon_connector->dac_load_detect);
+ 			drm_connector_attach_property(&radeon_connector->base,
+ 						      rdev->mode_info.tv_std_property,
+ 						      radeon_combios_get_tv_info(rdev));
+diff --git a/drivers/gpu/drm/radeon/radeon_cp.c b/drivers/gpu/drm/radeon/radeon_cp.c
+index 06123ba..dc6eba6 100644
+--- a/drivers/gpu/drm/radeon/radeon_cp.c
++++ b/drivers/gpu/drm/radeon/radeon_cp.c
+@@ -1644,6 +1644,7 @@ static int radeon_do_resume_cp(struct drm_device *dev, struct drm_file *file_pri
+ 	radeon_cp_load_microcode(dev_priv);
+ 	radeon_cp_init_ring_buffer(dev, dev_priv, file_priv);
+ 
++	dev_priv->have_z_offset = 0;
+ 	radeon_do_engine_reset(dev);
+ 	radeon_irq_set_state(dev, RADEON_SW_INT_ENABLE, 1);
+ 
+diff --git a/drivers/gpu/drm/radeon/radeon_cs.c b/drivers/gpu/drm/radeon/radeon_cs.c
+index 1496cb8..e9d0850 100644
+--- a/drivers/gpu/drm/radeon/radeon_cs.c
++++ b/drivers/gpu/drm/radeon/radeon_cs.c
+@@ -86,7 +86,7 @@ int radeon_cs_parser_relocs(struct radeon_cs_parser *p)
+ 						&p->validated);
+ 		}
+ 	}
+-	return radeon_bo_list_validate(&p->validated, p->ib->fence);
++	return radeon_bo_list_validate(&p->validated);
+ }
+ 
+ int radeon_cs_parser_init(struct radeon_cs_parser *p, void *data)
+@@ -189,12 +189,10 @@ static void radeon_cs_parser_fini(struct radeon_cs_parser *parser, int error)
+ {
+ 	unsigned i;
+ 
+-	if (error) {
+-		radeon_bo_list_unvalidate(&parser->validated,
+-						parser->ib->fence);
+-	} else {
+-		radeon_bo_list_unreserve(&parser->validated);
++	if (!error && parser->ib) {
++		radeon_bo_list_fence(&parser->validated, parser->ib->fence);
+ 	}
++	radeon_bo_list_unreserve(&parser->validated);
+ 	for (i = 0; i < parser->nrelocs; i++) {
+ 		if (parser->relocs[i].gobj) {
+ 			mutex_lock(&parser->rdev->ddev->struct_mutex);
+diff --git a/drivers/gpu/drm/radeon/radeon_device.c b/drivers/gpu/drm/radeon/radeon_device.c
+index 768b150..767aed8 100644
+--- a/drivers/gpu/drm/radeon/radeon_device.c
++++ b/drivers/gpu/drm/radeon/radeon_device.c
+@@ -329,21 +329,22 @@ int radeon_asic_init(struct radeon_device *rdev)
+ 	case CHIP_RS100:
+ 	case CHIP_RV200:
+ 	case CHIP_RS200:
++		rdev->asic = &r100_asic;
++		break;
+ 	case CHIP_R200:
+ 	case CHIP_RV250:
+ 	case CHIP_RS300:
+ 	case CHIP_RV280:
+-		rdev->asic = &r100_asic;
++		rdev->asic = &r200_asic;
+ 		break;
+ 	case CHIP_R300:
+ 	case CHIP_R350:
+ 	case CHIP_RV350:
+ 	case CHIP_RV380:
+-		rdev->asic = &r300_asic;
+-		if (rdev->flags & RADEON_IS_PCIE) {
+-			rdev->asic->gart_tlb_flush = &rv370_pcie_gart_tlb_flush;
+-			rdev->asic->gart_set_page = &rv370_pcie_gart_set_page;
+-		}
++		if (rdev->flags & RADEON_IS_PCIE)
++			rdev->asic = &r300_asic_pcie;
++		else
++			rdev->asic = &r300_asic;
+ 		break;
+ 	case CHIP_R420:
+ 	case CHIP_R423:
+diff --git a/drivers/gpu/drm/radeon/radeon_display.c b/drivers/gpu/drm/radeon/radeon_display.c
+index f899320..2f59ef3 100644
+--- a/drivers/gpu/drm/radeon/radeon_display.c
++++ b/drivers/gpu/drm/radeon/radeon_display.c
+@@ -278,7 +278,7 @@ static void radeon_print_display_setup(struct drm_device *dev)
+ 		DRM_INFO("  %s\n", connector_names[connector->connector_type]);
+ 		if (radeon_connector->hpd.hpd != RADEON_HPD_NONE)
+ 			DRM_INFO("  %s\n", hpd_names[radeon_connector->hpd.hpd]);
+-		if (radeon_connector->ddc_bus)
++		if (radeon_connector->ddc_bus) {
+ 			DRM_INFO("  DDC: 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+ 				 radeon_connector->ddc_bus->rec.mask_clk_reg,
+ 				 radeon_connector->ddc_bus->rec.mask_data_reg,
+@@ -288,6 +288,15 @@ static void radeon_print_display_setup(struct drm_device *dev)
+ 				 radeon_connector->ddc_bus->rec.en_data_reg,
+ 				 radeon_connector->ddc_bus->rec.y_clk_reg,
+ 				 radeon_connector->ddc_bus->rec.y_data_reg);
++		} else {
++			if (connector->connector_type == DRM_MODE_CONNECTOR_VGA ||
++			    connector->connector_type == DRM_MODE_CONNECTOR_DVII ||
++			    connector->connector_type == DRM_MODE_CONNECTOR_DVID ||
++			    connector->connector_type == DRM_MODE_CONNECTOR_DVIA ||
++			    connector->connector_type == DRM_MODE_CONNECTOR_HDMIA ||
++			    connector->connector_type == DRM_MODE_CONNECTOR_HDMIB)
++				DRM_INFO("  DDC: no ddc bus - possible BIOS bug - please report to xorg-driver-ati@lists.x.org\n");
++		}
+ 		DRM_INFO("  Encoders:\n");
+ 		list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+ 			radeon_encoder = to_radeon_encoder(encoder);
+@@ -352,6 +361,8 @@ static bool radeon_setup_enc_conn(struct drm_device *dev)
+ 
+ int radeon_ddc_get_modes(struct radeon_connector *radeon_connector)
+ {
++	struct drm_device *dev = radeon_connector->base.dev;
++	struct radeon_device *rdev = dev->dev_private;
+ 	int ret = 0;
+ 
+ 	if ((radeon_connector->base.connector_type == DRM_MODE_CONNECTOR_DisplayPort) ||
+@@ -368,7 +379,9 @@ int radeon_ddc_get_modes(struct radeon_connector *radeon_connector)
+ 		radeon_connector->edid = drm_get_edid(&radeon_connector->base, &radeon_connector->ddc_bus->adapter);
+ 		radeon_i2c_do_lock(radeon_connector->ddc_bus, 0);
+ 	}
+-
++	/* some servers provide a hardcoded edid in rom for KVMs */
++	if (!radeon_connector->edid)
++		radeon_connector->edid = radeon_combios_get_hardcoded_edid(rdev);
+ 	if (radeon_connector->edid) {
+ 		drm_mode_connector_update_edid_property(&radeon_connector->base, radeon_connector->edid);
+ 		ret = drm_add_edid_modes(&radeon_connector->base, radeon_connector->edid);
+@@ -405,17 +418,18 @@ static inline uint32_t radeon_div(uint64_t n, uint32_t d)
+ 	return n;
+ }
+ 
+-void radeon_compute_pll(struct radeon_pll *pll,
+-			uint64_t freq,
+-			uint32_t *dot_clock_p,
+-			uint32_t *fb_div_p,
+-			uint32_t *frac_fb_div_p,
+-			uint32_t *ref_div_p,
+-			uint32_t *post_div_p,
+-			int flags)
++static void radeon_compute_pll_legacy(struct radeon_pll *pll,
++				      uint64_t freq,
++				      uint32_t *dot_clock_p,
++				      uint32_t *fb_div_p,
++				      uint32_t *frac_fb_div_p,
++				      uint32_t *ref_div_p,
++				      uint32_t *post_div_p)
+ {
+ 	uint32_t min_ref_div = pll->min_ref_div;
+ 	uint32_t max_ref_div = pll->max_ref_div;
++	uint32_t min_post_div = pll->min_post_div;
++	uint32_t max_post_div = pll->max_post_div;
+ 	uint32_t min_fractional_feed_div = 0;
+ 	uint32_t max_fractional_feed_div = 0;
+ 	uint32_t best_vco = pll->best_vco;
+@@ -431,7 +445,7 @@ void radeon_compute_pll(struct radeon_pll *pll,
+ 	DRM_DEBUG("PLL freq %llu %u %u\n", freq, pll->min_ref_div, pll->max_ref_div);
+ 	freq = freq * 1000;
+ 
+-	if (flags & RADEON_PLL_USE_REF_DIV)
++	if (pll->flags & RADEON_PLL_USE_REF_DIV)
+ 		min_ref_div = max_ref_div = pll->reference_div;
+ 	else {
+ 		while (min_ref_div < max_ref_div-1) {
+@@ -446,19 +460,22 @@ void radeon_compute_pll(struct radeon_pll *pll,
+ 		}
+ 	}
+ 
+-	if (flags & RADEON_PLL_USE_FRAC_FB_DIV) {
++	if (pll->flags & RADEON_PLL_USE_POST_DIV)
++		min_post_div = max_post_div = pll->post_div;
++
++	if (pll->flags & RADEON_PLL_USE_FRAC_FB_DIV) {
+ 		min_fractional_feed_div = pll->min_frac_feedback_div;
+ 		max_fractional_feed_div = pll->max_frac_feedback_div;
+ 	}
+ 
+-	for (post_div = pll->min_post_div; post_div <= pll->max_post_div; ++post_div) {
++	for (post_div = min_post_div; post_div <= max_post_div; ++post_div) {
+ 		uint32_t ref_div;
+ 
+-		if ((flags & RADEON_PLL_NO_ODD_POST_DIV) && (post_div & 1))
++		if ((pll->flags & RADEON_PLL_NO_ODD_POST_DIV) && (post_div & 1))
+ 			continue;
+ 
+ 		/* legacy radeons only have a few post_divs */
+-		if (flags & RADEON_PLL_LEGACY) {
++		if (pll->flags & RADEON_PLL_LEGACY) {
+ 			if ((post_div == 5) ||
+ 			    (post_div == 7) ||
+ 			    (post_div == 9) ||
+@@ -505,7 +522,7 @@ void radeon_compute_pll(struct radeon_pll *pll,
+ 					tmp += (uint64_t)pll->reference_freq * 1000 * frac_feedback_div;
+ 					current_freq = radeon_div(tmp, ref_div * post_div);
+ 
+-					if (flags & RADEON_PLL_PREFER_CLOSEST_LOWER) {
++					if (pll->flags & RADEON_PLL_PREFER_CLOSEST_LOWER) {
+ 						error = freq - current_freq;
+ 						error = error < 0 ? 0xffffffff : error;
+ 					} else
+@@ -532,12 +549,12 @@ void radeon_compute_pll(struct radeon_pll *pll,
+ 							best_freq = current_freq;
+ 							best_error = error;
+ 							best_vco_diff = vco_diff;
+-						} else if (((flags & RADEON_PLL_PREFER_LOW_REF_DIV) && (ref_div < best_ref_div)) ||
+-							   ((flags & RADEON_PLL_PREFER_HIGH_REF_DIV) && (ref_div > best_ref_div)) ||
+-							   ((flags & RADEON_PLL_PREFER_LOW_FB_DIV) && (feedback_div < best_feedback_div)) ||
+-							   ((flags & RADEON_PLL_PREFER_HIGH_FB_DIV) && (feedback_div > best_feedback_div)) ||
+-							   ((flags & RADEON_PLL_PREFER_LOW_POST_DIV) && (post_div < best_post_div)) ||
+-							   ((flags & RADEON_PLL_PREFER_HIGH_POST_DIV) && (post_div > best_post_div))) {
++						} else if (((pll->flags & RADEON_PLL_PREFER_LOW_REF_DIV) && (ref_div < best_ref_div)) ||
++							   ((pll->flags & RADEON_PLL_PREFER_HIGH_REF_DIV) && (ref_div > best_ref_div)) ||
++							   ((pll->flags & RADEON_PLL_PREFER_LOW_FB_DIV) && (feedback_div < best_feedback_div)) ||
++							   ((pll->flags & RADEON_PLL_PREFER_HIGH_FB_DIV) && (feedback_div > best_feedback_div)) ||
++							   ((pll->flags & RADEON_PLL_PREFER_LOW_POST_DIV) && (post_div < best_post_div)) ||
++							   ((pll->flags & RADEON_PLL_PREFER_HIGH_POST_DIV) && (post_div > best_post_div))) {
+ 							best_post_div = post_div;
+ 							best_ref_div = ref_div;
+ 							best_feedback_div = feedback_div;
+@@ -567,14 +584,13 @@ void radeon_compute_pll(struct radeon_pll *pll,
+ 	*post_div_p = best_post_div;
+ }
+ 
+-void radeon_compute_pll_avivo(struct radeon_pll *pll,
+-			      uint64_t freq,
+-			      uint32_t *dot_clock_p,
+-			      uint32_t *fb_div_p,
+-			      uint32_t *frac_fb_div_p,
+-			      uint32_t *ref_div_p,
+-			      uint32_t *post_div_p,
+-			      int flags)
++static void radeon_compute_pll_avivo(struct radeon_pll *pll,
++				     uint64_t freq,
++				     uint32_t *dot_clock_p,
++				     uint32_t *fb_div_p,
++				     uint32_t *frac_fb_div_p,
++				     uint32_t *ref_div_p,
++				     uint32_t *post_div_p)
+ {
+ 	fixed20_12 m, n, frac_n, p, f_vco, f_pclk, best_freq;
+ 	fixed20_12 pll_out_max, pll_out_min;
+@@ -659,6 +675,27 @@ void radeon_compute_pll_avivo(struct radeon_pll *pll,
+ 	DRM_DEBUG("%u %d.%d, %d, %d\n", *dot_clock_p * 10, *fb_div_p, *frac_fb_div_p, *ref_div_p, *post_div_p);
+ }
+ 
++void radeon_compute_pll(struct radeon_pll *pll,
++			uint64_t freq,
++			uint32_t *dot_clock_p,
++			uint32_t *fb_div_p,
++			uint32_t *frac_fb_div_p,
++			uint32_t *ref_div_p,
++			uint32_t *post_div_p)
++{
++	switch (pll->algo) {
++	case PLL_ALGO_AVIVO:
++		radeon_compute_pll_avivo(pll, freq, dot_clock_p, fb_div_p,
++					 frac_fb_div_p, ref_div_p, post_div_p);
++		break;
++	case PLL_ALGO_LEGACY:
++	default:
++		radeon_compute_pll_legacy(pll, freq, dot_clock_p, fb_div_p,
++					  frac_fb_div_p, ref_div_p, post_div_p);
++		break;
++	}
++}
++
+ static void radeon_user_framebuffer_destroy(struct drm_framebuffer *fb)
+ {
+ 	struct radeon_framebuffer *radeon_fb = to_radeon_framebuffer(fb);
+@@ -807,7 +844,7 @@ static int radeon_modeset_create_props(struct radeon_device *rdev)
+ 
+ int radeon_modeset_init(struct radeon_device *rdev)
+ {
+-	int num_crtc = 2, i;
++	int i;
+ 	int ret;
+ 
+ 	drm_mode_config_init(rdev->ddev);
+@@ -830,11 +867,19 @@ int radeon_modeset_init(struct radeon_device *rdev)
+ 		return ret;
+ 	}
+ 
++	/* check combios for a valid hardcoded EDID - Sun servers */
++	if (!rdev->is_atom_bios) {
++		/* check for hardcoded EDID in BIOS */
++		radeon_combios_check_hardcoded_edid(rdev);
++	}
++
+ 	if (rdev->flags & RADEON_SINGLE_CRTC)
+-		num_crtc = 1;
++		rdev->num_crtc = 1;
++	else
++		rdev->num_crtc = 2;
+ 
+ 	/* allocate crtcs */
+-	for (i = 0; i < num_crtc; i++) {
++	for (i = 0; i < rdev->num_crtc; i++) {
+ 		radeon_crtc_init(rdev->ddev, i);
+ 	}
+ 
+@@ -851,6 +896,8 @@ int radeon_modeset_init(struct radeon_device *rdev)
+ 
+ void radeon_modeset_fini(struct radeon_device *rdev)
+ {
++	kfree(rdev->mode_info.bios_hardcoded_edid);
++
+ 	if (rdev->mode_info.mode_config_initialized) {
+ 		radeon_hpd_fini(rdev);
+ 		drm_mode_config_cleanup(rdev->ddev);
+diff --git a/drivers/gpu/drm/radeon/radeon_drv.c b/drivers/gpu/drm/radeon/radeon_drv.c
+index 8ba3de7..b00ab94 100644
+--- a/drivers/gpu/drm/radeon/radeon_drv.c
++++ b/drivers/gpu/drm/radeon/radeon_drv.c
+@@ -40,9 +40,11 @@
+ 
+ /*
+  * KMS wrapper.
++ * - 2.0.0 - initial interface
++ * - 2.1.0 - add square tiling interface
+  */
+ #define KMS_DRIVER_MAJOR	2
+-#define KMS_DRIVER_MINOR	0
++#define KMS_DRIVER_MINOR	1
+ #define KMS_DRIVER_PATCHLEVEL	0
+ int radeon_driver_load_kms(struct drm_device *dev, unsigned long flags);
+ int radeon_driver_unload_kms(struct drm_device *dev);
+diff --git a/drivers/gpu/drm/radeon/radeon_drv.h b/drivers/gpu/drm/radeon/radeon_drv.h
+index e137852..ebaee61 100644
+--- a/drivers/gpu/drm/radeon/radeon_drv.h
++++ b/drivers/gpu/drm/radeon/radeon_drv.h
+@@ -106,9 +106,10 @@
+  * 1.29- R500 3D cmd buffer support
+  * 1.30- Add support for occlusion queries
+  * 1.31- Add support for num Z pipes from GET_PARAM
++ * 1.32- fixes for rv740 setup
+  */
+ #define DRIVER_MAJOR		1
+-#define DRIVER_MINOR		31
++#define DRIVER_MINOR		32
+ #define DRIVER_PATCHLEVEL	0
+ 
+ enum radeon_cp_microcode_version {
+@@ -267,6 +268,8 @@ typedef struct drm_radeon_private {
+ 
+ 	u32 scratch_ages[5];
+ 
++	int have_z_offset;
++
+ 	/* starting from here on, data is preserved accross an open */
+ 	uint32_t flags;		/* see radeon_chip_flags */
+ 	resource_size_t fb_aper_offset;
+diff --git a/drivers/gpu/drm/radeon/radeon_encoders.c b/drivers/gpu/drm/radeon/radeon_encoders.c
+index 82eb551..c5ba1e3 100644
+--- a/drivers/gpu/drm/radeon/radeon_encoders.c
++++ b/drivers/gpu/drm/radeon/radeon_encoders.c
+@@ -156,6 +156,26 @@ radeon_get_encoder_id(struct drm_device *dev, uint32_t supported_device, uint8_t
+ 	return ret;
+ }
+ 
++static inline bool radeon_encoder_is_digital(struct drm_encoder *encoder)
++{
++	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
++	switch (radeon_encoder->encoder_id) {
++	case ENCODER_OBJECT_ID_INTERNAL_LVDS:
++	case ENCODER_OBJECT_ID_INTERNAL_TMDS1:
++	case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_TMDS1:
++	case ENCODER_OBJECT_ID_INTERNAL_LVTM1:
++	case ENCODER_OBJECT_ID_INTERNAL_DVO1:
++	case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_DVO1:
++	case ENCODER_OBJECT_ID_INTERNAL_DDI:
++	case ENCODER_OBJECT_ID_INTERNAL_UNIPHY:
++	case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_LVTMA:
++	case ENCODER_OBJECT_ID_INTERNAL_UNIPHY1:
++	case ENCODER_OBJECT_ID_INTERNAL_UNIPHY2:
++		return true;
++	default:
++		return false;
++	}
++}
+ void
+ radeon_link_encoder_connector(struct drm_device *dev)
+ {
+@@ -202,12 +222,38 @@ radeon_get_connector_for_encoder(struct drm_encoder *encoder)
+ 
+ 	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
+ 		radeon_connector = to_radeon_connector(connector);
+-		if (radeon_encoder->devices & radeon_connector->devices)
++		if (radeon_encoder->active_device & radeon_connector->devices)
+ 			return connector;
+ 	}
+ 	return NULL;
+ }
+ 
++static struct radeon_connector_atom_dig *
++radeon_get_atom_connector_priv_from_encoder(struct drm_encoder *encoder)
++{
++	struct drm_device *dev = encoder->dev;
++	struct radeon_device *rdev = dev->dev_private;
++	struct drm_connector *connector;
++	struct radeon_connector *radeon_connector;
++	struct radeon_connector_atom_dig *dig_connector;
++
++	if (!rdev->is_atom_bios)
++		return NULL;
++
++	connector = radeon_get_connector_for_encoder(encoder);
++	if (!connector)
++		return NULL;
++
++	radeon_connector = to_radeon_connector(connector);
++
++	if (!radeon_connector->con_priv)
++		return NULL;
++
++	dig_connector = radeon_connector->con_priv;
++
++	return dig_connector;
++}
++
+ static bool radeon_atom_mode_fixup(struct drm_encoder *encoder,
+ 				   struct drm_display_mode *mode,
+ 				   struct drm_display_mode *adjusted_mode)
+@@ -438,34 +484,20 @@ atombios_digital_setup(struct drm_encoder *encoder, int action)
+ 	struct drm_device *dev = encoder->dev;
+ 	struct radeon_device *rdev = dev->dev_private;
+ 	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
++	struct radeon_encoder_atom_dig *dig = radeon_encoder->enc_priv;
++	struct radeon_connector_atom_dig *dig_connector =
++		radeon_get_atom_connector_priv_from_encoder(encoder);
+ 	union lvds_encoder_control args;
+ 	int index = 0;
+ 	int hdmi_detected = 0;
+ 	uint8_t frev, crev;
+-	struct radeon_encoder_atom_dig *dig;
+-	struct drm_connector *connector;
+-	struct radeon_connector *radeon_connector;
+-	struct radeon_connector_atom_dig *dig_connector;
+-
+-	connector = radeon_get_connector_for_encoder(encoder);
+-	if (!connector)
+-		return;
+-
+-	radeon_connector = to_radeon_connector(connector);
+ 
+-	if (!radeon_encoder->enc_priv)
+-		return;
+-
+-	dig = radeon_encoder->enc_priv;
+-
+-	if (!radeon_connector->con_priv)
++	if (!dig || !dig_connector)
+ 		return;
+ 
+-	if (drm_detect_hdmi_monitor(radeon_connector->edid))
++	if (atombios_get_encoder_mode(encoder) == ATOM_ENCODER_MODE_HDMI)
+ 		hdmi_detected = 1;
+ 
+-	dig_connector = radeon_connector->con_priv;
+-
+ 	memset(&args, 0, sizeof(args));
+ 
+ 	switch (radeon_encoder->encoder_id) {
+@@ -566,7 +598,7 @@ atombios_get_encoder_mode(struct drm_encoder *encoder)
+ {
+ 	struct drm_connector *connector;
+ 	struct radeon_connector *radeon_connector;
+-	struct radeon_connector_atom_dig *radeon_dig_connector;
++	struct radeon_connector_atom_dig *dig_connector;
+ 
+ 	connector = radeon_get_connector_for_encoder(encoder);
+ 	if (!connector)
+@@ -597,9 +629,9 @@ atombios_get_encoder_mode(struct drm_encoder *encoder)
+ 		break;
+ 	case DRM_MODE_CONNECTOR_DisplayPort:
+ 	case DRM_MODE_CONNECTOR_eDP:
+-		radeon_dig_connector = radeon_connector->con_priv;
+-		if ((radeon_dig_connector->dp_sink_type == CONNECTOR_OBJECT_ID_DISPLAYPORT) ||
+-		    (radeon_dig_connector->dp_sink_type == CONNECTOR_OBJECT_ID_eDP))
++		dig_connector = radeon_connector->con_priv;
++		if ((dig_connector->dp_sink_type == CONNECTOR_OBJECT_ID_DISPLAYPORT) ||
++		    (dig_connector->dp_sink_type == CONNECTOR_OBJECT_ID_eDP))
+ 			return ATOM_ENCODER_MODE_DP;
+ 		else if (drm_detect_hdmi_monitor(radeon_connector->edid))
+ 			return ATOM_ENCODER_MODE_HDMI;
+@@ -650,57 +682,23 @@ atombios_dig_encoder_setup(struct drm_encoder *encoder, int action)
+ 	struct drm_device *dev = encoder->dev;
+ 	struct radeon_device *rdev = dev->dev_private;
+ 	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
++	struct radeon_encoder_atom_dig *dig = radeon_encoder->enc_priv;
++	struct radeon_connector_atom_dig *dig_connector =
++		radeon_get_atom_connector_priv_from_encoder(encoder);
+ 	DIG_ENCODER_CONTROL_PS_ALLOCATION args;
+ 	int index = 0, num = 0;
+ 	uint8_t frev, crev;
+-	struct radeon_encoder_atom_dig *dig;
+-	struct drm_connector *connector;
+-	struct radeon_connector *radeon_connector;
+-	struct radeon_connector_atom_dig *dig_connector;
+-
+-	connector = radeon_get_connector_for_encoder(encoder);
+-	if (!connector)
+-		return;
+-
+-	radeon_connector = to_radeon_connector(connector);
+-
+-	if (!radeon_connector->con_priv)
+-		return;
+-
+-	dig_connector = radeon_connector->con_priv;
+ 
+-	if (!radeon_encoder->enc_priv)
++	if (!dig || !dig_connector)
+ 		return;
+ 
+-	dig = radeon_encoder->enc_priv;
+-
+ 	memset(&args, 0, sizeof(args));
+ 
+-	if (ASIC_IS_DCE32(rdev)) {
+-		if (dig->dig_block)
+-			index = GetIndexIntoMasterTable(COMMAND, DIG2EncoderControl);
+-		else
+-			index = GetIndexIntoMasterTable(COMMAND, DIG1EncoderControl);
+-		num = dig->dig_block + 1;
+-	} else {
+-		switch (radeon_encoder->encoder_id) {
+-		case ENCODER_OBJECT_ID_INTERNAL_UNIPHY:
+-			/* XXX doesn't really matter which dig encoder we pick as long as it's
+-			 * not already in use
+-			 */
+-			if (dig_connector->linkb)
+-				index = GetIndexIntoMasterTable(COMMAND, DIG2EncoderControl);
+-			else
+-				index = GetIndexIntoMasterTable(COMMAND, DIG1EncoderControl);
+-			num = 1;
+-			break;
+-		case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_LVTMA:
+-			/* Only dig2 encoder can drive LVTMA */
+-			index = GetIndexIntoMasterTable(COMMAND, DIG2EncoderControl);
+-			num = 2;
+-			break;
+-		}
+-	}
++	if (dig->dig_encoder)
++		index = GetIndexIntoMasterTable(COMMAND, DIG2EncoderControl);
++	else
++		index = GetIndexIntoMasterTable(COMMAND, DIG1EncoderControl);
++	num = dig->dig_encoder + 1;
+ 
+ 	atom_parse_cmd_header(rdev->mode_info.atom_context, index, &frev, &crev);
+ 
+@@ -761,31 +759,22 @@ atombios_dig_transmitter_setup(struct drm_encoder *encoder, int action, uint8_t
+ 	struct drm_device *dev = encoder->dev;
+ 	struct radeon_device *rdev = dev->dev_private;
+ 	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
++	struct radeon_encoder_atom_dig *dig = radeon_encoder->enc_priv;
++	struct radeon_connector_atom_dig *dig_connector =
++		radeon_get_atom_connector_priv_from_encoder(encoder);
++	struct drm_connector *connector;
++	struct radeon_connector *radeon_connector;
+ 	union dig_transmitter_control args;
+ 	int index = 0, num = 0;
+ 	uint8_t frev, crev;
+-	struct radeon_encoder_atom_dig *dig;
+-	struct drm_connector *connector;
+-	struct radeon_connector *radeon_connector;
+-	struct radeon_connector_atom_dig *dig_connector;
+ 	bool is_dp = false;
+ 
+-	connector = radeon_get_connector_for_encoder(encoder);
+-	if (!connector)
++	if (!dig || !dig_connector)
+ 		return;
+ 
++	connector = radeon_get_connector_for_encoder(encoder);
+ 	radeon_connector = to_radeon_connector(connector);
+ 
+-	if (!radeon_encoder->enc_priv)
+-		return;
+-
+-	dig = radeon_encoder->enc_priv;
+-
+-	if (!radeon_connector->con_priv)
+-		return;
+-
+-	dig_connector = radeon_connector->con_priv;
+-
+ 	if (atombios_get_encoder_mode(encoder) == ATOM_ENCODER_MODE_DP)
+ 		is_dp = true;
+ 
+@@ -822,7 +811,7 @@ atombios_dig_transmitter_setup(struct drm_encoder *encoder, int action, uint8_t
+ 			args.v1.usPixelClock = cpu_to_le16(radeon_encoder->pixel_clock / 10);
+ 	}
+ 	if (ASIC_IS_DCE32(rdev)) {
+-		if (dig->dig_block)
++		if (dig->dig_encoder == 1)
+ 			args.v2.acConfig.ucEncoderSel = 1;
+ 		if (dig_connector->linkb)
+ 			args.v2.acConfig.ucLinkSel = 1;
+@@ -849,17 +838,16 @@ atombios_dig_transmitter_setup(struct drm_encoder *encoder, int action, uint8_t
+ 				args.v2.acConfig.fCoherentMode = 1;
+ 		}
+ 	} else {
++
+ 		args.v1.ucConfig = ATOM_TRANSMITTER_CONFIG_CLKSRC_PPLL;
+ 
++		if (dig->dig_encoder)
++			args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_DIG2_ENCODER;
++		else
++			args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_DIG1_ENCODER;
++
+ 		switch (radeon_encoder->encoder_id) {
+ 		case ENCODER_OBJECT_ID_INTERNAL_UNIPHY:
+-			/* XXX doesn't really matter which dig encoder we pick as long as it's
+-			 * not already in use
+-			 */
+-			if (dig_connector->linkb)
+-				args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_DIG2_ENCODER;
+-			else
+-				args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_DIG1_ENCODER;
+ 			if (rdev->flags & RADEON_IS_IGP) {
+ 				if (radeon_encoder->pixel_clock > 165000) {
+ 					if (dig_connector->igp_lane_info & 0x3)
+@@ -878,10 +866,6 @@ atombios_dig_transmitter_setup(struct drm_encoder *encoder, int action, uint8_t
+ 				}
+ 			}
+ 			break;
+-		case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_LVTMA:
+-			/* Only dig2 encoder can drive LVTMA */
+-			args.v1.ucConfig |= ATOM_TRANSMITTER_CONFIG_DIG2_ENCODER;
+-			break;
+ 		}
+ 
+ 		if (radeon_encoder->pixel_clock > 165000)
+@@ -1031,7 +1015,7 @@ radeon_atom_encoder_dpms(struct drm_encoder *encoder, int mode)
+ 	radeon_atombios_encoder_dpms_scratch_regs(encoder, (mode == DRM_MODE_DPMS_ON) ? true : false);
+ }
+ 
+-union crtc_sourc_param {
++union crtc_source_param {
+ 	SELECT_CRTC_SOURCE_PS_ALLOCATION v1;
+ 	SELECT_CRTC_SOURCE_PARAMETERS_V2 v2;
+ };
+@@ -1043,9 +1027,10 @@ atombios_set_encoder_crtc_source(struct drm_encoder *encoder)
+ 	struct radeon_device *rdev = dev->dev_private;
+ 	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
+ 	struct radeon_crtc *radeon_crtc = to_radeon_crtc(encoder->crtc);
+-	union crtc_sourc_param args;
++	union crtc_source_param args;
+ 	int index = GetIndexIntoMasterTable(COMMAND, SelectCRTC_Source);
+ 	uint8_t frev, crev;
++	struct radeon_encoder_atom_dig *dig;
+ 
+ 	memset(&args, 0, sizeof(args));
+ 
+@@ -1109,40 +1094,16 @@ atombios_set_encoder_crtc_source(struct drm_encoder *encoder)
+ 			case ENCODER_OBJECT_ID_INTERNAL_UNIPHY:
+ 			case ENCODER_OBJECT_ID_INTERNAL_UNIPHY1:
+ 			case ENCODER_OBJECT_ID_INTERNAL_UNIPHY2:
+-				if (ASIC_IS_DCE32(rdev)) {
+-					if (radeon_crtc->crtc_id)
+-						args.v2.ucEncoderID = ASIC_INT_DIG2_ENCODER_ID;
+-					else
+-						args.v2.ucEncoderID = ASIC_INT_DIG1_ENCODER_ID;
+-				} else {
+-					struct drm_connector *connector;
+-					struct radeon_connector *radeon_connector;
+-					struct radeon_connector_atom_dig *dig_connector;
+-
+-					connector = radeon_get_connector_for_encoder(encoder);
+-					if (!connector)
+-						return;
+-					radeon_connector = to_radeon_connector(connector);
+-					if (!radeon_connector->con_priv)
+-						return;
+-					dig_connector = radeon_connector->con_priv;
+-
+-					/* XXX doesn't really matter which dig encoder we pick as long as it's
+-					 * not already in use
+-					 */
+-					if (dig_connector->linkb)
+-						args.v2.ucEncoderID = ASIC_INT_DIG2_ENCODER_ID;
+-					else
+-						args.v2.ucEncoderID = ASIC_INT_DIG1_ENCODER_ID;
+-				}
++			case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_LVTMA:
++				dig = radeon_encoder->enc_priv;
++				if (dig->dig_encoder)
++					args.v2.ucEncoderID = ASIC_INT_DIG2_ENCODER_ID;
++				else
++					args.v2.ucEncoderID = ASIC_INT_DIG1_ENCODER_ID;
+ 				break;
+ 			case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_DVO1:
+ 				args.v2.ucEncoderID = ASIC_INT_DVO_ENCODER_ID;
+ 				break;
+-			case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_LVTMA:
+-				/* Only dig2 encoder can drive LVTMA */
+-				args.v2.ucEncoderID = ASIC_INT_DIG2_ENCODER_ID;
+-				break;
+ 			case ENCODER_OBJECT_ID_INTERNAL_KLDSCP_DAC1:
+ 				if (radeon_encoder->active_device & (ATOM_DEVICE_TV_SUPPORT))
+ 					args.v2.ucEncoderID = ASIC_INT_TV_ENCODER_ID;
+@@ -1202,6 +1163,47 @@ atombios_apply_encoder_quirks(struct drm_encoder *encoder,
+ 	}
+ }
+ 
++static int radeon_atom_pick_dig_encoder(struct drm_encoder *encoder)
++{
++	struct drm_device *dev = encoder->dev;
++	struct radeon_device *rdev = dev->dev_private;
++	struct radeon_crtc *radeon_crtc = to_radeon_crtc(encoder->crtc);
++	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
++	struct drm_encoder *test_encoder;
++	struct radeon_encoder_atom_dig *dig;
++	uint32_t dig_enc_in_use = 0;
++	/* on DCE32 and encoder can driver any block so just crtc id */
++	if (ASIC_IS_DCE32(rdev)) {
++		return radeon_crtc->crtc_id;
++	}
++
++	/* on DCE3 - LVTMA can only be driven by DIGB */
++	list_for_each_entry(test_encoder, &dev->mode_config.encoder_list, head) {
++		struct radeon_encoder *radeon_test_encoder;
++
++		if (encoder == test_encoder)
++			continue;
++
++		if (!radeon_encoder_is_digital(test_encoder))
++			continue;
++
++		radeon_test_encoder = to_radeon_encoder(test_encoder);
++		dig = radeon_test_encoder->enc_priv;
++
++		if (dig->dig_encoder >= 0)
++			dig_enc_in_use |= (1 << dig->dig_encoder);
++	}
++
++	if (radeon_encoder->encoder_id == ENCODER_OBJECT_ID_INTERNAL_KLDSCP_LVTMA) {
++		if (dig_enc_in_use & 0x2)
++			DRM_ERROR("LVDS required digital encoder 2 but it was in use - stealing\n");
++		return 1;
++	}
++	if (!(dig_enc_in_use & 1))
++		return 0;
++	return 1;
++}
++
+ static void
+ radeon_atom_encoder_mode_set(struct drm_encoder *encoder,
+ 			     struct drm_display_mode *mode,
+@@ -1214,12 +1216,9 @@ radeon_atom_encoder_mode_set(struct drm_encoder *encoder,
+ 
+ 	if (radeon_encoder->active_device &
+ 	    (ATOM_DEVICE_DFP_SUPPORT | ATOM_DEVICE_LCD_SUPPORT)) {
+-		if (radeon_encoder->enc_priv) {
+-			struct radeon_encoder_atom_dig *dig;
+-
+-			dig = radeon_encoder->enc_priv;
+-			dig->dig_block = radeon_crtc->crtc_id;
+-		}
++		struct radeon_encoder_atom_dig *dig = radeon_encoder->enc_priv;
++		if (dig)
++			dig->dig_encoder = radeon_atom_pick_dig_encoder(encoder);
+ 	}
+ 	radeon_encoder->pixel_clock = adjusted_mode->clock;
+ 
+@@ -1379,7 +1378,13 @@ static void radeon_atom_encoder_commit(struct drm_encoder *encoder)
+ static void radeon_atom_encoder_disable(struct drm_encoder *encoder)
+ {
+ 	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
++	struct radeon_encoder_atom_dig *dig;
+ 	radeon_atom_encoder_dpms(encoder, DRM_MODE_DPMS_OFF);
++
++	if (radeon_encoder_is_digital(encoder)) {
++		dig = radeon_encoder->enc_priv;
++		dig->dig_encoder = -1;
++	}
+ 	radeon_encoder->active_device = 0;
+ }
+ 
+@@ -1436,6 +1441,7 @@ radeon_atombios_set_dig_info(struct radeon_encoder *radeon_encoder)
+ 
+ 	/* coherent mode by default */
+ 	dig->coherent_mode = true;
++	dig->dig_encoder = -1;
+ 
+ 	return dig;
+ }
+diff --git a/drivers/gpu/drm/radeon/radeon_fb.c b/drivers/gpu/drm/radeon/radeon_fb.c
+index 66055b3..0059242 100644
+--- a/drivers/gpu/drm/radeon/radeon_fb.c
++++ b/drivers/gpu/drm/radeon/radeon_fb.c
+@@ -59,7 +59,7 @@ static struct fb_ops radeonfb_ops = {
+ };
+ 
+ /**
+- * Curretly it is assumed that the old framebuffer is reused.
++ * Currently it is assumed that the old framebuffer is reused.
+  *
+  * LOCKING
+  * caller should hold the mode config lock.
+@@ -148,7 +148,6 @@ int radeonfb_create(struct drm_device *dev,
+ 	unsigned long tmp;
+ 	bool fb_tiled = false; /* useful for testing */
+ 	u32 tiling_flags = 0;
+-	int crtc_count;
+ 
+ 	mode_cmd.width = surface_width;
+ 	mode_cmd.height = surface_height;
+@@ -239,16 +238,12 @@ int radeonfb_create(struct drm_device *dev,
+ 	rfbdev = info->par;
+ 	rfbdev->helper.funcs = &radeon_fb_helper_funcs;
+ 	rfbdev->helper.dev = dev;
+-	if (rdev->flags & RADEON_SINGLE_CRTC)
+-		crtc_count = 1;
+-	else
+-		crtc_count = 2;
+-	ret = drm_fb_helper_init_crtc_count(&rfbdev->helper, crtc_count,
++	ret = drm_fb_helper_init_crtc_count(&rfbdev->helper, rdev->num_crtc,
+ 					    RADEONFB_CONN_LIMIT);
+ 	if (ret)
+ 		goto out_unref;
+ 
+-	memset_io(fbptr, 0xff, aligned_size);
++	memset_io(fbptr, 0x0, aligned_size);
+ 
+ 	strcpy(info->fix.id, "radeondrmfb");
+ 
+diff --git a/drivers/gpu/drm/radeon/radeon_gem.c b/drivers/gpu/drm/radeon/radeon_gem.c
+index 0e1325e..db8e9a3 100644
+--- a/drivers/gpu/drm/radeon/radeon_gem.c
++++ b/drivers/gpu/drm/radeon/radeon_gem.c
+@@ -308,6 +308,9 @@ int radeon_gem_wait_idle_ioctl(struct drm_device *dev, void *data,
+ 	}
+ 	robj = gobj->driver_private;
+ 	r = radeon_bo_wait(robj, NULL, false);
++	/* callback hw specific functions if any */
++	if (robj->rdev->asic->ioctl_wait_idle)
++		robj->rdev->asic->ioctl_wait_idle(robj->rdev, robj);
+ 	mutex_lock(&dev->struct_mutex);
+ 	drm_gem_object_unreference(gobj);
+ 	mutex_unlock(&dev->struct_mutex);
+diff --git a/drivers/gpu/drm/radeon/radeon_kms.c b/drivers/gpu/drm/radeon/radeon_kms.c
+index f23b056..3c5002e 100644
+--- a/drivers/gpu/drm/radeon/radeon_kms.c
++++ b/drivers/gpu/drm/radeon/radeon_kms.c
+@@ -276,17 +276,17 @@ struct drm_ioctl_desc radeon_ioctls_kms[] = {
+ 	DRM_IOCTL_DEF(DRM_RADEON_SURF_ALLOC, radeon_surface_alloc_kms, DRM_AUTH),
+ 	DRM_IOCTL_DEF(DRM_RADEON_SURF_FREE, radeon_surface_free_kms, DRM_AUTH),
+ 	/* KMS */
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_INFO, radeon_gem_info_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_CREATE, radeon_gem_create_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_MMAP, radeon_gem_mmap_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_SET_DOMAIN, radeon_gem_set_domain_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_PREAD, radeon_gem_pread_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_PWRITE, radeon_gem_pwrite_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_WAIT_IDLE, radeon_gem_wait_idle_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_CS, radeon_cs_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_INFO, radeon_info_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_SET_TILING, radeon_gem_set_tiling_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_GET_TILING, radeon_gem_get_tiling_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_RADEON_GEM_BUSY, radeon_gem_busy_ioctl, DRM_AUTH),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_INFO, radeon_gem_info_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_CREATE, radeon_gem_create_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_MMAP, radeon_gem_mmap_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_SET_DOMAIN, radeon_gem_set_domain_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_PREAD, radeon_gem_pread_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_PWRITE, radeon_gem_pwrite_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_WAIT_IDLE, radeon_gem_wait_idle_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_CS, radeon_cs_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_INFO, radeon_info_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_SET_TILING, radeon_gem_set_tiling_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_GET_TILING, radeon_gem_get_tiling_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_RADEON_GEM_BUSY, radeon_gem_busy_ioctl, DRM_AUTH|DRM_UNLOCKED),
+ };
+ int radeon_max_kms_ioctl = DRM_ARRAY_SIZE(radeon_ioctls_kms);
+diff --git a/drivers/gpu/drm/radeon/radeon_legacy_crtc.c b/drivers/gpu/drm/radeon/radeon_legacy_crtc.c
+index 762e07b..83d4dbd 100644
+--- a/drivers/gpu/drm/radeon/radeon_legacy_crtc.c
++++ b/drivers/gpu/drm/radeon/radeon_legacy_crtc.c
+@@ -582,29 +582,6 @@ static bool radeon_set_crtc_timing(struct drm_crtc *crtc, struct drm_display_mod
+ 				   ? RADEON_CRTC_V_SYNC_POL
+ 				   : 0));
+ 
+-	/* TODO -> Dell Server */
+-	if (0) {
+-		uint32_t disp_hw_debug = RREG32(RADEON_DISP_HW_DEBUG);
+-		uint32_t tv_dac_cntl = RREG32(RADEON_TV_DAC_CNTL);
+-		uint32_t dac2_cntl = RREG32(RADEON_DAC_CNTL2);
+-		uint32_t crtc2_gen_cntl = RREG32(RADEON_CRTC2_GEN_CNTL);
+-
+-		dac2_cntl &= ~RADEON_DAC2_DAC_CLK_SEL;
+-		dac2_cntl |= RADEON_DAC2_DAC2_CLK_SEL;
+-
+-		/* For CRT on DAC2, don't turn it on if BIOS didn't
+-		   enable it, even it's detected.
+-		*/
+-		disp_hw_debug |= RADEON_CRT2_DISP1_SEL;
+-		tv_dac_cntl &= ~((1<<2) | (3<<8) | (7<<24) | (0xff<<16));
+-		tv_dac_cntl |= (0x03 | (2<<8) | (0x58<<16));
+-
+-		WREG32(RADEON_TV_DAC_CNTL, tv_dac_cntl);
+-		WREG32(RADEON_DISP_HW_DEBUG, disp_hw_debug);
+-		WREG32(RADEON_DAC_CNTL2, dac2_cntl);
+-		WREG32(RADEON_CRTC2_GEN_CNTL, crtc2_gen_cntl);
+-	}
+-
+ 	if (radeon_crtc->crtc_id) {
+ 		uint32_t crtc2_gen_cntl;
+ 		uint32_t disp2_merge_cntl;
+@@ -692,7 +669,6 @@ static void radeon_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 	uint32_t post_divider = 0;
+ 	uint32_t freq = 0;
+ 	uint8_t pll_gain;
+-	int pll_flags = RADEON_PLL_LEGACY;
+ 	bool use_bios_divs = false;
+ 	/* PLL registers */
+ 	uint32_t pll_ref_div = 0;
+@@ -726,10 +702,13 @@ static void radeon_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 	else
+ 		pll = &rdev->clock.p1pll;
+ 
++	pll->flags = RADEON_PLL_LEGACY;
++	pll->algo = PLL_ALGO_LEGACY;
++
+ 	if (mode->clock > 200000) /* range limits??? */
+-		pll_flags |= RADEON_PLL_PREFER_HIGH_FB_DIV;
++		pll->flags |= RADEON_PLL_PREFER_HIGH_FB_DIV;
+ 	else
+-		pll_flags |= RADEON_PLL_PREFER_LOW_REF_DIV;
++		pll->flags |= RADEON_PLL_PREFER_LOW_REF_DIV;
+ 
+ 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+ 		if (encoder->crtc == crtc) {
+@@ -741,7 +720,7 @@ static void radeon_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 			}
+ 
+ 			if (encoder->encoder_type != DRM_MODE_ENCODER_DAC)
+-				pll_flags |= RADEON_PLL_NO_ODD_POST_DIV;
++				pll->flags |= RADEON_PLL_NO_ODD_POST_DIV;
+ 			if (encoder->encoder_type == DRM_MODE_ENCODER_LVDS) {
+ 				if (!rdev->is_atom_bios) {
+ 					struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
+@@ -756,7 +735,7 @@ static void radeon_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 						}
+ 					}
+ 				}
+-				pll_flags |= RADEON_PLL_USE_REF_DIV;
++				pll->flags |= RADEON_PLL_USE_REF_DIV;
+ 			}
+ 		}
+ 	}
+@@ -766,8 +745,7 @@ static void radeon_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 	if (!use_bios_divs) {
+ 		radeon_compute_pll(pll, mode->clock,
+ 				   &freq, &feedback_div, &frac_fb_div,
+-				   &reference_div, &post_divider,
+-				   pll_flags);
++				   &reference_div, &post_divider);
+ 
+ 		for (post_div = &post_divs[0]; post_div->divider; ++post_div) {
+ 			if (post_div->divider == post_divider)
+diff --git a/drivers/gpu/drm/radeon/radeon_mode.h b/drivers/gpu/drm/radeon/radeon_mode.h
+index eb19b30..b630684 100644
+--- a/drivers/gpu/drm/radeon/radeon_mode.h
++++ b/drivers/gpu/drm/radeon/radeon_mode.h
+@@ -113,6 +113,7 @@ struct radeon_tmds_pll {
+ 
+ #define RADEON_MAX_BIOS_CONNECTOR 16
+ 
++/* pll flags */
+ #define RADEON_PLL_USE_BIOS_DIVS        (1 << 0)
+ #define RADEON_PLL_NO_ODD_POST_DIV      (1 << 1)
+ #define RADEON_PLL_USE_REF_DIV          (1 << 2)
+@@ -125,16 +126,30 @@ struct radeon_tmds_pll {
+ #define RADEON_PLL_PREFER_HIGH_POST_DIV (1 << 9)
+ #define RADEON_PLL_USE_FRAC_FB_DIV      (1 << 10)
+ #define RADEON_PLL_PREFER_CLOSEST_LOWER (1 << 11)
++#define RADEON_PLL_USE_POST_DIV         (1 << 12)
++
++/* pll algo */
++enum radeon_pll_algo {
++	PLL_ALGO_LEGACY,
++	PLL_ALGO_AVIVO
++};
+ 
+ struct radeon_pll {
+-	uint16_t reference_freq;
+-	uint16_t reference_div;
++	/* reference frequency */
++	uint32_t reference_freq;
++
++	/* fixed dividers */
++	uint32_t reference_div;
++	uint32_t post_div;
++
++	/* pll in/out limits */
+ 	uint32_t pll_in_min;
+ 	uint32_t pll_in_max;
+ 	uint32_t pll_out_min;
+ 	uint32_t pll_out_max;
+-	uint16_t xclk;
++	uint32_t best_vco;
+ 
++	/* divider limits */
+ 	uint32_t min_ref_div;
+ 	uint32_t max_ref_div;
+ 	uint32_t min_post_div;
+@@ -143,7 +158,14 @@ struct radeon_pll {
+ 	uint32_t max_feedback_div;
+ 	uint32_t min_frac_feedback_div;
+ 	uint32_t max_frac_feedback_div;
+-	uint32_t best_vco;
++
++	/* flags for the current clock */
++	uint32_t flags;
++
++	/* pll id */
++	uint32_t id;
++	/* pll algo */
++	enum radeon_pll_algo algo;
+ };
+ 
+ struct radeon_i2c_chan {
+@@ -189,7 +211,8 @@ struct radeon_mode_info {
+ 	struct drm_property *tv_std_property;
+ 	/* legacy TMDS PLL detect */
+ 	struct drm_property *tmds_pll_property;
+-
++	/* hardcoded DFP edid from BIOS */
++	struct edid *bios_hardcoded_edid;
+ };
+ 
+ #define MAX_H_CODE_TIMING_LEN 32
+@@ -286,10 +309,11 @@ struct radeon_atom_ss {
+ struct radeon_encoder_atom_dig {
+ 	/* atom dig */
+ 	bool coherent_mode;
+-	int dig_block;
++	int dig_encoder; /* -1 disabled, 0 DIGA, 1 DIGB */
+ 	/* atom lvds */
+ 	uint32_t lvds_misc;
+ 	uint16_t panel_pwr_delay;
++	enum radeon_pll_algo pll_algo;
+ 	struct radeon_atom_ss *ss;
+ 	/* panel mode */
+ 	struct drm_display_mode native_mode;
+@@ -417,17 +441,7 @@ extern void radeon_compute_pll(struct radeon_pll *pll,
+ 			       uint32_t *fb_div_p,
+ 			       uint32_t *frac_fb_div_p,
+ 			       uint32_t *ref_div_p,
+-			       uint32_t *post_div_p,
+-			       int flags);
+-
+-extern void radeon_compute_pll_avivo(struct radeon_pll *pll,
+-				     uint64_t freq,
+-				     uint32_t *dot_clock_p,
+-				     uint32_t *fb_div_p,
+-				     uint32_t *frac_fb_div_p,
+-				     uint32_t *ref_div_p,
+-				     uint32_t *post_div_p,
+-				     int flags);
++			       uint32_t *post_div_p);
+ 
+ extern void radeon_setup_encoder_clones(struct drm_device *dev);
+ 
+@@ -462,6 +476,9 @@ extern int radeon_crtc_cursor_set(struct drm_crtc *crtc,
+ extern int radeon_crtc_cursor_move(struct drm_crtc *crtc,
+ 				   int x, int y);
+ 
++extern bool radeon_combios_check_hardcoded_edid(struct radeon_device *rdev);
++extern struct edid *
++radeon_combios_get_hardcoded_edid(struct radeon_device *rdev);
+ extern bool radeon_atom_get_clock_info(struct drm_device *dev);
+ extern bool radeon_combios_get_clock_info(struct drm_device *dev);
+ extern struct radeon_encoder_atom_dig *
+diff --git a/drivers/gpu/drm/radeon/radeon_object.c b/drivers/gpu/drm/radeon/radeon_object.c
+index 4e636de..f1da370 100644
+--- a/drivers/gpu/drm/radeon/radeon_object.c
++++ b/drivers/gpu/drm/radeon/radeon_object.c
+@@ -220,7 +220,8 @@ int radeon_bo_unpin(struct radeon_bo *bo)
+ 
+ int radeon_bo_evict_vram(struct radeon_device *rdev)
+ {
+-	if (rdev->flags & RADEON_IS_IGP) {
++	/* late 2.6.33 fix IGP hibernate - we need pm ops to do this correct */
++	if (0 && (rdev->flags & RADEON_IS_IGP)) {
+ 		if (rdev->mc.igp_sideport_enabled == false)
+ 			/* Useless to evict on IGP chips */
+ 			return 0;
+@@ -305,11 +306,10 @@ void radeon_bo_list_unreserve(struct list_head *head)
+ 	}
+ }
+ 
+-int radeon_bo_list_validate(struct list_head *head, void *fence)
++int radeon_bo_list_validate(struct list_head *head)
+ {
+ 	struct radeon_bo_list *lobj;
+ 	struct radeon_bo *bo;
+-	struct radeon_fence *old_fence = NULL;
+ 	int r;
+ 
+ 	r = radeon_bo_list_reserve(head);
+@@ -333,32 +333,27 @@ int radeon_bo_list_validate(struct list_head *head, void *fence)
+ 		}
+ 		lobj->gpu_offset = radeon_bo_gpu_offset(bo);
+ 		lobj->tiling_flags = bo->tiling_flags;
+-		if (fence) {
+-			old_fence = (struct radeon_fence *)bo->tbo.sync_obj;
+-			bo->tbo.sync_obj = radeon_fence_ref(fence);
+-			bo->tbo.sync_obj_arg = NULL;
+-		}
+-		if (old_fence) {
+-			radeon_fence_unref(&old_fence);
+-		}
+ 	}
+ 	return 0;
+ }
+ 
+-void radeon_bo_list_unvalidate(struct list_head *head, void *fence)
++void radeon_bo_list_fence(struct list_head *head, void *fence)
+ {
+ 	struct radeon_bo_list *lobj;
+-	struct radeon_fence *old_fence;
+-
+-	if (fence)
+-		list_for_each_entry(lobj, head, list) {
+-			old_fence = to_radeon_fence(lobj->bo->tbo.sync_obj);
+-			if (old_fence == fence) {
+-				lobj->bo->tbo.sync_obj = NULL;
+-				radeon_fence_unref(&old_fence);
+-			}
++	struct radeon_bo *bo;
++	struct radeon_fence *old_fence = NULL;
++
++	list_for_each_entry(lobj, head, list) {
++		bo = lobj->bo;
++		spin_lock(&bo->tbo.lock);
++		old_fence = (struct radeon_fence *)bo->tbo.sync_obj;
++		bo->tbo.sync_obj = radeon_fence_ref(fence);
++		bo->tbo.sync_obj_arg = NULL;
++		spin_unlock(&bo->tbo.lock);
++		if (old_fence) {
++			radeon_fence_unref(&old_fence);
+ 		}
+-	radeon_bo_list_unreserve(head);
++	}
+ }
+ 
+ int radeon_bo_fbdev_mmap(struct radeon_bo *bo,
+diff --git a/drivers/gpu/drm/radeon/radeon_object.h b/drivers/gpu/drm/radeon/radeon_object.h
+index a02f180..7ab43de 100644
+--- a/drivers/gpu/drm/radeon/radeon_object.h
++++ b/drivers/gpu/drm/radeon/radeon_object.h
+@@ -156,8 +156,8 @@ extern void radeon_bo_list_add_object(struct radeon_bo_list *lobj,
+ 				struct list_head *head);
+ extern int radeon_bo_list_reserve(struct list_head *head);
+ extern void radeon_bo_list_unreserve(struct list_head *head);
+-extern int radeon_bo_list_validate(struct list_head *head, void *fence);
+-extern void radeon_bo_list_unvalidate(struct list_head *head, void *fence);
++extern int radeon_bo_list_validate(struct list_head *head);
++extern void radeon_bo_list_fence(struct list_head *head, void *fence);
+ extern int radeon_bo_fbdev_mmap(struct radeon_bo *bo,
+ 				struct vm_area_struct *vma);
+ extern int radeon_bo_set_tiling_flags(struct radeon_bo *bo,
+diff --git a/drivers/gpu/drm/radeon/radeon_ring.c b/drivers/gpu/drm/radeon/radeon_ring.c
+index 4d12b2d..6579eb4 100644
+--- a/drivers/gpu/drm/radeon/radeon_ring.c
++++ b/drivers/gpu/drm/radeon/radeon_ring.c
+@@ -41,68 +41,55 @@ int radeon_ib_get(struct radeon_device *rdev, struct radeon_ib **ib)
+ {
+ 	struct radeon_fence *fence;
+ 	struct radeon_ib *nib;
+-	unsigned long i;
+-	int r = 0;
++	int r = 0, i, c;
+ 
+ 	*ib = NULL;
+ 	r = radeon_fence_create(rdev, &fence);
+ 	if (r) {
+-		DRM_ERROR("failed to create fence for new IB\n");
++		dev_err(rdev->dev, "failed to create fence for new IB\n");
+ 		return r;
+ 	}
+ 	mutex_lock(&rdev->ib_pool.mutex);
+-	i = find_first_zero_bit(rdev->ib_pool.alloc_bm, RADEON_IB_POOL_SIZE);
+-	if (i < RADEON_IB_POOL_SIZE) {
+-		set_bit(i, rdev->ib_pool.alloc_bm);
+-		rdev->ib_pool.ibs[i].length_dw = 0;
+-		*ib = &rdev->ib_pool.ibs[i];
+-		mutex_unlock(&rdev->ib_pool.mutex);
+-		goto out;
++	for (i = rdev->ib_pool.head_id, c = 0, nib = NULL; c < RADEON_IB_POOL_SIZE; c++, i++) {
++		i &= (RADEON_IB_POOL_SIZE - 1);
++		if (rdev->ib_pool.ibs[i].free) {
++			nib = &rdev->ib_pool.ibs[i];
++			break;
++		}
+ 	}
+-	if (list_empty(&rdev->ib_pool.scheduled_ibs)) {
+-		/* we go do nothings here */
++	if (nib == NULL) {
++		/* This should never happen, it means we allocated all
++		 * IB and haven't scheduled one yet, return EBUSY to
++		 * userspace hoping that on ioctl recall we get better
++		 * luck
++		 */
++		dev_err(rdev->dev, "no free indirect buffer !\n");
+ 		mutex_unlock(&rdev->ib_pool.mutex);
+-		DRM_ERROR("all IB allocated none scheduled.\n");
+-		r = -EINVAL;
+-		goto out;
++		radeon_fence_unref(&fence);
++		return -EBUSY;
+ 	}
+-	/* get the first ib on the scheduled list */
+-	nib = list_entry(rdev->ib_pool.scheduled_ibs.next,
+-			 struct radeon_ib, list);
+-	if (nib->fence == NULL) {
+-		/* we go do nothings here */
++	rdev->ib_pool.head_id = (nib->idx + 1) & (RADEON_IB_POOL_SIZE - 1);
++	nib->free = false;
++	if (nib->fence) {
+ 		mutex_unlock(&rdev->ib_pool.mutex);
+-		DRM_ERROR("IB %lu scheduled without a fence.\n", nib->idx);
+-		r = -EINVAL;
+-		goto out;
+-	}
+-	mutex_unlock(&rdev->ib_pool.mutex);
+-
+-	r = radeon_fence_wait(nib->fence, false);
+-	if (r) {
+-		DRM_ERROR("radeon: IB(%lu:0x%016lX:%u)\n", nib->idx,
+-			  (unsigned long)nib->gpu_addr, nib->length_dw);
+-		DRM_ERROR("radeon: GPU lockup detected, fail to get a IB\n");
+-		goto out;
++		r = radeon_fence_wait(nib->fence, false);
++		if (r) {
++			dev_err(rdev->dev, "error waiting fence of IB(%u:0x%016lX:%u)\n",
++				nib->idx, (unsigned long)nib->gpu_addr, nib->length_dw);
++			mutex_lock(&rdev->ib_pool.mutex);
++			nib->free = true;
++			mutex_unlock(&rdev->ib_pool.mutex);
++			radeon_fence_unref(&fence);
++			return r;
++		}
++		mutex_lock(&rdev->ib_pool.mutex);
+ 	}
+ 	radeon_fence_unref(&nib->fence);
+-
++	nib->fence = fence;
+ 	nib->length_dw = 0;
+-
+-	/* scheduled list is accessed here */
+-	mutex_lock(&rdev->ib_pool.mutex);
+-	list_del(&nib->list);
+-	INIT_LIST_HEAD(&nib->list);
+ 	mutex_unlock(&rdev->ib_pool.mutex);
+-
+ 	*ib = nib;
+-out:
+-	if (r) {
+-		radeon_fence_unref(&fence);
+-	} else {
+-		(*ib)->fence = fence;
+-	}
+-	return r;
++	return 0;
+ }
+ 
+ void radeon_ib_free(struct radeon_device *rdev, struct radeon_ib **ib)
+@@ -113,19 +100,10 @@ void radeon_ib_free(struct radeon_device *rdev, struct radeon_ib **ib)
+ 	if (tmp == NULL) {
+ 		return;
+ 	}
+-	mutex_lock(&rdev->ib_pool.mutex);
+-	if (!list_empty(&tmp->list) && !radeon_fence_signaled(tmp->fence)) {
+-		/* IB is scheduled & not signaled don't do anythings */
+-		mutex_unlock(&rdev->ib_pool.mutex);
+-		return;
+-	}
+-	list_del(&tmp->list);
+-	INIT_LIST_HEAD(&tmp->list);
+-	if (tmp->fence)
++	if (!tmp->fence->emited)
+ 		radeon_fence_unref(&tmp->fence);
+-
+-	tmp->length_dw = 0;
+-	clear_bit(tmp->idx, rdev->ib_pool.alloc_bm);
++	mutex_lock(&rdev->ib_pool.mutex);
++	tmp->free = true;
+ 	mutex_unlock(&rdev->ib_pool.mutex);
+ }
+ 
+@@ -135,7 +113,7 @@ int radeon_ib_schedule(struct radeon_device *rdev, struct radeon_ib *ib)
+ 
+ 	if (!ib->length_dw || !rdev->cp.ready) {
+ 		/* TODO: Nothings in the ib we should report. */
+-		DRM_ERROR("radeon: couldn't schedule IB(%lu).\n", ib->idx);
++		DRM_ERROR("radeon: couldn't schedule IB(%u).\n", ib->idx);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -148,7 +126,8 @@ int radeon_ib_schedule(struct radeon_device *rdev, struct radeon_ib *ib)
+ 	radeon_ring_ib_execute(rdev, ib);
+ 	radeon_fence_emit(rdev, ib->fence);
+ 	mutex_lock(&rdev->ib_pool.mutex);
+-	list_add_tail(&ib->list, &rdev->ib_pool.scheduled_ibs);
++	/* once scheduled IB is considered free and protected by the fence */
++	ib->free = true;
+ 	mutex_unlock(&rdev->ib_pool.mutex);
+ 	radeon_ring_unlock_commit(rdev);
+ 	return 0;
+@@ -164,7 +143,6 @@ int radeon_ib_pool_init(struct radeon_device *rdev)
+ 	if (rdev->ib_pool.robj)
+ 		return 0;
+ 	/* Allocate 1M object buffer */
+-	INIT_LIST_HEAD(&rdev->ib_pool.scheduled_ibs);
+ 	r = radeon_bo_create(rdev, NULL,  RADEON_IB_POOL_SIZE*64*1024,
+ 				true, RADEON_GEM_DOMAIN_GTT,
+ 				&rdev->ib_pool.robj);
+@@ -195,9 +173,9 @@ int radeon_ib_pool_init(struct radeon_device *rdev)
+ 		rdev->ib_pool.ibs[i].ptr = ptr + offset;
+ 		rdev->ib_pool.ibs[i].idx = i;
+ 		rdev->ib_pool.ibs[i].length_dw = 0;
+-		INIT_LIST_HEAD(&rdev->ib_pool.ibs[i].list);
++		rdev->ib_pool.ibs[i].free = true;
+ 	}
+-	bitmap_zero(rdev->ib_pool.alloc_bm, RADEON_IB_POOL_SIZE);
++	rdev->ib_pool.head_id = 0;
+ 	rdev->ib_pool.ready = true;
+ 	DRM_INFO("radeon: ib pool ready.\n");
+ 	if (radeon_debugfs_ib_init(rdev)) {
+@@ -214,7 +192,6 @@ void radeon_ib_pool_fini(struct radeon_device *rdev)
+ 		return;
+ 	}
+ 	mutex_lock(&rdev->ib_pool.mutex);
+-	bitmap_zero(rdev->ib_pool.alloc_bm, RADEON_IB_POOL_SIZE);
+ 	if (rdev->ib_pool.robj) {
+ 		r = radeon_bo_reserve(rdev->ib_pool.robj, false);
+ 		if (likely(r == 0)) {
+@@ -363,7 +340,7 @@ static int radeon_debugfs_ib_info(struct seq_file *m, void *data)
+ 	if (ib == NULL) {
+ 		return 0;
+ 	}
+-	seq_printf(m, "IB %04lu\n", ib->idx);
++	seq_printf(m, "IB %04u\n", ib->idx);
+ 	seq_printf(m, "IB fence %p\n", ib->fence);
+ 	seq_printf(m, "IB size %05u dwords\n", ib->length_dw);
+ 	for (i = 0; i < ib->length_dw; i++) {
+diff --git a/drivers/gpu/drm/radeon/radeon_state.c b/drivers/gpu/drm/radeon/radeon_state.c
+index 38537d9..fc2685f 100644
+--- a/drivers/gpu/drm/radeon/radeon_state.c
++++ b/drivers/gpu/drm/radeon/radeon_state.c
+@@ -101,6 +101,7 @@ static __inline__ int radeon_check_and_fixup_packets(drm_radeon_private_t *
+ 			DRM_ERROR("Invalid depth buffer offset\n");
+ 			return -EINVAL;
+ 		}
++		dev_priv->have_z_offset = 1;
+ 		break;
+ 
+ 	case RADEON_EMIT_PP_CNTL:
+@@ -876,6 +877,11 @@ static void radeon_cp_dispatch_clear(struct drm_device * dev,
+ 		if (tmp & RADEON_BACK)
+ 			flags |= RADEON_FRONT;
+ 	}
++	if (flags & (RADEON_DEPTH|RADEON_STENCIL)) {
++		if (!dev_priv->have_z_offset)
++			printk_once(KERN_ERR "radeon: illegal depth clear request. Buggy mesa detected - please update.\n");
++		flags &= ~(RADEON_DEPTH | RADEON_STENCIL);
++	}
+ 
+ 	if (flags & (RADEON_FRONT | RADEON_BACK)) {
+ 
+@@ -1950,7 +1956,7 @@ static void radeon_apply_surface_regs(int surf_index,
+  * Note that refcount can be at most 2, since during a free refcount=3
+  * might mean we have to allocate a new surface which might not always
+  * be available.
+- * For example : we allocate three contigous surfaces ABC. If B is
++ * For example : we allocate three contiguous surfaces ABC. If B is
+  * freed, we suddenly need two surfaces to store A and C, which might
+  * not always be available.
+  */
+diff --git a/drivers/gpu/drm/radeon/radeon_ttm.c b/drivers/gpu/drm/radeon/radeon_ttm.c
+index db820ae..58b5adf 100644
+--- a/drivers/gpu/drm/radeon/radeon_ttm.c
++++ b/drivers/gpu/drm/radeon/radeon_ttm.c
+@@ -409,7 +409,7 @@ static int radeon_bo_move(struct ttm_buffer_object *bo,
+ 	     new_mem->mem_type == TTM_PL_SYSTEM) ||
+ 	    (old_mem->mem_type == TTM_PL_SYSTEM &&
+ 	     new_mem->mem_type == TTM_PL_TT)) {
+-		/* bind is enought */
++		/* bind is enough */
+ 		radeon_move_null(bo, new_mem);
+ 		return 0;
+ 	}
+diff --git a/drivers/gpu/drm/radeon/rs400.c b/drivers/gpu/drm/radeon/rs400.c
+index 9f54189..287fceb 100644
+--- a/drivers/gpu/drm/radeon/rs400.c
++++ b/drivers/gpu/drm/radeon/rs400.c
+@@ -223,15 +223,31 @@ int rs400_gart_set_page(struct radeon_device *rdev, int i, uint64_t addr)
+ 	return 0;
+ }
+ 
++int rs400_mc_wait_for_idle(struct radeon_device *rdev)
++{
++	unsigned i;
++	uint32_t tmp;
++
++	for (i = 0; i < rdev->usec_timeout; i++) {
++		/* read MC_STATUS */
++		tmp = RREG32(0x0150);
++		if (tmp & (1 << 2)) {
++			return 0;
++		}
++		DRM_UDELAY(1);
++	}
++	return -1;
++}
++
+ void rs400_gpu_init(struct radeon_device *rdev)
+ {
+ 	/* FIXME: HDP same place on rs400 ? */
+ 	r100_hdp_reset(rdev);
+ 	/* FIXME: is this correct ? */
+ 	r420_pipes_init(rdev);
+-	if (r300_mc_wait_for_idle(rdev)) {
+-		printk(KERN_WARNING "Failed to wait MC idle while "
+-		       "programming pipes. Bad things might happen.\n");
++	if (rs400_mc_wait_for_idle(rdev)) {
++		printk(KERN_WARNING "rs400: Failed to wait MC idle while "
++		       "programming pipes. Bad things might happen. %08x\n", RREG32(0x150));
+ 	}
+ }
+ 
+@@ -370,8 +386,8 @@ void rs400_mc_program(struct radeon_device *rdev)
+ 	r100_mc_stop(rdev, &save);
+ 
+ 	/* Wait for mc idle */
+-	if (r300_mc_wait_for_idle(rdev))
+-		dev_warn(rdev->dev, "Wait MC idle timeout before updating MC.\n");
++	if (rs400_mc_wait_for_idle(rdev))
++		dev_warn(rdev->dev, "rs400: Wait MC idle timeout before updating MC.\n");
+ 	WREG32(R_000148_MC_FB_LOCATION,
+ 		S_000148_MC_FB_START(rdev->mc.vram_start >> 16) |
+ 		S_000148_MC_FB_TOP(rdev->mc.vram_end >> 16));
+@@ -448,7 +464,6 @@ int rs400_suspend(struct radeon_device *rdev)
+ 
+ void rs400_fini(struct radeon_device *rdev)
+ {
+-	rs400_suspend(rdev);
+ 	r100_cp_fini(rdev);
+ 	r100_wb_fini(rdev);
+ 	r100_ib_fini(rdev);
+@@ -527,7 +542,6 @@ int rs400_init(struct radeon_device *rdev)
+ 	if (r) {
+ 		/* Somethings want wront with the accel init stop accel */
+ 		dev_err(rdev->dev, "Disabling GPU acceleration\n");
+-		rs400_suspend(rdev);
+ 		r100_cp_fini(rdev);
+ 		r100_wb_fini(rdev);
+ 		r100_ib_fini(rdev);
+diff --git a/drivers/gpu/drm/radeon/rs600.c b/drivers/gpu/drm/radeon/rs600.c
+index d525575..c381856 100644
+--- a/drivers/gpu/drm/radeon/rs600.c
++++ b/drivers/gpu/drm/radeon/rs600.c
+@@ -610,7 +610,6 @@ int rs600_suspend(struct radeon_device *rdev)
+ 
+ void rs600_fini(struct radeon_device *rdev)
+ {
+-	rs600_suspend(rdev);
+ 	r100_cp_fini(rdev);
+ 	r100_wb_fini(rdev);
+ 	r100_ib_fini(rdev);
+@@ -689,7 +688,6 @@ int rs600_init(struct radeon_device *rdev)
+ 	if (r) {
+ 		/* Somethings want wront with the accel init stop accel */
+ 		dev_err(rdev->dev, "Disabling GPU acceleration\n");
+-		rs600_suspend(rdev);
+ 		r100_cp_fini(rdev);
+ 		r100_wb_fini(rdev);
+ 		r100_ib_fini(rdev);
+diff --git a/drivers/gpu/drm/radeon/rs690.c b/drivers/gpu/drm/radeon/rs690.c
+index cd31da9..06e2771 100644
+--- a/drivers/gpu/drm/radeon/rs690.c
++++ b/drivers/gpu/drm/radeon/rs690.c
+@@ -676,7 +676,6 @@ int rs690_suspend(struct radeon_device *rdev)
+ 
+ void rs690_fini(struct radeon_device *rdev)
+ {
+-	rs690_suspend(rdev);
+ 	r100_cp_fini(rdev);
+ 	r100_wb_fini(rdev);
+ 	r100_ib_fini(rdev);
+@@ -756,7 +755,6 @@ int rs690_init(struct radeon_device *rdev)
+ 	if (r) {
+ 		/* Somethings want wront with the accel init stop accel */
+ 		dev_err(rdev->dev, "Disabling GPU acceleration\n");
+-		rs690_suspend(rdev);
+ 		r100_cp_fini(rdev);
+ 		r100_wb_fini(rdev);
+ 		r100_ib_fini(rdev);
+diff --git a/drivers/gpu/drm/radeon/rv515.c b/drivers/gpu/drm/radeon/rv515.c
+index 6275671..0e1e6b8 100644
+--- a/drivers/gpu/drm/radeon/rv515.c
++++ b/drivers/gpu/drm/radeon/rv515.c
+@@ -537,7 +537,6 @@ void rv515_set_safe_registers(struct radeon_device *rdev)
+ 
+ void rv515_fini(struct radeon_device *rdev)
+ {
+-	rv515_suspend(rdev);
+ 	r100_cp_fini(rdev);
+ 	r100_wb_fini(rdev);
+ 	r100_ib_fini(rdev);
+@@ -615,13 +614,12 @@ int rv515_init(struct radeon_device *rdev)
+ 	if (r) {
+ 		/* Somethings want wront with the accel init stop accel */
+ 		dev_err(rdev->dev, "Disabling GPU acceleration\n");
+-		rv515_suspend(rdev);
+ 		r100_cp_fini(rdev);
+ 		r100_wb_fini(rdev);
+ 		r100_ib_fini(rdev);
++		radeon_irq_kms_fini(rdev);
+ 		rv370_pcie_gart_fini(rdev);
+ 		radeon_agp_fini(rdev);
+-		radeon_irq_kms_fini(rdev);
+ 		rdev->accel_working = false;
+ 	}
+ 	return 0;
+diff --git a/drivers/gpu/drm/radeon/rv770.c b/drivers/gpu/drm/radeon/rv770.c
+index cf8f2b1..9fa74db 100644
+--- a/drivers/gpu/drm/radeon/rv770.c
++++ b/drivers/gpu/drm/radeon/rv770.c
+@@ -273,9 +273,10 @@ static int rv770_cp_load_microcode(struct radeon_device *rdev)
+ /*
+  * Core functions
+  */
+-static u32 r700_get_tile_pipe_to_backend_map(u32 num_tile_pipes,
+-						u32 num_backends,
+-						u32 backend_disable_mask)
++static u32 r700_get_tile_pipe_to_backend_map(struct radeon_device *rdev,
++					     u32 num_tile_pipes,
++					     u32 num_backends,
++					     u32 backend_disable_mask)
+ {
+ 	u32 backend_map = 0;
+ 	u32 enabled_backends_mask;
+@@ -284,6 +285,7 @@ static u32 r700_get_tile_pipe_to_backend_map(u32 num_tile_pipes,
+ 	u32 swizzle_pipe[R7XX_MAX_PIPES];
+ 	u32 cur_backend;
+ 	u32 i;
++	bool force_no_swizzle;
+ 
+ 	if (num_tile_pipes > R7XX_MAX_PIPES)
+ 		num_tile_pipes = R7XX_MAX_PIPES;
+@@ -313,6 +315,18 @@ static u32 r700_get_tile_pipe_to_backend_map(u32 num_tile_pipes,
+ 	if (enabled_backends_count != num_backends)
+ 		num_backends = enabled_backends_count;
+ 
++	switch (rdev->family) {
++	case CHIP_RV770:
++	case CHIP_RV730:
++		force_no_swizzle = false;
++		break;
++	case CHIP_RV710:
++	case CHIP_RV740:
++	default:
++		force_no_swizzle = true;
++		break;
++	}
++
+ 	memset((uint8_t *)&swizzle_pipe[0], 0, sizeof(u32) * R7XX_MAX_PIPES);
+ 	switch (num_tile_pipes) {
+ 	case 1:
+@@ -323,49 +337,100 @@ static u32 r700_get_tile_pipe_to_backend_map(u32 num_tile_pipes,
+ 		swizzle_pipe[1] = 1;
+ 		break;
+ 	case 3:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 1;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 1;
++		}
+ 		break;
+ 	case 4:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 3;
+-		swizzle_pipe[3] = 1;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 3;
++			swizzle_pipe[3] = 1;
++		}
+ 		break;
+ 	case 5:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 4;
+-		swizzle_pipe[3] = 1;
+-		swizzle_pipe[4] = 3;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++			swizzle_pipe[4] = 4;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 4;
++			swizzle_pipe[3] = 1;
++			swizzle_pipe[4] = 3;
++		}
+ 		break;
+ 	case 6:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 4;
+-		swizzle_pipe[3] = 5;
+-		swizzle_pipe[4] = 3;
+-		swizzle_pipe[5] = 1;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++			swizzle_pipe[4] = 4;
++			swizzle_pipe[5] = 5;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 4;
++			swizzle_pipe[3] = 5;
++			swizzle_pipe[4] = 3;
++			swizzle_pipe[5] = 1;
++		}
+ 		break;
+ 	case 7:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 4;
+-		swizzle_pipe[3] = 6;
+-		swizzle_pipe[4] = 3;
+-		swizzle_pipe[5] = 1;
+-		swizzle_pipe[6] = 5;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++			swizzle_pipe[4] = 4;
++			swizzle_pipe[5] = 5;
++			swizzle_pipe[6] = 6;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 4;
++			swizzle_pipe[3] = 6;
++			swizzle_pipe[4] = 3;
++			swizzle_pipe[5] = 1;
++			swizzle_pipe[6] = 5;
++		}
+ 		break;
+ 	case 8:
+-		swizzle_pipe[0] = 0;
+-		swizzle_pipe[1] = 2;
+-		swizzle_pipe[2] = 4;
+-		swizzle_pipe[3] = 6;
+-		swizzle_pipe[4] = 3;
+-		swizzle_pipe[5] = 1;
+-		swizzle_pipe[6] = 7;
+-		swizzle_pipe[7] = 5;
++		if (force_no_swizzle) {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 1;
++			swizzle_pipe[2] = 2;
++			swizzle_pipe[3] = 3;
++			swizzle_pipe[4] = 4;
++			swizzle_pipe[5] = 5;
++			swizzle_pipe[6] = 6;
++			swizzle_pipe[7] = 7;
++		} else {
++			swizzle_pipe[0] = 0;
++			swizzle_pipe[1] = 2;
++			swizzle_pipe[2] = 4;
++			swizzle_pipe[3] = 6;
++			swizzle_pipe[4] = 3;
++			swizzle_pipe[5] = 1;
++			swizzle_pipe[6] = 7;
++			swizzle_pipe[7] = 5;
++		}
+ 		break;
+ 	}
+ 
+@@ -385,8 +450,10 @@ static u32 r700_get_tile_pipe_to_backend_map(u32 num_tile_pipes,
+ static void rv770_gpu_init(struct radeon_device *rdev)
+ {
+ 	int i, j, num_qd_pipes;
++	u32 ta_aux_cntl;
+ 	u32 sx_debug_1;
+ 	u32 smx_dc_ctl0;
++	u32 db_debug3;
+ 	u32 num_gs_verts_per_thread;
+ 	u32 vgt_gs_per_es;
+ 	u32 gs_prim_buffer_depth = 0;
+@@ -515,6 +582,7 @@ static void rv770_gpu_init(struct radeon_device *rdev)
+ 
+ 	switch (rdev->config.rv770.max_tile_pipes) {
+ 	case 1:
++	default:
+ 		gb_tiling_config |= PIPE_TILING(0);
+ 		break;
+ 	case 2:
+@@ -526,8 +594,6 @@ static void rv770_gpu_init(struct radeon_device *rdev)
+ 	case 8:
+ 		gb_tiling_config |= PIPE_TILING(3);
+ 		break;
+-	default:
+-		break;
+ 	}
+ 
+ 	if (rdev->family == CHIP_RV770)
+@@ -549,18 +615,27 @@ static void rv770_gpu_init(struct radeon_device *rdev)
+ 
+ 	gb_tiling_config |= BANK_SWAPS(1);
+ 
+-	backend_map = r700_get_tile_pipe_to_backend_map(rdev->config.rv770.max_tile_pipes,
+-							rdev->config.rv770.max_backends,
+-							(0xff << rdev->config.rv770.max_backends) & 0xff);
+-	gb_tiling_config |= BACKEND_MAP(backend_map);
++	cc_rb_backend_disable = RREG32(CC_RB_BACKEND_DISABLE) & 0x00ff0000;
++	cc_rb_backend_disable |=
++		BACKEND_DISABLE((R7XX_MAX_BACKENDS_MASK << rdev->config.rv770.max_backends) & R7XX_MAX_BACKENDS_MASK);
+ 
+-	cc_gc_shader_pipe_config =
++	cc_gc_shader_pipe_config = RREG32(CC_GC_SHADER_PIPE_CONFIG) & 0xffffff00;
++	cc_gc_shader_pipe_config |=
+ 		INACTIVE_QD_PIPES((R7XX_MAX_PIPES_MASK << rdev->config.rv770.max_pipes) & R7XX_MAX_PIPES_MASK);
+ 	cc_gc_shader_pipe_config |=
+ 		INACTIVE_SIMDS((R7XX_MAX_SIMDS_MASK << rdev->config.rv770.max_simds) & R7XX_MAX_SIMDS_MASK);
+ 
+-	cc_rb_backend_disable =
+-		BACKEND_DISABLE((R7XX_MAX_BACKENDS_MASK << rdev->config.rv770.max_backends) & R7XX_MAX_BACKENDS_MASK);
++	if (rdev->family == CHIP_RV740)
++		backend_map = 0x28;
++	else
++		backend_map = r700_get_tile_pipe_to_backend_map(rdev,
++								rdev->config.rv770.max_tile_pipes,
++								(R7XX_MAX_BACKENDS -
++								 r600_count_pipe_bits((cc_rb_backend_disable &
++										       R7XX_MAX_BACKENDS_MASK) >> 16)),
++								(cc_rb_backend_disable >> 16));
++	gb_tiling_config |= BACKEND_MAP(backend_map);
++
+ 
+ 	WREG32(GB_TILING_CONFIG, gb_tiling_config);
+ 	WREG32(DCP_TILING_CONFIG, (gb_tiling_config & 0xffff));
+@@ -568,16 +643,13 @@ static void rv770_gpu_init(struct radeon_device *rdev)
+ 
+ 	WREG32(CC_RB_BACKEND_DISABLE,      cc_rb_backend_disable);
+ 	WREG32(CC_GC_SHADER_PIPE_CONFIG,   cc_gc_shader_pipe_config);
+-	WREG32(GC_USER_SHADER_PIPE_CONFIG, cc_gc_shader_pipe_config);
++	WREG32(CC_SYS_RB_BACKEND_DISABLE,  cc_rb_backend_disable);
+ 
+-	WREG32(CC_SYS_RB_BACKEND_DISABLE, cc_rb_backend_disable);
+ 	WREG32(CGTS_SYS_TCC_DISABLE, 0);
+ 	WREG32(CGTS_TCC_DISABLE, 0);
+-	WREG32(CGTS_USER_SYS_TCC_DISABLE, 0);
+-	WREG32(CGTS_USER_TCC_DISABLE, 0);
+ 
+ 	num_qd_pipes =
+-		R7XX_MAX_BACKENDS - r600_count_pipe_bits(cc_gc_shader_pipe_config & INACTIVE_QD_PIPES_MASK);
++		R7XX_MAX_PIPES - r600_count_pipe_bits((cc_gc_shader_pipe_config & INACTIVE_QD_PIPES_MASK) >> 8);
+ 	WREG32(VGT_OUT_DEALLOC_CNTL, (num_qd_pipes * 4) & DEALLOC_DIST_MASK);
+ 	WREG32(VGT_VERTEX_REUSE_BLOCK_CNTL, ((num_qd_pipes * 4) - 2) & VTX_REUSE_DEPTH_MASK);
+ 
+@@ -587,10 +659,8 @@ static void rv770_gpu_init(struct radeon_device *rdev)
+ 
+ 	WREG32(CP_MEQ_THRESHOLDS, STQ_SPLIT(0x30));
+ 
+-	WREG32(TA_CNTL_AUX, (DISABLE_CUBE_ANISO |
+-			     SYNC_GRADIENT |
+-			     SYNC_WALKER |
+-			     SYNC_ALIGNER));
++	ta_aux_cntl = RREG32(TA_CNTL_AUX);
++	WREG32(TA_CNTL_AUX, ta_aux_cntl | DISABLE_CUBE_ANISO);
+ 
+ 	sx_debug_1 = RREG32(SX_DEBUG_1);
+ 	sx_debug_1 |= ENABLE_NEW_SMX_ADDRESS;
+@@ -601,14 +671,28 @@ static void rv770_gpu_init(struct radeon_device *rdev)
+ 	smx_dc_ctl0 |= CACHE_DEPTH((rdev->config.rv770.sx_num_of_sets * 64) - 1);
+ 	WREG32(SMX_DC_CTL0, smx_dc_ctl0);
+ 
+-	WREG32(SMX_EVENT_CTL, (ES_FLUSH_CTL(4) |
+-			       GS_FLUSH_CTL(4) |
+-			       ACK_FLUSH_CTL(3) |
+-			       SYNC_FLUSH_CTL));
++	if (rdev->family != CHIP_RV740)
++		WREG32(SMX_EVENT_CTL, (ES_FLUSH_CTL(4) |
++				       GS_FLUSH_CTL(4) |
++				       ACK_FLUSH_CTL(3) |
++				       SYNC_FLUSH_CTL));
+ 
+-	if (rdev->family == CHIP_RV770)
+-		WREG32(DB_DEBUG3, DB_CLK_OFF_DELAY(0x1f));
+-	else {
++	db_debug3 = RREG32(DB_DEBUG3);
++	db_debug3 &= ~DB_CLK_OFF_DELAY(0x1f);
++	switch (rdev->family) {
++	case CHIP_RV770:
++	case CHIP_RV740:
++		db_debug3 |= DB_CLK_OFF_DELAY(0x1f);
++		break;
++	case CHIP_RV710:
++	case CHIP_RV730:
++	default:
++		db_debug3 |= DB_CLK_OFF_DELAY(2);
++		break;
++	}
++	WREG32(DB_DEBUG3, db_debug3);
++
++	if (rdev->family != CHIP_RV770) {
+ 		db_debug4 = RREG32(DB_DEBUG4);
+ 		db_debug4 |= DISABLE_TILE_COVERED_FOR_PS_ITER;
+ 		WREG32(DB_DEBUG4, db_debug4);
+@@ -637,10 +721,10 @@ static void rv770_gpu_init(struct radeon_device *rdev)
+ 			    ALU_UPDATE_FIFO_HIWATER(0x8));
+ 	switch (rdev->family) {
+ 	case CHIP_RV770:
+-		sq_ms_fifo_sizes |= FETCH_FIFO_HIWATER(0x1);
+-		break;
+ 	case CHIP_RV730:
+ 	case CHIP_RV710:
++		sq_ms_fifo_sizes |= FETCH_FIFO_HIWATER(0x1);
++		break;
+ 	case CHIP_RV740:
+ 	default:
+ 		sq_ms_fifo_sizes |= FETCH_FIFO_HIWATER(0x4);
+@@ -829,11 +913,11 @@ int rv770_mc_init(struct radeon_device *rdev)
+ 		 * AGP so that GPU can catch out of VRAM/AGP access
+ 		 */
+ 		if (rdev->mc.gtt_location > rdev->mc.mc_vram_size) {
+-			/* Enought place before */
++			/* Enough place before */
+ 			rdev->mc.vram_location = rdev->mc.gtt_location -
+ 							rdev->mc.mc_vram_size;
+ 		} else if (tmp > rdev->mc.mc_vram_size) {
+-			/* Enought place after */
++			/* Enough place after */
+ 			rdev->mc.vram_location = rdev->mc.gtt_location +
+ 							rdev->mc.gtt_size;
+ 		} else {
+@@ -887,26 +971,25 @@ static int rv770_startup(struct radeon_device *rdev)
+ 			return r;
+ 	}
+ 	rv770_gpu_init(rdev);
+-
+-	if (!rdev->r600_blit.shader_obj) {
+-		r = r600_blit_init(rdev);
++	r = r600_blit_init(rdev);
++	if (r) {
++		r600_blit_fini(rdev);
++		rdev->asic->copy = NULL;
++		dev_warn(rdev->dev, "failed blitter (%d) falling back to memcpy\n", r);
++	}
++	/* pin copy shader into vram */
++	if (rdev->r600_blit.shader_obj) {
++		r = radeon_bo_reserve(rdev->r600_blit.shader_obj, false);
++		if (unlikely(r != 0))
++			return r;
++		r = radeon_bo_pin(rdev->r600_blit.shader_obj, RADEON_GEM_DOMAIN_VRAM,
++				&rdev->r600_blit.shader_gpu_addr);
++		radeon_bo_unreserve(rdev->r600_blit.shader_obj);
+ 		if (r) {
+-			DRM_ERROR("radeon: failed blitter (%d).\n", r);
++			DRM_ERROR("failed to pin blit object %d\n", r);
+ 			return r;
+ 		}
+ 	}
+-
+-	r = radeon_bo_reserve(rdev->r600_blit.shader_obj, false);
+-	if (unlikely(r != 0))
+-		return r;
+-	r = radeon_bo_pin(rdev->r600_blit.shader_obj, RADEON_GEM_DOMAIN_VRAM,
+-			&rdev->r600_blit.shader_gpu_addr);
+-	radeon_bo_unreserve(rdev->r600_blit.shader_obj);
+-	if (r) {
+-		DRM_ERROR("failed to pin blit object %d\n", r);
+-		return r;
+-	}
+-
+ 	/* Enable IRQ */
+ 	r = r600_irq_init(rdev);
+ 	if (r) {
+@@ -1066,9 +1149,11 @@ int rv770_init(struct radeon_device *rdev)
+ 	rdev->accel_working = true;
+ 	r = rv770_startup(rdev);
+ 	if (r) {
+-		rv770_suspend(rdev);
++		dev_err(rdev->dev, "disabling GPU acceleration\n");
++		r600_cp_fini(rdev);
+ 		r600_wb_fini(rdev);
+-		radeon_ring_fini(rdev);
++		r600_irq_fini(rdev);
++		radeon_irq_kms_fini(rdev);
+ 		rv770_pcie_gart_fini(rdev);
+ 		rdev->accel_working = false;
+ 	}
+@@ -1090,13 +1175,11 @@ int rv770_init(struct radeon_device *rdev)
+ 
+ void rv770_fini(struct radeon_device *rdev)
+ {
+-	rv770_suspend(rdev);
+-
+ 	r600_blit_fini(rdev);
++	r600_cp_fini(rdev);
++	r600_wb_fini(rdev);
+ 	r600_irq_fini(rdev);
+ 	radeon_irq_kms_fini(rdev);
+-	radeon_ring_fini(rdev);
+-	r600_wb_fini(rdev);
+ 	rv770_pcie_gart_fini(rdev);
+ 	radeon_gem_fini(rdev);
+ 	radeon_fence_driver_fini(rdev);
+diff --git a/include/drm/drm_crtc.h b/include/drm/drm_crtc.h
+index fdf43ab..1347524 100644
+--- a/include/drm/drm_crtc.h
++++ b/include/drm/drm_crtc.h
+@@ -801,4 +801,6 @@ extern struct drm_display_mode *drm_gtf_mode(struct drm_device *dev,
+ 				bool interlaced, int margins);
+ extern int drm_add_modes_noedid(struct drm_connector *connector,
+ 				int hdisplay, int vdisplay);
++
++extern bool drm_edid_is_valid(struct edid *edid);
+ #endif /* __DRM_CRTC_H__ */
+diff --git a/include/drm/drm_edid.h b/include/drm/drm_edid.h
+index d33c3e0..b420989 100644
+--- a/include/drm/drm_edid.h
++++ b/include/drm/drm_edid.h
+@@ -201,4 +201,7 @@ struct edid {
+ 
+ #define EDID_PRODUCT_ID(e) ((e)->prod_code[0] | ((e)->prod_code[1] << 8))
+ 
++/* define the number of Extension EDID block */
++#define DRM_MAX_EDID_EXT_NUM 4
++
+ #endif /* __DRM_EDID_H__ */
+diff --git a/include/drm/radeon_drm.h b/include/drm/radeon_drm.h
+index 3b9932a..c90b691 100644
+--- a/include/drm/radeon_drm.h
++++ b/include/drm/radeon_drm.h
+@@ -808,6 +808,7 @@ struct drm_radeon_gem_create {
+ #define RADEON_TILING_SWAP_32BIT  0x8
+ #define RADEON_TILING_SURFACE     0x10 /* this object requires a surface
+ 					* when mapped - i.e. front buffer */
++#define RADEON_TILING_MICRO_SQUARE 0x20
+ 
+ struct drm_radeon_gem_set_tiling {
+ 	uint32_t	handle;

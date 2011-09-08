@@ -1,0 +1,56 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:41 -0500
+Subject: [Fedora] [fb] disable fbcon logo with parameter
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6-silence-fbcon-logo.patch
+
+Disable the display of the fbcon logo if "quiet" option is passed.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/video/console/fbcon.c b/drivers/video/console/fbcon.c
+index 3681c6a..377b633 100644
+--- a/drivers/video/console/fbcon.c
++++ b/drivers/video/console/fbcon.c
+@@ -634,13 +634,15 @@ static void fbcon_prepare_logo(struct vc_data *vc, struct fb_info *info,
+ 		kfree(save);
+ 	}
+ 
+-	if (logo_lines > vc->vc_bottom) {
+-		logo_shown = FBCON_LOGO_CANSHOW;
+-		printk(KERN_INFO
+-		       "fbcon_init: disable boot-logo (boot-logo bigger than screen).\n");
+-	} else if (logo_shown != FBCON_LOGO_DONTSHOW) {
+-		logo_shown = FBCON_LOGO_DRAW;
+-		vc->vc_top = logo_lines;
++	if (logo_shown != FBCON_LOGO_DONTSHOW) {
++		if (logo_lines > vc->vc_bottom) {
++			logo_shown = FBCON_LOGO_CANSHOW;
++			printk(KERN_INFO
++			       "fbcon_init: disable boot-logo (boot-logo bigger than screen).\n");
++		} else {
++			logo_shown = FBCON_LOGO_DRAW;
++			vc->vc_top = logo_lines;
++		}
+ 	}
+ }
+ #endif /* MODULE */
+@@ -3526,6 +3528,14 @@ static int __init fb_console_init(void)
+ 	return 0;
+ }
+ 
++static int __init quiet_logo(char *str)
++{
++	logo_shown = FBCON_LOGO_DONTSHOW;
++	return 0;
++}
++
++early_param("quiet", quiet_logo);
++
+ module_init(fb_console_init);
+ 
+ #ifdef MODULE

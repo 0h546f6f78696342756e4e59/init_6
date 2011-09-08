@@ -1,0 +1,49 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 21:08:05 -0500
+Subject: [nfs] nfs41: fix nfs4_callback_recallslot
+Message-id: <4B6742B5.60107@RedHat.com>
+Patchwork-id: 23080
+O-Subject: [RHEL6] [PATCH 11/13] nfs41: fix nfs4_callback_recallslot
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 30f0d129530e955897d11b9bf7fb46c053699020
+Author: Andy Adamson <andros@netapp.com>
+Date:   Thu Jan 21 14:19:16 2010 -0500
+
+    nfs41: fix nfs4_callback_recallslot
+
+    Return NFS4_OK if target high slotid equals enforced high slotid.
+    Fix nfs_client reference leak.
+
+    Signed-off-by: Andy Adamson <andros@netapp.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/callback_proc.c b/fs/nfs/callback_proc.c
+index e5155d9..c79e18c 100644
+--- a/fs/nfs/callback_proc.c
++++ b/fs/nfs/callback_proc.c
+@@ -381,13 +381,17 @@ unsigned nfs4_callback_recallslot(struct cb_recallslotargs *args, void *dummy)
+ 	fc_tbl = &clp->cl_session->fc_slot_table;
+ 
+ 	status = htonl(NFS4ERR_BAD_HIGH_SLOT);
+-	if (args->crsa_target_max_slots >= fc_tbl->max_slots ||
++	if (args->crsa_target_max_slots > fc_tbl->max_slots ||
+ 	    args->crsa_target_max_slots < 1)
+-		goto out;
++		goto out_putclient;
++
++	status = htonl(NFS4_OK);
++	if (args->crsa_target_max_slots == fc_tbl->max_slots)
++		goto out_putclient;
+ 
+ 	fc_tbl->target_max_slots = args->crsa_target_max_slots;
+ 	nfs41_handle_recall_slot(clp);
+-	status = htonl(NFS4_OK);
++out_putclient:
+ 	nfs_put_client(clp);	/* balance nfs_find_client */
+ out:
+ 	dprintk("%s: exit with status = %d\n", __func__, ntohl(status));

@@ -1,0 +1,32 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Sat, 19 Dec 2009 23:44:34 -0500
+Subject: [scsi] mpt2sas: retrieve the ioc facts prior to putting the controller into READY state
+Message-id: <20091219194413.5875.73744.sendpatchset@localhost.localdomain>
+Patchwork-id: 22234
+O-Subject: [RHEL6 13/20] bz478848 mpt2sas: retrieve the ioc facts prior to
+	putting the controller into READY state
+Bugzilla: 470848
+RH-Acked-by: Rob Evers <revers@redhat.com>
+
+mpt2sas: retrieve the ioc facts prior to putting the controller into READY state
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_base.c b/drivers/scsi/mpt2sas/mpt2sas_base.c
+index 617b9c8..7f0ea3f 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_base.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_base.c
+@@ -3545,11 +3545,11 @@ mpt2sas_base_attach(struct MPT2SAS_ADAPTER *ioc)
+ 		return r;
+ 
+ 	pci_set_drvdata(ioc->pdev, ioc->shost);
+-	r = _base_make_ioc_ready(ioc, CAN_SLEEP, SOFT_RESET);
++	r = _base_get_ioc_facts(ioc, CAN_SLEEP);
+ 	if (r)
+ 		goto out_free_resources;
+ 
+-	r = _base_get_ioc_facts(ioc, CAN_SLEEP);
++	r = _base_make_ioc_ready(ioc, CAN_SLEEP, SOFT_RESET);
+ 	if (r)
+ 		goto out_free_resources;
+ 

@@ -1,0 +1,49 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:59 -0500
+Subject: [block] Revert "cfq: Make use of service count to estimate the rb_key offset"
+Message-id: <1260298712-12756-27-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21779
+O-Subject: [RHEL6 PATCH 26/59] Revert "cfq: Make use of service count to
+	estimate the rb_key offset"
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit 464191c65b85a8ec68a6e1a6293af625287c807e
+Author: Jens Axboe <jens.axboe@oracle.com>
+Date:   Mon Nov 30 09:38:13 2009 +0100
+
+    Revert "cfq: Make use of service count to estimate the rb_key offset"
+
+    This reverts commit 3586e917f2c7df769d173c4ec99554cb40a911e5.
+
+    Corrado Zoccolo <czoccolo@gmail.com> correctly points out, that we need
+    consistency of rb_key offset across groups. This means we cannot properly
+    use the per-service_tree service count. Revert this change.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 606d651..9d79fa0 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -608,15 +608,11 @@ cfq_find_next_rq(struct cfq_data *cfqd, struct cfq_queue *cfqq,
+ static unsigned long cfq_slice_offset(struct cfq_data *cfqd,
+ 				      struct cfq_queue *cfqq)
+ {
+-	struct cfq_rb_root *service_tree;
+-
+-	service_tree = service_tree_for(cfqq_prio(cfqq), cfqq_type(cfqq), cfqd);
+-
+ 	/*
+ 	 * just an approximation, should be ok.
+ 	 */
+-	return  service_tree->count * (cfq_prio_slice(cfqd, 1, 0) -
+-		   cfq_prio_slice(cfqd, cfq_cfqq_sync(cfqq), cfqq->ioprio));
++	return (cfqd->busy_queues - 1) * (cfq_prio_slice(cfqd, 1, 0) -
++		       cfq_prio_slice(cfqd, cfq_cfqq_sync(cfqq), cfqq->ioprio));
+ }
+ 
+ /*

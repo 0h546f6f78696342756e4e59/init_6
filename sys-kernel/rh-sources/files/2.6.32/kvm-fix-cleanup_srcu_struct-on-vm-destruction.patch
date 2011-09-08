@@ -1,0 +1,96 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Wed, 20 Jan 2010 16:47:43 -0500
+Subject: [kvm] fix cleanup_srcu_struct on vm destruction
+Message-id: <20100120164743.GA15747@amt.cnet>
+Patchwork-id: 22680
+O-Subject: [RHEL 6 KVM PATCH] KVM: fix cleanup_srcu_struct on vm destruction
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit 025bf79ac2b5a0969c2d7ea2095b9426639d38b6
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Tue Jan 19 12:45:23 2010 -0200
+
+KVM: fix cleanup_srcu_struct on vm destruction
+
+cleanup_srcu_struct on VM destruction remains broken:
+
+BUG: unable to handle kernel paging request at ffffffffffffffff
+IP: [<ffffffff802533d2>] srcu_read_lock+0x16/0x21
+RIP: 0010:[<ffffffff802533d2>]  [<ffffffff802533d2>] srcu_read_lock+0x16/0x21
+Call Trace:
+ [<ffffffffa05354c4>] kvm_arch_vcpu_uninit+0x1b/0x48 [kvm]
+ [<ffffffffa05339c6>] kvm_vcpu_uninit+0x9/0x15 [kvm]
+ [<ffffffffa0569f7d>] vmx_free_vcpu+0x7f/0x8f [kvm_intel]
+ [<ffffffffa05357b5>] kvm_arch_destroy_vm+0x78/0x111 [kvm]
+ [<ffffffffa053315b>] kvm_put_kvm+0xd4/0xfe [kvm]
+
+Move it to kvm_arch_destroy_vm.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Reported-by: Jan Kiszka <jan.kiszka@siemens.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/ia64/kvm/kvm-ia64.c b/arch/ia64/kvm/kvm-ia64.c
+index 3905785..0552995 100644
+--- a/arch/ia64/kvm/kvm-ia64.c
++++ b/arch/ia64/kvm/kvm-ia64.c
+@@ -1402,6 +1402,7 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
+ 	kfree(kvm->arch.vioapic);
+ 	kvm_release_vm_pages(kvm);
+ 	kvm_free_physmem(kvm);
++	cleanup_srcu_struct(&kvm->srcu);
+ 	free_kvm(kvm);
+ }
+ 
+diff --git a/arch/powerpc/kvm/powerpc.c b/arch/powerpc/kvm/powerpc.c
+index 1d8fca8..cfb8668 100644
+--- a/arch/powerpc/kvm/powerpc.c
++++ b/arch/powerpc/kvm/powerpc.c
+@@ -135,6 +135,7 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
+ {
+ 	kvmppc_free_vcpus(kvm);
+ 	kvm_free_physmem(kvm);
++	cleanup_srcu_struct(&kvm->srcu);
+ 	kfree(kvm);
+ }
+ 
+diff --git a/arch/s390/kvm/kvm-s390.c b/arch/s390/kvm/kvm-s390.c
+index 85f2396..f12a512 100644
+--- a/arch/s390/kvm/kvm-s390.c
++++ b/arch/s390/kvm/kvm-s390.c
+@@ -240,6 +240,7 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
+ 	kvm_free_physmem(kvm);
+ 	free_page((unsigned long)(kvm->arch.sca));
+ 	debug_unregister(kvm->arch.dbf);
++	cleanup_srcu_struct(&kvm->srcu);
+ 	kfree(kvm);
+ }
+ 
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 6870470..3019b1e 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -5163,6 +5163,7 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
+ 		put_page(kvm->arch.apic_access_page);
+ 	if (kvm->arch.ept_identity_pagetable)
+ 		put_page(kvm->arch.ept_identity_pagetable);
++	cleanup_srcu_struct(&kvm->srcu);
+ 	kfree(kvm->arch.aliases);
+ 	kfree(kvm);
+ }
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index 61c09fe..cc34e40 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -1106,7 +1106,6 @@ static void kvm_destroy_vm(struct kvm *kvm)
+ #else
+ 	kvm_arch_flush_shadow(kvm);
+ #endif
+-	cleanup_srcu_struct(&kvm->srcu);
+ 	kvm_arch_destroy_vm(kvm);
+ 	mmdrop(mm);
+ }

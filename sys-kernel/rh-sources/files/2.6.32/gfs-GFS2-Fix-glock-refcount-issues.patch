@@ -1,0 +1,127 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Thu, 14 Jan 2010 11:33:38 -0500
+Subject: [gfs] GFS2: Fix glock refcount issues
+Message-id: <1263468818.2611.32.camel@localhost>
+Patchwork-id: 22510
+O-Subject: [RHEL6] GFS2: Fix glock refcount issues (bz #546634)
+Bugzilla: 546634
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+Hi,
+
+This patch is from upstream and also RHEL5 where it was an
+important bug fix. It fixes bz #546634 and mainly affects
+people using larger machines (lots of RAM) with large
+numbers of inodes and memory pressure,
+
+Steve.
+
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Fri, 27 Nov 2009 10:31:11 +0000 (+0000)
+Subject: GFS2: Fix glock refcount issues
+X-Git-Tag: v2.6.33-rc1~410^2
+X-Git-Url: http://git.kernel.org/?p=linux%2Fkernel%2Fgit%2Ftorvalds%2Flinux-2.6.git;a=commitdiff_plain;h=26bb7505cf7db3560286be9f6384b6d3911f78b5
+
+GFS2: Fix glock refcount issues
+
+This patch fixes some ref counting issues. Firstly by moving
+the point at which we drop the ref count after a dlm lock
+operation has completed we ensure that we never call
+gfs2_glock_hold() on a lock with a zero ref count.
+
+Secondly, by using atomic_dec_and_lock() in gfs2_glock_put()
+we ensure that at no time will a glock with zero ref count
+appear on the lru_list. That means that we can remove the
+check for this in our shrinker (which was racy).
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+
+diff --git a/fs/gfs2/glock.c b/fs/gfs2/glock.c
+index a3f90ad..f455a03 100644
+--- a/fs/gfs2/glock.c
++++ b/fs/gfs2/glock.c
+@@ -241,15 +241,14 @@ int gfs2_glock_put(struct gfs2_glock *gl)
+ 	int rv = 0;
+ 
+ 	write_lock(gl_lock_addr(gl->gl_hash));
+-	if (atomic_dec_and_test(&gl->gl_ref)) {
++	if (atomic_dec_and_lock(&gl->gl_ref, &lru_lock)) {
+ 		hlist_del(&gl->gl_list);
+-		write_unlock(gl_lock_addr(gl->gl_hash));
+-		spin_lock(&lru_lock);
+ 		if (!list_empty(&gl->gl_lru)) {
+ 			list_del_init(&gl->gl_lru);
+ 			atomic_dec(&lru_count);
+ 		}
+ 		spin_unlock(&lru_lock);
++		write_unlock(gl_lock_addr(gl->gl_hash));
+ 		GLOCK_BUG_ON(gl, !list_empty(&gl->gl_holders));
+ 		glock_free(gl);
+ 		rv = 1;
+@@ -513,7 +512,6 @@ retry:
+ 			GLOCK_BUG_ON(gl, 1);
+ 		}
+ 		spin_unlock(&gl->gl_spin);
+-		gfs2_glock_put(gl);
+ 		return;
+ 	}
+ 
+@@ -524,8 +522,6 @@ retry:
+ 		if (glops->go_xmote_bh) {
+ 			spin_unlock(&gl->gl_spin);
+ 			rv = glops->go_xmote_bh(gl, gh);
+-			if (rv == -EAGAIN)
+-				return;
+ 			spin_lock(&gl->gl_spin);
+ 			if (rv) {
+ 				do_error(gl, rv);
+@@ -540,7 +536,6 @@ out:
+ 	clear_bit(GLF_LOCK, &gl->gl_flags);
+ out_locked:
+ 	spin_unlock(&gl->gl_spin);
+-	gfs2_glock_put(gl);
+ }
+ 
+ static unsigned int gfs2_lm_lock(struct gfs2_sbd *sdp, void *lock,
+@@ -600,7 +595,6 @@ __acquires(&gl->gl_spin)
+ 
+ 	if (!(ret & LM_OUT_ASYNC)) {
+ 		finish_xmote(gl, ret);
+-		gfs2_glock_hold(gl);
+ 		if (queue_delayed_work(glock_workqueue, &gl->gl_work, 0) == 0)
+ 			gfs2_glock_put(gl);
+ 	} else {
+@@ -712,9 +706,12 @@ static void glock_work_func(struct work_struct *work)
+ {
+ 	unsigned long delay = 0;
+ 	struct gfs2_glock *gl = container_of(work, struct gfs2_glock, gl_work.work);
++	int drop_ref = 0;
+ 
+-	if (test_and_clear_bit(GLF_REPLY_PENDING, &gl->gl_flags))
++	if (test_and_clear_bit(GLF_REPLY_PENDING, &gl->gl_flags)) {
+ 		finish_xmote(gl, gl->gl_reply);
++		drop_ref = 1;
++	}
+ 	down_read(&gfs2_umount_flush_sem);
+ 	spin_lock(&gl->gl_spin);
+ 	if (test_and_clear_bit(GLF_PENDING_DEMOTE, &gl->gl_flags) &&
+@@ -732,6 +729,8 @@ static void glock_work_func(struct work_struct *work)
+ 	if (!delay ||
+ 	    queue_delayed_work(glock_workqueue, &gl->gl_work, delay) == 0)
+ 		gfs2_glock_put(gl);
++	if (drop_ref)
++		gfs2_glock_put(gl);
+ }
+ 
+ /**
+@@ -1366,10 +1365,6 @@ static int gfs2_shrink_glock_memory(int nr, gfp_t gfp_mask)
+ 		list_del_init(&gl->gl_lru);
+ 		atomic_dec(&lru_count);
+ 
+-		/* Check if glock is about to be freed */
+-		if (atomic_read(&gl->gl_ref) == 0)
+-			continue;
+-
+ 		/* Test for being demotable */
+ 		if (!test_and_set_bit(GLF_LOCK, &gl->gl_flags)) {
+ 			gfs2_glock_hold(gl);

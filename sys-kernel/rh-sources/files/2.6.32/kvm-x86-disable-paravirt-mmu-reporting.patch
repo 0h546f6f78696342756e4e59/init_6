@@ -1,0 +1,44 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:34:03 -0500
+Subject: [kvm] x86: disable paravirt mmu reporting
+Message-id: <20100112214155.895069339@amt.cnet>
+Patchwork-id: 22462
+O-Subject: [RHEL 6 KVM 14/20] KVM: x86: disable paravirt mmu reporting
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit a68a6a7282373bedba8a2ed751b6384edb983a64
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Thu Oct 1 19:28:39 2009 -0300
+
+KVM: x86: disable paravirt mmu reporting
+
+Disable paravirt MMU capability reporting, so that new (or rebooted)
+guests switch to native operation.
+
+Paravirt MMU is a burden to maintain and does not bring significant
+advantages compared to shadow anymore.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index d0b52a3..6870470 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -1331,8 +1331,8 @@ int kvm_dev_ioctl_check_extension(long ext)
+ 	case KVM_CAP_NR_MEMSLOTS:
+ 		r = KVM_MEMORY_SLOTS;
+ 		break;
+-	case KVM_CAP_PV_MMU:
+-		r = !tdp_enabled;
++	case KVM_CAP_PV_MMU:	/* obsolete */
++		r = 0;
+ 		break;
+ 	case KVM_CAP_IOMMU:
+ 		r = iommu_found();

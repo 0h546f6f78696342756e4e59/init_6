@@ -1,0 +1,247 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Sat, 19 Dec 2009 23:43:47 -0500
+Subject: [scsi] mpt2sas: stop driver when firmware encounters faults
+Message-id: <20091219194326.5875.39187.sendpatchset@localhost.localdomain>
+Patchwork-id: 22227
+O-Subject: [RHEL6 6/20] bz478848 mpt2sas: stopp driver when firmware encounters
+	faults
+Bugzilla: 470848
+RH-Acked-by: Rob Evers <revers@redhat.com>
+
+mpt2sas: stopp driver when firmware encounters faults
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_base.c b/drivers/scsi/mpt2sas/mpt2sas_base.c
+index 670241e..617664c 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_base.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_base.c
+@@ -77,6 +77,32 @@ static int msix_disable = -1;
+ module_param(msix_disable, int, 0);
+ MODULE_PARM_DESC(msix_disable, " disable msix routed interrupts (default=0)");
+ 
++int mpt2sas_fwfault_debug;
++MODULE_PARM_DESC(mpt2sas_fwfault_debug, " enable detection of firmware fault "
++    "and halt firmware - (default=0)");
++
++/**
++ * _scsih_set_fwfault_debug - global setting of ioc->fwfault_debug.
++ *
++ */
++static int
++_scsih_set_fwfault_debug(const char *val, struct kernel_param *kp)
++{
++	int ret = param_set_int(val, kp);
++	struct MPT2SAS_ADAPTER *ioc;
++
++	if (ret)
++		return ret;
++
++	printk(KERN_INFO "setting logging_level(0x%08x)\n",
++				mpt2sas_fwfault_debug);
++	list_for_each_entry(ioc, &mpt2sas_ioc_list, list)
++		ioc->fwfault_debug = mpt2sas_fwfault_debug;
++	return 0;
++}
++module_param_call(mpt2sas_fwfault_debug, _scsih_set_fwfault_debug,
++    param_get_int, &mpt2sas_fwfault_debug, 0644);
++
+ /**
+  * _base_fault_reset_work - workq handling ioc fault conditions
+  * @work: input argument, used to derive ioc
+@@ -177,6 +203,51 @@ mpt2sas_base_stop_watchdog(struct MPT2SAS_ADAPTER *ioc)
+ 	}
+ }
+ 
++/**
++ * mpt2sas_base_fault_info - verbose translation of firmware FAULT code
++ * @ioc: per adapter object
++ * @fault_code: fault code
++ *
++ * Return nothing.
++ */
++void
++mpt2sas_base_fault_info(struct MPT2SAS_ADAPTER *ioc , u16 fault_code)
++{
++	printk(MPT2SAS_ERR_FMT "fault_state(0x%04x)!\n",
++	    ioc->name, fault_code);
++}
++
++/**
++ * mpt2sas_halt_firmware - halt's mpt controller firmware
++ * @ioc: per adapter object
++ *
++ * For debugging timeout related issues.  Writing 0xCOFFEE00
++ * to the doorbell register will halt controller firmware. With
++ * the purpose to stop both driver and firmware, the enduser can
++ * obtain a ring buffer from controller UART.
++ */
++void
++mpt2sas_halt_firmware(struct MPT2SAS_ADAPTER *ioc)
++{
++	u32 doorbell;
++
++	if (!ioc->fwfault_debug)
++		return;
++
++	dump_stack();
++
++	doorbell = readl(&ioc->chip->Doorbell);
++	if ((doorbell & MPI2_IOC_STATE_MASK) == MPI2_IOC_STATE_FAULT)
++		mpt2sas_base_fault_info(ioc , doorbell);
++	else {
++		writel(0xC0FFEE00, &ioc->chip->Doorbell);
++		printk(MPT2SAS_ERR_FMT "Firmware is halted due to command "
++		    "timeout\n", ioc->name);
++	}
++
++	panic("panic in %s\n", __func__);
++}
++
+ #ifdef CONFIG_SCSI_MPT2SAS_LOGGING
+ /**
+  * _base_sas_ioc_info - verbose translation of the ioc status
+@@ -526,20 +597,6 @@ _base_sas_log_info(struct MPT2SAS_ADAPTER *ioc , u32 log_info)
+ }
+ 
+ /**
+- * mpt2sas_base_fault_info - verbose translation of firmware FAULT code
+- * @ioc: pointer to scsi command object
+- * @fault_code: fault code
+- *
+- * Return nothing.
+- */
+-void
+-mpt2sas_base_fault_info(struct MPT2SAS_ADAPTER *ioc , u16 fault_code)
+-{
+-	printk(MPT2SAS_ERR_FMT "fault_state(0x%04x)!\n",
+-	    ioc->name, fault_code);
+-}
+-
+-/**
+  * _base_display_reply_info -
+  * @ioc: pointer to scsi command object
+  * @smid: system request message index
+@@ -3684,6 +3741,9 @@ mpt2sas_base_hard_reset_handler(struct MPT2SAS_ADAPTER *ioc, int sleep_flag,
+ 	dtmprintk(ioc, printk(MPT2SAS_DEBUG_FMT "%s: enter\n", ioc->name,
+ 	    __func__));
+ 
++	if (mpt2sas_fwfault_debug)
++		mpt2sas_halt_firmware(ioc);
++
+ 	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
+ 	if (ioc->shost_recovery) {
+ 		spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_base.h b/drivers/scsi/mpt2sas/mpt2sas_base.h
+index fa99ff2..0c75c0e 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_base.h
++++ b/drivers/scsi/mpt2sas/mpt2sas_base.h
+@@ -466,6 +466,7 @@ typedef void (*MPT_ADD_SGE)(void *paddr, u32 flags_length, dma_addr_t dma_addr);
+  * @chip_phys: physical addrss prior to mapping
+  * @pio_chip: I/O mapped register space
+  * @logging_level: see mpt2sas_debug.h
++ * @fwfault_debug: debuging FW timeouts
+  * @ir_firmware: IR firmware present
+  * @bars: bitmask of BAR's that must be configured
+  * @mask_interrupts: ignore interrupt
+@@ -587,6 +588,7 @@ struct MPT2SAS_ADAPTER {
+ 	unsigned long	chip_phys;
+ 	unsigned long	pio_chip;
+ 	int		logging_level;
++	int		fwfault_debug;
+ 	u8		ir_firmware;
+ 	int		bars;
+ 	u8		mask_interrupts;
+@@ -803,6 +805,8 @@ int mpt2sas_base_scsi_enclosure_processor(struct MPT2SAS_ADAPTER *ioc,
+     Mpi2SepReply_t *mpi_reply, Mpi2SepRequest_t *mpi_request);
+ void mpt2sas_base_validate_event_type(struct MPT2SAS_ADAPTER *ioc, u32 *event_type);
+ 
++void mpt2sas_halt_firmware(struct MPT2SAS_ADAPTER *ioc);
++
+ /* scsih shared API */
+ u8 mpt2sas_scsih_event_callback(struct MPT2SAS_ADAPTER *ioc, u8 msix_index,
+     u32 reply);
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_ctl.c b/drivers/scsi/mpt2sas/mpt2sas_ctl.c
+index 57d7246..6901a67 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_ctl.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_ctl.c
+@@ -896,6 +896,7 @@ _ctl_do_mpt_command(struct MPT2SAS_ADAPTER *ioc,
+ 			printk(MPT2SAS_INFO_FMT "issue target reset: handle "
+ 			    "= (0x%04x)\n", ioc->name,
+ 			    mpi_request->FunctionDependent1);
++			mpt2sas_halt_firmware(ioc);
+ 			mutex_lock(&ioc->tm_cmds.mutex);
+ 			mpt2sas_scsih_issue_tm(ioc,
+ 			    mpi_request->FunctionDependent1, 0,
+@@ -2474,6 +2475,43 @@ _ctl_logging_level_store(struct device *cdev, struct device_attribute *attr,
+ static DEVICE_ATTR(logging_level, S_IRUGO | S_IWUSR,
+     _ctl_logging_level_show, _ctl_logging_level_store);
+ 
++/* device attributes */
++/*
++ * _ctl_fwfault_debug_show - show/store fwfault_debug
++ * @cdev - pointer to embedded class device
++ * @buf - the buffer returned
++ *
++ * mpt2sas_fwfault_debug is command line option
++ * A sysfs 'read/write' shost attribute.
++ */
++static ssize_t
++_ctl_fwfault_debug_show(struct device *cdev,
++    struct device_attribute *attr, char *buf)
++{
++	struct Scsi_Host *shost = class_to_shost(cdev);
++	struct MPT2SAS_ADAPTER *ioc = shost_priv(shost);
++
++	return snprintf(buf, PAGE_SIZE, "%d\n", ioc->fwfault_debug);
++}
++static ssize_t
++_ctl_fwfault_debug_store(struct device *cdev,
++    struct device_attribute *attr, const char *buf, size_t count)
++{
++	struct Scsi_Host *shost = class_to_shost(cdev);
++	struct MPT2SAS_ADAPTER *ioc = shost_priv(shost);
++	int val = 0;
++
++	if (sscanf(buf, "%d", &val) != 1)
++		return -EINVAL;
++
++	ioc->fwfault_debug = val;
++	printk(MPT2SAS_INFO_FMT "fwfault_debug=%d\n", ioc->name,
++	    ioc->fwfault_debug);
++	return strlen(buf);
++}
++static DEVICE_ATTR(fwfault_debug, S_IRUGO | S_IWUSR,
++    _ctl_fwfault_debug_show, _ctl_fwfault_debug_store);
++
+ struct device_attribute *mpt2sas_host_attrs[] = {
+ 	&dev_attr_version_fw,
+ 	&dev_attr_version_bios,
+@@ -2487,13 +2525,12 @@ struct device_attribute *mpt2sas_host_attrs[] = {
+ 	&dev_attr_io_delay,
+ 	&dev_attr_device_delay,
+ 	&dev_attr_logging_level,
++	&dev_attr_fwfault_debug,
+ 	&dev_attr_fw_queue_depth,
+ 	&dev_attr_host_sas_address,
+ 	NULL,
+ };
+ 
+-/* device attributes */
+-
+ /**
+  * _ctl_device_sas_address_show - sas address
+  * @cdev - pointer to embedded class device
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_scsih.c b/drivers/scsi/mpt2sas/mpt2sas_scsih.c
+index b1ef6ad..c7a30bc 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_scsih.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_scsih.c
+@@ -1933,6 +1933,8 @@ _scsih_abort(struct scsi_cmnd *scmd)
+ 		goto out;
+ 	}
+ 
++	mpt2sas_halt_firmware(ioc);
++
+ 	mutex_lock(&ioc->tm_cmds.mutex);
+ 	handle = sas_device_priv_data->sas_target->handle;
+ 	mpt2sas_scsih_issue_tm(ioc, handle, sas_device_priv_data->lun,

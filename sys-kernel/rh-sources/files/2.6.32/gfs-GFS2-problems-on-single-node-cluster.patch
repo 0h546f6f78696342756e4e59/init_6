@@ -1,0 +1,51 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Fri, 12 Feb 2010 13:03:46 -0500
+Subject: [gfs] GFS2 problems on single node cluster
+Message-id: <1265979826.14393.353.camel@localhost.localdomain>
+Patchwork-id: 23243
+O-Subject: [RHEL6] GFS2 problems on single node cluster (bz #564329)
+Bugzilla: 564329
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+Hi,
+
+This is a very small fix to an important bmap issue. It has been tested
+with the reproducer and it fixes the problem (what appeared as a failed
+msync() but was traced back to an incorrect bmap call. Changing the
+termination condition on the loop fixes the bug (bz #564329). The patch
+is in the GFS2 git tree and has been sent to Linus for inclusion
+upstream,
+
+Steve.
+
+------------------------------------------------------------------------
+>From 07ccb7bf2c928fef4fea2cda69ba2e23479578db Mon Sep 17 00:00:00 2001
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Fri, 12 Feb 2010 10:10:55 +0000
+Subject: [PATCH 2/2] GFS2: Fix bmap allocation corner-case bug
+
+This patch solves a corner case during allocation which occurs if both
+metadata (indirect) and data blocks are required but there is an
+obstacle in the filesystem (e.g. a resource group header or another
+allocated block) such that when the allocation is requested only
+enough blocks for the metadata are returned.
+
+By changing the exit condition of this loop, we ensure that a
+minimum of one data block will always be returned.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/bmap.c b/fs/gfs2/bmap.c
+index 6d47379..583e823 100644
+--- a/fs/gfs2/bmap.c
++++ b/fs/gfs2/bmap.c
+@@ -541,7 +541,7 @@ static int gfs2_bmap_alloc(struct inode *inode, const sector_t lblock,
+ 				*ptr++ = cpu_to_be64(bn++);
+ 			break;
+ 		}
+-	} while (state != ALLOC_DATA);
++	} while ((state != ALLOC_DATA) || !dblock);
+ 
+ 	ip->i_height = height;
+ 	gfs2_add_inode_blocks(&ip->i_inode, alloced);

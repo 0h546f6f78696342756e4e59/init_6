@@ -1,0 +1,275 @@
+From: John Villalovos <jvillalo@redhat.com>
+Date: Mon, 22 Feb 2010 18:40:31 -0500
+Subject: [x86] AES/PCLMUL Instruction support: Various small fixes for AES/PCMLMUL and generate .byte code for some new instructions via gas macro
+Message-id: <20100222184031.GC6705@linuxjohn.usersys.redhat.com>
+Patchwork-id: 23398
+O-Subject: [RHEL6  BZ463496 2/4] AES/PCLMUL Instruction support: Various small
+	fixes for AES/PCMLMUL and generate .byte code for some new instructions
+	via gas macro
+Bugzilla: 463496
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+
+[RHEL 6] AES/PCLMUL Support
+https://bugzilla.redhat.com/show_bug.cgi?id=463496
+
+Patch 2/4: Various small fixes for AES/PCMLMUL and generate .byte code for some
+new instructions via gas macro
+
+commit bf1dbff3df58732a5f6026ce8117f500233119f2
+Author: John L. Villalovos <jvillalo@redhat.com>
+Date:   Mon Feb 22 10:36:12 2010 -0500
+
+    Backport of the following commits:
+    Upstream commit 3e02e5cb47e049727a26c9c110867a26972bd0d6
+    Upstream Author: Huang Ying <ying.huang@intel.com>
+    Upstream Date:   Tue Oct 27 19:07:24 2009 +0800
+
+        crypto: ghash-intel - Fix building failure on x86_32
+
+        CLMUL-NI accelerated GHASH should be turned off on non-x86_64 machine.
+
+    Upstream commit 01dd95827726534230d8f03f7e6faafe24e49260
+    Upstream Author: Huang Ying <ying.huang@intel.com>
+    Upstream Date:   Tue Nov 3 10:55:20 2009 -0500
+
+        crypto: ghash-intel - Fix irq_fpu_usable usage
+
+        When renaming kernel_fpu_using to irq_fpu_usable, the semantics of the
+        function is changed too, from mesuring whether kernel is using FPU,
+        that is, the FPU is NOT available, to measuring whether FPU is usable,
+        that is, the FPU is available.
+
+        But the usage of irq_fpu_usable in ghash-clmulni-intel_glue.c is not
+        changed accordingly. This patch fixes this.
+
+    Upstream commit fd650a6394b3242edf125ba9c4d500349a6d7178
+    Upstream Author: Huang Ying <ying.huang@intel.com>
+    Upstream Date:   Mon Nov 9 13:52:26 2009 -0500
+
+        x86: Generate .byte code for some new instructions via gas macro
+
+        It will take some time for binutils (gas) to support some newly added
+        instructions, such as SSE4.1 instructions or the AES-NI instructions
+        found in upcoming Intel CPU.
+
+        To make the source code can be compiled by old binutils, .byte code is
+        used instead of the assembly instruction. But the readability and
+        flexibility of raw .byte code is not good.
+
+        This patch solves the issue of raw .byte code via generating it via
+        assembly instruction like gas macro. The syntax is as close as
+        possible to real assembly instruction.
+
+        Some helper macros such as MODRM is not a full feature
+        implementation. It can be extended when necessary.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/crypto/ghash-clmulni-intel_glue.c b/arch/x86/crypto/ghash-clmulni-intel_glue.c
+index 65d4096..cbcc8d8 100644
+--- a/arch/x86/crypto/ghash-clmulni-intel_glue.c
++++ b/arch/x86/crypto/ghash-clmulni-intel_glue.c
+@@ -159,7 +159,7 @@ static int ghash_async_init(struct ahash_request *req)
+ 	struct ahash_request *cryptd_req = ahash_request_ctx(req);
+ 	struct cryptd_ahash *cryptd_tfm = ctx->cryptd_tfm;
+ 
+-	if (irq_fpu_usable()) {
++	if (!irq_fpu_usable()) {
+ 		memcpy(cryptd_req, req, sizeof(*req));
+ 		ahash_request_set_tfm(cryptd_req, &cryptd_tfm->base);
+ 		return crypto_ahash_init(cryptd_req);
+@@ -177,7 +177,7 @@ static int ghash_async_update(struct ahash_request *req)
+ {
+ 	struct ahash_request *cryptd_req = ahash_request_ctx(req);
+ 
+-	if (irq_fpu_usable()) {
++	if (!irq_fpu_usable()) {
+ 		struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+ 		struct ghash_async_ctx *ctx = crypto_ahash_ctx(tfm);
+ 		struct cryptd_ahash *cryptd_tfm = ctx->cryptd_tfm;
+@@ -195,7 +195,7 @@ static int ghash_async_final(struct ahash_request *req)
+ {
+ 	struct ahash_request *cryptd_req = ahash_request_ctx(req);
+ 
+-	if (irq_fpu_usable()) {
++	if (!irq_fpu_usable()) {
+ 		struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+ 		struct ghash_async_ctx *ctx = crypto_ahash_ctx(tfm);
+ 		struct cryptd_ahash *cryptd_tfm = ctx->cryptd_tfm;
+@@ -216,7 +216,7 @@ static int ghash_async_digest(struct ahash_request *req)
+ 	struct ahash_request *cryptd_req = ahash_request_ctx(req);
+ 	struct cryptd_ahash *cryptd_tfm = ctx->cryptd_tfm;
+ 
+-	if (irq_fpu_usable()) {
++	if (!irq_fpu_usable()) {
+ 		memcpy(cryptd_req, req, sizeof(*req));
+ 		ahash_request_set_tfm(cryptd_req, &cryptd_tfm->base);
+ 		return crypto_ahash_digest(cryptd_req);
+diff --git a/arch/x86/include/asm/inst.h b/arch/x86/include/asm/inst.h
+new file mode 100644
+index 0000000..14cf526
+--- /dev/null
++++ b/arch/x86/include/asm/inst.h
+@@ -0,0 +1,150 @@
++/*
++ * Generate .byte code for some instructions not supported by old
++ * binutils.
++ */
++#ifndef X86_ASM_INST_H
++#define X86_ASM_INST_H
++
++#ifdef __ASSEMBLY__
++
++	.macro XMM_NUM opd xmm
++	.ifc \xmm,%xmm0
++	\opd = 0
++	.endif
++	.ifc \xmm,%xmm1
++	\opd = 1
++	.endif
++	.ifc \xmm,%xmm2
++	\opd = 2
++	.endif
++	.ifc \xmm,%xmm3
++	\opd = 3
++	.endif
++	.ifc \xmm,%xmm4
++	\opd = 4
++	.endif
++	.ifc \xmm,%xmm5
++	\opd = 5
++	.endif
++	.ifc \xmm,%xmm6
++	\opd = 6
++	.endif
++	.ifc \xmm,%xmm7
++	\opd = 7
++	.endif
++	.ifc \xmm,%xmm8
++	\opd = 8
++	.endif
++	.ifc \xmm,%xmm9
++	\opd = 9
++	.endif
++	.ifc \xmm,%xmm10
++	\opd = 10
++	.endif
++	.ifc \xmm,%xmm11
++	\opd = 11
++	.endif
++	.ifc \xmm,%xmm12
++	\opd = 12
++	.endif
++	.ifc \xmm,%xmm13
++	\opd = 13
++	.endif
++	.ifc \xmm,%xmm14
++	\opd = 14
++	.endif
++	.ifc \xmm,%xmm15
++	\opd = 15
++	.endif
++	.endm
++
++	.macro PFX_OPD_SIZE
++	.byte 0x66
++	.endm
++
++	.macro PFX_REX opd1 opd2
++	.if (\opd1 | \opd2) & 8
++	.byte 0x40 | ((\opd1 & 8) >> 3) | ((\opd2 & 8) >> 1)
++	.endif
++	.endm
++
++	.macro MODRM mod opd1 opd2
++	.byte \mod | (\opd1 & 7) | ((\opd2 & 7) << 3)
++	.endm
++
++	.macro PSHUFB_XMM xmm1 xmm2
++	XMM_NUM pshufb_opd1 \xmm1
++	XMM_NUM pshufb_opd2 \xmm2
++	PFX_OPD_SIZE
++	PFX_REX pshufb_opd1 pshufb_opd2
++	.byte 0x0f, 0x38, 0x00
++	MODRM 0xc0 pshufb_opd1 pshufb_opd2
++	.endm
++
++	.macro PCLMULQDQ imm8 xmm1 xmm2
++	XMM_NUM clmul_opd1 \xmm1
++	XMM_NUM clmul_opd2 \xmm2
++	PFX_OPD_SIZE
++	PFX_REX clmul_opd1 clmul_opd2
++	.byte 0x0f, 0x3a, 0x44
++	MODRM 0xc0 clmul_opd1 clmul_opd2
++	.byte \imm8
++	.endm
++
++	.macro AESKEYGENASSIST rcon xmm1 xmm2
++	XMM_NUM aeskeygen_opd1 \xmm1
++	XMM_NUM aeskeygen_opd2 \xmm2
++	PFX_OPD_SIZE
++	PFX_REX aeskeygen_opd1 aeskeygen_opd2
++	.byte 0x0f, 0x3a, 0xdf
++	MODRM 0xc0 aeskeygen_opd1 aeskeygen_opd2
++	.byte \rcon
++	.endm
++
++	.macro AESIMC xmm1 xmm2
++	XMM_NUM aesimc_opd1 \xmm1
++	XMM_NUM aesimc_opd2 \xmm2
++	PFX_OPD_SIZE
++	PFX_REX aesimc_opd1 aesimc_opd2
++	.byte 0x0f, 0x38, 0xdb
++	MODRM 0xc0 aesimc_opd1 aesimc_opd2
++	.endm
++
++	.macro AESENC xmm1 xmm2
++	XMM_NUM aesenc_opd1 \xmm1
++	XMM_NUM aesenc_opd2 \xmm2
++	PFX_OPD_SIZE
++	PFX_REX aesenc_opd1 aesenc_opd2
++	.byte 0x0f, 0x38, 0xdc
++	MODRM 0xc0 aesenc_opd1 aesenc_opd2
++	.endm
++
++	.macro AESENCLAST xmm1 xmm2
++	XMM_NUM aesenclast_opd1 \xmm1
++	XMM_NUM aesenclast_opd2 \xmm2
++	PFX_OPD_SIZE
++	PFX_REX aesenclast_opd1 aesenclast_opd2
++	.byte 0x0f, 0x38, 0xdd
++	MODRM 0xc0 aesenclast_opd1 aesenclast_opd2
++	.endm
++
++	.macro AESDEC xmm1 xmm2
++	XMM_NUM aesdec_opd1 \xmm1
++	XMM_NUM aesdec_opd2 \xmm2
++	PFX_OPD_SIZE
++	PFX_REX aesdec_opd1 aesdec_opd2
++	.byte 0x0f, 0x38, 0xde
++	MODRM 0xc0 aesdec_opd1 aesdec_opd2
++	.endm
++
++	.macro AESDECLAST xmm1 xmm2
++	XMM_NUM aesdeclast_opd1 \xmm1
++	XMM_NUM aesdeclast_opd2 \xmm2
++	PFX_OPD_SIZE
++	PFX_REX aesdeclast_opd1 aesdeclast_opd2
++	.byte 0x0f, 0x38, 0xdf
++	MODRM 0xc0 aesdeclast_opd1 aesdeclast_opd2
++	.endm
++#endif
++
++#endif
+diff --git a/crypto/Kconfig b/crypto/Kconfig
+index be69bc4..27be2c7 100644
+--- a/crypto/Kconfig
++++ b/crypto/Kconfig
+@@ -442,6 +442,7 @@ config CRYPTO_WP512
+ 
+ config CRYPTO_GHASH_CLMUL_NI_INTEL
+ 	tristate "GHASH digest algorithm (CLMUL-NI accelerated)"
++	depends on (X86 || UML_X86) && 64BIT
+ 	select CRYPTO_SHASH
+ 	select CRYPTO_CRYPTD
+ 	help

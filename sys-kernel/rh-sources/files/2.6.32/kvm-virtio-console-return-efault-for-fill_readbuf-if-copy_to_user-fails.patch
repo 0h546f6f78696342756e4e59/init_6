@@ -1,0 +1,63 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Thu, 18 Feb 2010 10:27:34 -0500
+Subject: [kvm] virtio: console: return -efault for fill_readbuf if copy_to_user fails
+Message-id: <fd3009883b104d94909561d0d3efb8a6cdb281d2.1266488420.git.amit.shah@redhat.com>
+Patchwork-id: 23336
+O-Subject: [PATCH 02/10] virtio: console: return -efault for fill_readbuf if
+	copy_to_user fails
+Bugzilla: 566391
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+virtio: console: return -efault for fill_readbuf if copy_to_user fails
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/virtio_console.c b/drivers/char/virtio_console.c
+index 0d39e2b..bd78dca 100644
+--- a/drivers/char/virtio_console.c
++++ b/drivers/char/virtio_console.c
+@@ -439,26 +439,25 @@ static ssize_t fill_readbuf(struct port *port, char *out_buf, size_t out_count,
+ 			    bool to_user)
+ {
+ 	struct port_buffer *buf;
+-	ssize_t ret;
+ 	unsigned long flags;
+ 
+ 	if (!out_count || !port_has_data(port))
+ 		return 0;
+ 
+ 	buf = port->inbuf;
+-	if (out_count > buf->len - buf->offset)
+-		out_count = buf->len - buf->offset;
++	out_count = min(out_count, buf->len - buf->offset);
+ 
+ 	if (to_user) {
++		ssize_t ret;
++
+ 		ret = copy_to_user(out_buf, buf->buf + buf->offset, out_count);
++		if (ret)
++			return -EFAULT;
+ 	} else {
+ 		memcpy(out_buf, buf->buf + buf->offset, out_count);
+-		ret = 0; /* Emulate copy_to_user behaviour */
+ 	}
+ 
+-	/* Return the number of bytes actually copied */
+-	ret = out_count - ret;
+-	buf->offset += ret;
++	buf->offset += out_count;
+ 
+ 	if (buf->offset == buf->len) {
+ 		/*
+@@ -473,7 +472,8 @@ static ssize_t fill_readbuf(struct port *port, char *out_buf, size_t out_count,
+ 
+ 		spin_unlock_irqrestore(&port->inbuf_lock, flags);
+ 	}
+-	return ret;
++	/* Return the number of bytes actually copied */
++	return out_count;
+ }
+ 
+ /* The condition that must be true for polling to end */

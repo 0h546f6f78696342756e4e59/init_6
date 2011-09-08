@@ -1,0 +1,76 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:57 -0500
+Subject: [block] cfq-iosched: idling on deep seeky sync queues
+Message-id: <1260298712-12756-25-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21785
+O-Subject: [RHEL6 PATCH 24/59] cfq-iosched: idling on deep seeky sync queues
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit 76280aff1c7e9ae761cac4b48591c43cd7d69159
+Author: Corrado Zoccolo <czoccolo@gmail.com>
+Date:   Thu Nov 26 10:02:58 2009 +0100
+
+    cfq-iosched: idling on deep seeky sync queues
+
+    Seeky sync queues with large depth can gain unfairly big share of disk
+     time, at the expense of other seeky queues. This patch ensures that
+     idling will be enabled for queues with I/O depth at least 4, and small
+     think time. The decision to enable idling is sticky, until an idle
+     window times out without seeing a new request.
+
+    The reasoning behind the decision is that, if an application is using
+    large I/O depth, it is already optimized to make full utilization of
+    the hardware, and therefore we reserve a slice of exclusive use for it.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 7728661..8bae128 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -259,6 +259,7 @@ enum cfqq_state_flags {
+ 	CFQ_CFQQ_FLAG_slice_new,	/* no requests dispatched in slice */
+ 	CFQ_CFQQ_FLAG_sync,		/* synchronous queue */
+ 	CFQ_CFQQ_FLAG_coop,		/* cfqq is shared */
++	CFQ_CFQQ_FLAG_deep,		/* sync cfqq experienced large depth */
+ };
+ 
+ #define CFQ_CFQQ_FNS(name)						\
+@@ -285,6 +286,7 @@ CFQ_CFQQ_FNS(prio_changed);
+ CFQ_CFQQ_FNS(slice_new);
+ CFQ_CFQQ_FNS(sync);
+ CFQ_CFQQ_FNS(coop);
++CFQ_CFQQ_FNS(deep);
+ #undef CFQ_CFQQ_FNS
+ 
+ #define cfq_log_cfqq(cfqd, cfqq, fmt, args...)	\
+@@ -2349,8 +2351,12 @@ cfq_update_idle_window(struct cfq_data *cfqd, struct cfq_queue *cfqq,
+ 
+ 	enable_idle = old_idle = cfq_cfqq_idle_window(cfqq);
+ 
++	if (cfqq->queued[0] + cfqq->queued[1] >= 4)
++		cfq_mark_cfqq_deep(cfqq);
++
+ 	if (!atomic_read(&cic->ioc->nr_tasks) || !cfqd->cfq_slice_idle ||
+-	    (sample_valid(cfqq->seek_samples) && CFQQ_SEEKY(cfqq)))
++	    (!cfq_cfqq_deep(cfqq) && sample_valid(cfqq->seek_samples)
++	     && CFQQ_SEEKY(cfqq)))
+ 		enable_idle = 0;
+ 	else if (sample_valid(cic->ttime_samples)) {
+ 		if (cic->ttime_mean > cfqd->cfq_slice_idle)
+@@ -2848,6 +2854,11 @@ static void cfq_idle_slice_timer(unsigned long data)
+ 		 */
+ 		if (!RB_EMPTY_ROOT(&cfqq->sort_list))
+ 			goto out_kick;
++
++		/*
++		 * Queue depth flag is reset only when the idle didn't succeed
++		 */
++		cfq_clear_cfqq_deep(cfqq);
+ 	}
+ expire:
+ 	cfq_slice_expired(cfqd, timed_out);

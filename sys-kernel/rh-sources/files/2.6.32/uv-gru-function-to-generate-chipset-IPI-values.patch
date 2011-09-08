@@ -1,0 +1,82 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Thu, 17 Dec 2009 18:45:28 -0500
+Subject: [uv] gru: function to generate chipset IPI values
+Message-id: <20091217133146.25514.80473.sendpatchset@localhost.localdomain>
+Patchwork-id: 22094
+O-Subject: [RHEL6 PATCH 7/8] UV gru: function to generate chipset IPI values
+Bugzilla: 548181
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+commit 56abcf24ff993291b20efd6e3402cd3d12f5cee2
+Author: Jack Steiner <steiner@sgi.com>
+Date:   Tue Dec 15 16:48:20 2009 -0800
+
+    gru: function to generate chipset IPI values
+
+    Create a function to generate the value that is written to the UV hub MMR
+    to cause an IPI interrupt to be sent.  The function will be used in the
+    GRU message queue error recovery code that sends IPIs to nodes in remote
+    partitions.
+
+    Signed-off-by: Jack Steiner <steiner@sgi.com>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/uv/uv_hub.h b/arch/x86/include/asm/uv/uv_hub.h
+index 8f1332b..811bfab 100644
+--- a/arch/x86/include/asm/uv/uv_hub.h
++++ b/arch/x86/include/asm/uv/uv_hub.h
+@@ -172,6 +172,8 @@ DECLARE_PER_CPU(struct uv_hub_info_s, __uv_hub_info);
+ #define UV_LOCAL_MMR_SIZE		(64UL * 1024 * 1024)
+ #define UV_GLOBAL_MMR32_SIZE		(64UL * 1024 * 1024)
+ 
++#define UV_GLOBAL_GRU_MMR_BASE		0x4000000
++
+ #define UV_GLOBAL_MMR32_PNODE_SHIFT	15
+ #define UV_GLOBAL_MMR64_PNODE_SHIFT	26
+ 
+@@ -328,6 +330,15 @@ static inline unsigned long uv_read_global_mmr64(int pnode,
+ }
+ 
+ /*
++ * Global MMR space addresses when referenced by the GRU. (GRU does
++ * NOT use socket addressing).
++ */
++static inline unsigned long uv_global_gru_mmr_address(int pnode, unsigned long offset)
++{
++	return UV_GLOBAL_GRU_MMR_BASE | offset | (pnode << uv_hub_info->m_val);
++}
++
++/*
+  * Access hub local MMRs. Faster than using global space but only local MMRs
+  * are accessible.
+  */
+@@ -454,6 +465,14 @@ static inline void uv_set_cpu_scir_bits(int cpu, unsigned char value)
+ 	}
+ }
+ 
++static unsigned long uv_hub_ipi_value(int apicid, int vector, int mode)
++{
++	return (1UL << UVH_IPI_INT_SEND_SHFT) |
++			((apicid) << UVH_IPI_INT_APIC_ID_SHFT) |
++			(mode << UVH_IPI_INT_DELIVERY_MODE_SHFT) |
++			(vector << UVH_IPI_INT_VECTOR_SHFT);
++}
++
+ static inline void uv_hub_send_ipi(int pnode, int apicid, int vector)
+ {
+ 	unsigned long val;
+@@ -462,10 +481,7 @@ static inline void uv_hub_send_ipi(int pnode, int apicid, int vector)
+ 	if (vector == NMI_VECTOR)
+ 		dmode = dest_NMI;
+ 
+-	val = (1UL << UVH_IPI_INT_SEND_SHFT) |
+-			((apicid) << UVH_IPI_INT_APIC_ID_SHFT) |
+-			(dmode << UVH_IPI_INT_DELIVERY_MODE_SHFT) |
+-			(vector << UVH_IPI_INT_VECTOR_SHFT);
++	val = uv_hub_ipi_value(apicid, vector, dmode);
+ 	uv_write_global_mmr64(pnode, UVH_IPI_INT, val);
+ }
+ 

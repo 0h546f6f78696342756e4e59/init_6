@@ -1,0 +1,41 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:33:52 -0500
+Subject: [kvm] SVM: init_vmcb(): remove redundant save->cr0 initialization
+Message-id: <20100112214153.454476532@amt.cnet>
+Patchwork-id: 22457
+O-Subject: [RHEL 6 KVM 03/20] KVM: SVM: init_vmcb(): remove redundant save->cr0
+	initialization
+Bugzilla: 554506
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+
+commit 3ce672d48400e0112fec7a3cb6bb2120493c6e11
+Author: Eduardo Habkost <ehabkost@redhat.com>
+Date:   Sat Oct 24 02:50:00 2009 -0200
+
+KVM: SVM: init_vmcb(): remove redundant save->cr0 initialization
+
+The svm_set_cr0() call will initialize save->cr0 properly even when npt is
+enabled, clearing the NW and CD bits as expected, so we don't need to
+initialize it manually for npt_enabled anymore.
+
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554506
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/svm.c b/arch/x86/kvm/svm.c
+index d11358c..51d8af4 100644
+--- a/arch/x86/kvm/svm.c
++++ b/arch/x86/kvm/svm.c
+@@ -645,8 +645,6 @@ static void init_vmcb(struct vcpu_svm *svm)
+ 		control->intercept_cr_write &= ~(INTERCEPT_CR0_MASK|
+ 						 INTERCEPT_CR3_MASK);
+ 		save->g_pat = 0x0007040600070406ULL;
+-		/* enable caching because the QEMU Bios doesn't enable it */
+-		save->cr0 = X86_CR0_ET;
+ 		save->cr3 = 0;
+ 		save->cr4 = 0;
+ 	}

@@ -1,0 +1,32 @@
+From: Ian Campbell <ian.campbell@citrix.com>
+Date: Tue, 24 Nov 2009 10:16:23 +0000
+Subject: [stable] xen: register timer interrupt with IRQF_TIMER
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit f350c7922faad3397c98c81a9e5658f5a1ef0214 upstream.
+
+Otherwise the timer is disabled by dpm_suspend_noirq() which in turn prevents
+correct operation of stop_machine on multi-processor systems and breaks
+suspend.
+
+Signed-off-by: Ian Campbell <ian.campbell@citrix.com>
+Signed-off-by: Jeremy Fitzhardinge <jeremy.fitzhardinge@citrix.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/arch/x86/xen/time.c b/arch/x86/xen/time.c
+index 6bbff94..9d1f853 100644
+--- a/arch/x86/xen/time.c
++++ b/arch/x86/xen/time.c
+@@ -434,7 +434,7 @@ void xen_setup_timer(int cpu)
+ 		name = "<timer kasprintf failed>";
+ 
+ 	irq = bind_virq_to_irqhandler(VIRQ_TIMER, cpu, xen_timer_interrupt,
+-				      IRQF_DISABLED|IRQF_PERCPU|IRQF_NOBALANCING,
++				      IRQF_DISABLED|IRQF_PERCPU|IRQF_NOBALANCING|IRQF_TIMER,
+ 				      name, NULL);
+ 
+ 	evt = &per_cpu(xen_clock_events, cpu);

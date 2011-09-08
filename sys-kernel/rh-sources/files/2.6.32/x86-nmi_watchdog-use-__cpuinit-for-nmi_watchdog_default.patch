@@ -1,0 +1,59 @@
+From: Don Zickus <dzickus@redhat.com>
+Date: Thu, 25 Feb 2010 19:40:08 -0500
+Subject: [x86] nmi_watchdog: use __cpuinit for nmi_watchdog_default
+Message-id: <20100225194008.GM15792@redhat.com>
+Patchwork-id: 23438
+O-Subject: [RHEL-6 PATCH] nmi_watchdog: use __cpuinit for nmi_watchdog_default
+Bugzilla: 567601
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Matthew Garrett <mjg@redhat.com>
+
+https://bugzilla.redhat.com/show_bug.cgi?id=567601
+
+A bad copy-n-paste led me to accidentally change nmi_watchdog_default()
+from __cpuinit to __init.  This led to a fun panic on Jay's laptop during
+resume.  Change it back so the function's memory isn't removed after boot
+up.
+
+Thanks to Matthew Garrett for doing the bulk of the work, I just got stuck
+with posting it after a quick brew build.
+
+Doesn't apply upstream.
+
+Note, I also took the opportunity to fix the whitespace damage I
+introduced with the original version of the patch.
+
+Please ACK.
+
+Signed-off-by: Don Zickus <dzickus@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/apic/nmi.c b/arch/x86/kernel/apic/nmi.c
+index 6e5f306..ba10ae1 100644
+--- a/arch/x86/kernel/apic/nmi.c
++++ b/arch/x86/kernel/apic/nmi.c
+@@ -64,15 +64,15 @@ static DEFINE_PER_CPU(short, wd_enabled);
+ static int endflag __initdata;
+ 
+ #ifdef CONFIG_X86_64
+-void __init nmi_watchdog_default(void)
++void __cpuinit nmi_watchdog_default(void)
+ {
+-        if (nmi_watchdog != NMI_DEFAULT)
+-                return;
+-        /* if not specified, probe it */
+-        if (!lapic_watchdog_init(nmi_hz))
+-                nmi_watchdog = NMI_LOCAL_APIC;
+-        else
+-                nmi_watchdog = NMI_IO_APIC;
++	if (nmi_watchdog != NMI_DEFAULT)
++		return;
++	/* if not specified, probe it */
++	if (!lapic_watchdog_init(nmi_hz))
++		nmi_watchdog = NMI_LOCAL_APIC;
++	else
++		nmi_watchdog = NMI_IO_APIC;
+ 	atomic_inc(&nmi_active);
+ }
+ #else

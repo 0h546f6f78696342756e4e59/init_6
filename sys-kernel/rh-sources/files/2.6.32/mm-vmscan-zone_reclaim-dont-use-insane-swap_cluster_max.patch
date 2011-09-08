@@ -1,0 +1,47 @@
+From: Rik van Riel <riel@redhat.com>
+Date: Thu, 17 Dec 2009 14:27:08 -0500
+Subject: [mm] vmscan: zone_reclaim() dont use insane swap_cluster_max
+Message-id: <20091217143337.788318939@redhat.com>
+Patchwork-id: 22034
+O-Subject: [PATCH 18/21 RHEL 6] (bz 548457) vmscan: zone_reclaim() dont use
+	insane swap_cluster_max
+Bugzilla: 548457
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+commit 4f0ddfdffc8bef3a5eb9154734d68a6053194948
+Author: KOSAKI Motohiro <kosaki.motohiro@jp.fujitsu.com>
+Date:   Mon Dec 14 17:59:13 2009 -0800
+
+    vmscan: zone_reclaim() don't use insane swap_cluster_max
+
+    In old days, we didn't have sc.nr_to_reclaim and it brought
+    sc.swap_cluster_max misuse.
+
+    huge sc.swap_cluster_max might makes unnecessary OOM risk and no
+    performance benefit.
+
+    Now, we can stop its insane thing.
+
+    Signed-off-by: KOSAKI Motohiro <kosaki.motohiro@jp.fujitsu.com>
+    Reviewed-by: Rik van Riel <riel@redhat.com>
+    Reviewed-by: Minchan Kim <minchan.kim@gmail.com>
+    Cc: Mel Gorman <mel@csn.ul.ie>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/vmscan.c b/mm/vmscan.c
+index a6042e3..c7194b1 100644
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
+@@ -2523,8 +2523,7 @@ static int __zone_reclaim(struct zone *zone, gfp_t gfp_mask, unsigned int order)
+ 		.may_writepage = !!(zone_reclaim_mode & RECLAIM_WRITE),
+ 		.may_unmap = !!(zone_reclaim_mode & RECLAIM_SWAP),
+ 		.may_swap = 1,
+-		.swap_cluster_max = max_t(unsigned long, nr_pages,
+-				       SWAP_CLUSTER_MAX),
++		.swap_cluster_max = SWAP_CLUSTER_MAX,
+ 		.nr_to_reclaim = max_t(unsigned long, nr_pages,
+ 				       SWAP_CLUSTER_MAX),
+ 		.gfp_mask = gfp_mask,

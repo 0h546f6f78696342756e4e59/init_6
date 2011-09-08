@@ -1,0 +1,43 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:33:59 -0500
+Subject: [kvm] SVM: remove needless mmap_sem acquision from nested_svm_map
+Message-id: <20100112214155.055755122@amt.cnet>
+Patchwork-id: 22464
+O-Subject: [RHEL 6 KVM 10/20] KVM: SVM: remove needless mmap_sem acquision from
+	nested_svm_map
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit e8b3433a5c062e94e34cadb6144c10689a497bc3
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Tue Sep 8 14:47:38 2009 -0300
+
+KVM: SVM: remove needless mmap_sem acquision from nested_svm_map
+
+nested_svm_map unnecessarily takes mmap_sem around gfn_to_page, since
+gfn_to_page / get_user_pages are responsible for it.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Acked-by: Alexander Graf <agraf@suse.de>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/svm.c b/arch/x86/kvm/svm.c
+index 660c64b..28a1e11 100644
+--- a/arch/x86/kvm/svm.c
++++ b/arch/x86/kvm/svm.c
+@@ -1405,10 +1405,7 @@ static void *nested_svm_map(struct vcpu_svm *svm, u64 gpa, enum km_type idx)
+ {
+ 	struct page *page;
+ 
+-	down_read(&current->mm->mmap_sem);
+ 	page = gfn_to_page(svm->vcpu.kvm, gpa >> PAGE_SHIFT);
+-	up_read(&current->mm->mmap_sem);
+-
+ 	if (is_error_page(page))
+ 		goto error;
+ 

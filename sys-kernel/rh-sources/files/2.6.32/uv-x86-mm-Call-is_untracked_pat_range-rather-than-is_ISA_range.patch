@@ -1,0 +1,53 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Thu, 14 Jan 2010 21:49:08 -0500
+Subject: [uv] x86, mm: Call is_untracked_pat_range() rather than is_ISA_range()
+Message-id: <20100114214015.22817.86696.sendpatchset@dhcp-100-2-194.bos.redhat.com>
+Patchwork-id: 22554
+O-Subject: [RHEL6 PATCH 2/7] x86,
+	mm: Call is_untracked_pat_range() rather than is_ISA_range()
+Bugzilla: 548524
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+commit 55a6ca25472ee01574bfc24d23b7f5fa09cc38cf
+Author: H. Peter Anvin <hpa@zytor.com>
+Date:   Mon Nov 23 15:12:07 2009 -0800
+
+    x86, mm: Call is_untracked_pat_range() rather than is_ISA_range()
+
+    Checkin fd12a0d69aee6d90fa9b9890db24368a897f8423 made the PAT
+    untracked range a platform configurable, but missed on occurrence of
+    is_ISA_range() which still refers to PAT-untracked memory, and
+    therefore should be using the configurable.
+
+    Signed-off-by: H. Peter Anvin <hpa@zytor.com>
+    Cc: Jack Steiner <steiner@sgi.com>
+    Cc: Suresh Siddha <suresh.b.siddha@intel.com>
+    LKML-Reference: <20091119202341.GA4420@sgi.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/pgtable.h b/arch/x86/include/asm/pgtable.h
+index af6fd36..1de2094 100644
+--- a/arch/x86/include/asm/pgtable.h
++++ b/arch/x86/include/asm/pgtable.h
+@@ -16,6 +16,8 @@
+ 
+ #ifndef __ASSEMBLY__
+ 
++#include <asm/x86_init.h>
++
+ /*
+  * ZERO_PAGE is a global shared page that is always zero: used
+  * for zero-mapped memory areas etc..
+@@ -270,9 +272,9 @@ static inline int is_new_memtype_allowed(u64 paddr, unsigned long size,
+ 					 unsigned long new_flags)
+ {
+ 	/*
+-	 * PAT type is always WB for ISA. So no need to check.
++	 * PAT type is always WB for untracked ranges, so no need to check.
+ 	 */
+-	if (is_ISA_range(paddr, paddr + size - 1))
++	if (x86_platform.is_untracked_pat_range(paddr, paddr + size - 1))
+ 		return 1;
+ 
+ 	/*

@@ -1,0 +1,233 @@
+From: Dave Airlie <airlied@redhat.com>
+Date: Tue, 12 Jan 2010 05:35:34 -0500
+Subject: [drm] mm: patch drm core memory range manager up to 2.6.33
+Message-id: <1263274540-13581-3-git-send-email-airlied@redhat.com>
+Patchwork-id: 22422
+O-Subject: [PATCH 2/8] drm/mm: patch drm core memory range manager up to 2.6.33
+Bugzilla: 554601
+
+This squashes:
+e2108eb1f66d77b4af77caf282cab1d47e3f4831 drm/mm: fix logic for selection of best fit block
+99d7e48e8cb867f303439ad40e995e203841bd94 drm: Add memory manager debug function
+a2e68e92d384d37c8cc6bb7206d43b1eb9bc3f08 drm: Add search/get functions to get a block in a specific range
+01d01ba947670cf58f22119fc126fdf39078f6ba drm/mm: fixup typo in debug functions.
+
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/drm_mm.c b/drivers/gpu/drm/drm_mm.c
+index 97dc5a4..cdec329 100644
+--- a/drivers/gpu/drm/drm_mm.c
++++ b/drivers/gpu/drm/drm_mm.c
+@@ -226,6 +226,44 @@ struct drm_mm_node *drm_mm_get_block_generic(struct drm_mm_node *node,
+ }
+ EXPORT_SYMBOL(drm_mm_get_block_generic);
+ 
++struct drm_mm_node *drm_mm_get_block_range_generic(struct drm_mm_node *node,
++						unsigned long size,
++						unsigned alignment,
++						unsigned long start,
++						unsigned long end,
++						int atomic)
++{
++	struct drm_mm_node *align_splitoff = NULL;
++	unsigned tmp = 0;
++	unsigned wasted = 0;
++
++	if (node->start < start)
++		wasted += start - node->start;
++	if (alignment)
++		tmp = ((node->start + wasted) % alignment);
++
++	if (tmp)
++		wasted += alignment - tmp;
++	if (wasted) {
++		align_splitoff = drm_mm_split_at_start(node, wasted, atomic);
++		if (unlikely(align_splitoff == NULL))
++			return NULL;
++	}
++
++	if (node->size == size) {
++		list_del_init(&node->fl_entry);
++		node->free = 0;
++	} else {
++		node = drm_mm_split_at_start(node, size, atomic);
++	}
++
++	if (align_splitoff)
++		drm_mm_put_block(align_splitoff);
++
++	return node;
++}
++EXPORT_SYMBOL(drm_mm_get_block_range_generic);
++
+ /*
+  * Put a block. Merge with the previous and / or next block if they are free.
+  * Otherwise add to the free stack.
+@@ -320,7 +358,7 @@ struct drm_mm_node *drm_mm_search_free(const struct drm_mm *mm,
+ 		if (entry->size >= size + wasted) {
+ 			if (!best_match)
+ 				return entry;
+-			if (size < best_size) {
++			if (entry->size < best_size) {
+ 				best = entry;
+ 				best_size = entry->size;
+ 			}
+@@ -331,6 +369,56 @@ struct drm_mm_node *drm_mm_search_free(const struct drm_mm *mm,
+ }
+ EXPORT_SYMBOL(drm_mm_search_free);
+ 
++struct drm_mm_node *drm_mm_search_free_in_range(const struct drm_mm *mm,
++						unsigned long size,
++						unsigned alignment,
++						unsigned long start,
++						unsigned long end,
++						int best_match)
++{
++	struct list_head *list;
++	const struct list_head *free_stack = &mm->fl_entry;
++	struct drm_mm_node *entry;
++	struct drm_mm_node *best;
++	unsigned long best_size;
++	unsigned wasted;
++
++	best = NULL;
++	best_size = ~0UL;
++
++	list_for_each(list, free_stack) {
++		entry = list_entry(list, struct drm_mm_node, fl_entry);
++		wasted = 0;
++
++		if (entry->size < size)
++			continue;
++
++		if (entry->start > end || (entry->start+entry->size) < start)
++			continue;
++
++		if (entry->start < start)
++			wasted += start - entry->start;
++
++		if (alignment) {
++			register unsigned tmp = (entry->start + wasted) % alignment;
++			if (tmp)
++				wasted += alignment - tmp;
++		}
++
++		if (entry->size >= size + wasted) {
++			if (!best_match)
++				return entry;
++			if (entry->size < best_size) {
++				best = entry;
++				best_size = entry->size;
++			}
++		}
++	}
++
++	return best;
++}
++EXPORT_SYMBOL(drm_mm_search_free_in_range);
++
+ int drm_mm_clean(struct drm_mm * mm)
+ {
+ 	struct list_head *head = &mm->ml_entry;
+@@ -381,6 +469,26 @@ void drm_mm_takedown(struct drm_mm * mm)
+ }
+ EXPORT_SYMBOL(drm_mm_takedown);
+ 
++void drm_mm_debug_table(struct drm_mm *mm, const char *prefix)
++{
++	struct drm_mm_node *entry;
++	int total_used = 0, total_free = 0, total = 0;
++
++	list_for_each_entry(entry, &mm->ml_entry, ml_entry) {
++		printk(KERN_DEBUG "%s 0x%08lx-0x%08lx: %8ld: %s\n",
++			prefix, entry->start, entry->start + entry->size,
++			entry->size, entry->free ? "free" : "used");
++		total += entry->size;
++		if (entry->free)
++			total_free += entry->size;
++		else
++			total_used += entry->size;
++	}
++	printk(KERN_DEBUG "%s total: %d, used %d free %d\n", prefix, total,
++		total_used, total_free);
++}
++EXPORT_SYMBOL(drm_mm_debug_table);
++
+ #if defined(CONFIG_DEBUG_FS)
+ int drm_mm_dump_table(struct seq_file *m, struct drm_mm *mm)
+ {
+@@ -395,7 +503,7 @@ int drm_mm_dump_table(struct seq_file *m, struct drm_mm *mm)
+ 		else
+ 			total_used += entry->size;
+ 	}
+-	seq_printf(m, "total: %d, used %d free %d\n", total, total_free, total_used);
++	seq_printf(m, "total: %d, used %d free %d\n", total, total_used, total_free);
+ 	return 0;
+ }
+ EXPORT_SYMBOL(drm_mm_dump_table);
+diff --git a/include/drm/drm_mm.h b/include/drm/drm_mm.h
+index 62329f9..4c10be3 100644
+--- a/include/drm/drm_mm.h
++++ b/include/drm/drm_mm.h
+@@ -66,6 +66,13 @@ extern struct drm_mm_node *drm_mm_get_block_generic(struct drm_mm_node *node,
+ 						    unsigned long size,
+ 						    unsigned alignment,
+ 						    int atomic);
++extern struct drm_mm_node *drm_mm_get_block_range_generic(
++						struct drm_mm_node *node,
++						unsigned long size,
++						unsigned alignment,
++						unsigned long start,
++						unsigned long end,
++						int atomic);
+ static inline struct drm_mm_node *drm_mm_get_block(struct drm_mm_node *parent,
+ 						   unsigned long size,
+ 						   unsigned alignment)
+@@ -78,11 +85,38 @@ static inline struct drm_mm_node *drm_mm_get_block_atomic(struct drm_mm_node *pa
+ {
+ 	return drm_mm_get_block_generic(parent, size, alignment, 1);
+ }
++static inline struct drm_mm_node *drm_mm_get_block_range(
++						struct drm_mm_node *parent,
++						unsigned long size,
++						unsigned alignment,
++						unsigned long start,
++						unsigned long end)
++{
++	return drm_mm_get_block_range_generic(parent, size, alignment,
++						start, end, 0);
++}
++static inline struct drm_mm_node *drm_mm_get_block_atomic_range(
++						struct drm_mm_node *parent,
++						unsigned long size,
++						unsigned alignment,
++						unsigned long start,
++						unsigned long end)
++{
++	return drm_mm_get_block_range_generic(parent, size, alignment,
++						start, end, 1);
++}
+ extern void drm_mm_put_block(struct drm_mm_node *cur);
+ extern struct drm_mm_node *drm_mm_search_free(const struct drm_mm *mm,
+ 					      unsigned long size,
+ 					      unsigned alignment,
+ 					      int best_match);
++extern struct drm_mm_node *drm_mm_search_free_in_range(
++						const struct drm_mm *mm,
++						unsigned long size,
++						unsigned alignment,
++						unsigned long start,
++						unsigned long end,
++						int best_match);
+ extern int drm_mm_init(struct drm_mm *mm, unsigned long start,
+ 		       unsigned long size);
+ extern void drm_mm_takedown(struct drm_mm *mm);
+@@ -99,6 +133,7 @@ static inline struct drm_mm *drm_get_mm(struct drm_mm_node *block)
+ 	return block->mm;
+ }
+ 
++extern void drm_mm_debug_table(struct drm_mm *mm, const char *prefix);
+ #ifdef CONFIG_DEBUG_FS
+ int drm_mm_dump_table(struct seq_file *m, struct drm_mm *mm);
+ #endif

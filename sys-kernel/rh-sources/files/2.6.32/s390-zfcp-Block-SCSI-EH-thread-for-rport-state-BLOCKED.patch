@@ -1,0 +1,84 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Tue, 15 Dec 2009 16:23:17 -0500
+Subject: [s390] zfcp: Block SCSI EH thread for rport state BLOCKED
+Message-id: <1260894197-8068-7-git-send-email-brueckner@redhat.com>
+Patchwork-id: 21957
+O-Subject: [RHEL6 PATCH 6/6] [s390] zfcp: Block SCSI EH thread for rport state
+	BLOCKED
+Bugzilla: 547413
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+If the SCSI error recovery starts because of a SCSI command timeout,
+but then something else triggers the rport to be deleted, the SCSI
+error recovery will run to the end and set the SCSI device offline.
+
+When the rport is in the state BLOCKED, all SCSI commands will fail
+because of this status. The SCSI EH will escalate and, at the end,
+set the SCSI devices offline.
+
+In the scsi_eh callbacks in zfcp, call the new function
+fc_block_scsi_eh() (see commit "65d430fa99cbd0e88d09a3343f697c51fc8a7009")
+to wait until the rport leaves the state BLOCKED.
+With this, the rport is either RUNNING again and the SCSI commands can
+be issued to the device, or the rport is NOT_PRESENT and the SCSI devices
+have been deleted, thus we don't have to worry about SCSI device states.
+
+Bugzilla
+--------
+BZ 547413
+https://bugzilla.redhat.com/show_bug.cgi?id=547413
+
+Brew
+----
+http://brewweb.devel.redhat.com/brew/taskinfo?taskID=2151340
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=af4de36d911ab907b92c5f3f81ceff8474ed7485
+Related commit:
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=65d430fa99cbd0e88d09a3343f697c51fc8a7009
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/scsi/zfcp_scsi.c b/drivers/s390/scsi/zfcp_scsi.c
+index 4509640..4aedab6 100644
+--- a/drivers/s390/scsi/zfcp_scsi.c
++++ b/drivers/s390/scsi/zfcp_scsi.c
+@@ -210,6 +210,7 @@ static int zfcp_scsi_eh_abort_handler(struct scsi_cmnd *scpnt)
+ 			break;
+ 
+ 		zfcp_erp_wait(adapter);
++		fc_block_scsi_eh(scpnt);
+ 		if (!(atomic_read(&adapter->status) &
+ 		      ZFCP_STATUS_COMMON_RUNNING)) {
+ 			zfcp_dbf_scsi_abort("nres", adapter->dbf, scpnt, NULL,
+@@ -249,6 +250,7 @@ static int zfcp_task_mgmt_function(struct scsi_cmnd *scpnt, u8 tm_flags)
+ 			break;
+ 
+ 		zfcp_erp_wait(adapter);
++		fc_block_scsi_eh(scpnt);
+ 		if (!(atomic_read(&adapter->status) &
+ 		      ZFCP_STATUS_COMMON_RUNNING)) {
+ 			zfcp_dbf_scsi_devreset("nres", tm_flags, unit, scpnt);
+@@ -290,6 +292,7 @@ static int zfcp_scsi_eh_host_reset_handler(struct scsi_cmnd *scpnt)
+ 
+ 	zfcp_erp_adapter_reopen(adapter, 0, "schrh_1", scpnt);
+ 	zfcp_erp_wait(adapter);
++	fc_block_scsi_eh(scpnt);
+ 
+ 	return SUCCESS;
+ }

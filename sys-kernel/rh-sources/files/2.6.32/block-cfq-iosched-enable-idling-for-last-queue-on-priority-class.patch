@@ -1,0 +1,105 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:44 -0500
+Subject: [block] cfq-iosched: enable idling for last queue on priority class
+Message-id: <1260298712-12756-12-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21758
+O-Subject: [RHEL6 PATCH 11/59] cfq-iosched: enable idling for last queue on
+	priority class
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit a6d44e982d3734583b3b4e1d36921af8cfd61fc0
+Author: Corrado Zoccolo <czoccolo@gmail.com>
+Date:   Mon Oct 26 22:45:11 2009 +0100
+
+    cfq-iosched: enable idling for last queue on priority class
+
+    cfq can disable idling for queues in various circumstances.
+    When workloads of different priorities are competing, if the higher
+    priority queue has idling disabled, lower priority queues may steal
+    its disk share. For example, in a scenario with an RT process
+    performing seeky reads vs a BE process performing sequential reads,
+    on an NCQ enabled hardware, with low_latency unset,
+    the RT process will dispatch only the few pending requests every full
+    slice of service for the BE process.
+
+    The patch solves this issue by always performing idle on the last
+    queue at a given priority class > idle. If the same process, or one
+    that can pre-empt it (so at the same priority or higher), submits a
+    new request within the idle window, the lower priority queue won't
+    dispatch, saving the disk bandwidth for higher priority ones.
+
+    Note: this doesn't touch the non_rotational + NCQ case (no hardware
+    to test if this is a benefit in that case).
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index eec060a..37e1fc4 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -1160,6 +1160,34 @@ static struct cfq_queue *cfq_close_cooperator(struct cfq_data *cfqd,
+ 	return cfqq;
+ }
+ 
++/*
++ * Determine whether we should enforce idle window for this queue.
++ */
++
++static bool cfq_should_idle(struct cfq_data *cfqd, struct cfq_queue *cfqq)
++{
++	enum wl_prio_t prio = cfqq_prio(cfqq);
++	struct cfq_rb_root *service_tree;
++
++	/* We never do for idle class queues. */
++	if (prio == IDLE_WORKLOAD)
++		return false;
++
++	/* We do for queues that were marked with idle window flag. */
++	if (cfq_cfqq_idle_window(cfqq))
++		return true;
++
++	/*
++	 * Otherwise, we do only if they are the last ones
++	 * in their service tree.
++	 */
++	service_tree = service_tree_for(prio, cfqd);
++	if (service_tree->count == 0)
++		return true;
++
++	return (service_tree->count == 1 && cfq_rb_first(service_tree) == cfqq);
++}
++
+ static void cfq_arm_slice_timer(struct cfq_data *cfqd)
+ {
+ 	struct cfq_queue *cfqq = cfqd->active_queue;
+@@ -1180,7 +1208,7 @@ static void cfq_arm_slice_timer(struct cfq_data *cfqd)
+ 	/*
+ 	 * idle is disabled, either manually or by past process history
+ 	 */
+-	if (!cfqd->cfq_slice_idle || !cfq_cfqq_idle_window(cfqq))
++	if (!cfqd->cfq_slice_idle || !cfq_should_idle(cfqd, cfqq))
+ 		return;
+ 
+ 	/*
+@@ -1362,7 +1390,7 @@ static struct cfq_queue *cfq_select_queue(struct cfq_data *cfqd)
+ 	 * conditions to happen (or time out) before selecting a new queue.
+ 	 */
+ 	if (timer_pending(&cfqd->idle_slice_timer) ||
+-	    (cfqq->dispatched && cfq_cfqq_idle_window(cfqq))) {
++	    (cfqq->dispatched && cfq_should_idle(cfqd, cfqq))) {
+ 		cfqq = NULL;
+ 		goto keep_queue;
+ 	}
+@@ -1427,7 +1455,7 @@ static bool cfq_may_dispatch(struct cfq_data *cfqd, struct cfq_queue *cfqq)
+ 	/*
+ 	 * Drain async requests before we start sync IO
+ 	 */
+-	if (cfq_cfqq_idle_window(cfqq) && cfqd->rq_in_driver[BLK_RW_ASYNC])
++	if (cfq_should_idle(cfqd, cfqq) && cfqd->rq_in_driver[BLK_RW_ASYNC])
+ 		return false;
+ 
+ 	/*

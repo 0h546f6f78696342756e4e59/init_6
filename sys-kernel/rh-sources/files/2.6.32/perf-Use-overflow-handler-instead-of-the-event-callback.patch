@@ -1,0 +1,119 @@
+From: Jason Baron <jbaron@redhat.com>
+Date: Tue, 19 Jan 2010 22:35:48 -0500
+Subject: [perf] Use overflow handler instead of the event callback
+Message-id: <407d2d71b46b825f1cb724de16cc0fb038af95ab.1263939115.git.jbaron@redhat.com>
+Patchwork-id: 22664
+O-Subject: [RHEL6 PATCH 8/9] - add kernel internal interface to perf counters v2
+	- Use overflow handler instead of the event callback
+Bugzilla: 525517
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+RH-Acked-by: Dave Anderson <anderson@redhat.com>
+
+commit b326e9560a28fc3e950637ef51847ed8f05c1335
+
+    hw-breakpoints: Use overflow handler instead of the event callback
+
+    struct perf_event::event callback was called when a breakpoint
+    triggers. But this is a rather opaque callback, pretty
+    tied-only to the breakpoint API and not really integrated into perf
+    as it triggers even when we don't overflow.
+
+    We prefer to use overflow_handler() as it fits into the perf events
+    rules, being called only when we overflow.
+
+    Reported-by: Peter Zijlstra <peterz@infradead.org>
+    Signed-off-by: Frederic Weisbecker <fweisbec@gmail.com>
+    Cc: Paul Mackerras <paulus@samba.org>
+    Cc: Arnaldo Carvalho de Melo <acme@redhat.com>
+    Cc: "K. Prasad" <prasad@linux.vnet.ibm.com>
+
+[ ignores hw breakpoints part of patch ]
+
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index 96a8c01..222db8b 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -543,10 +543,13 @@ struct perf_pending_entry {
+ 	void (*func)(struct perf_pending_entry *);
+ };
+ 
+-typedef void (*perf_callback_t)(struct perf_event *, void *);
+-
+ struct perf_sample_data;
+ 
++typedef void (*perf_callback_t)(struct perf_event *, void *);
++typedef void (*perf_overflow_handler_t)(struct perf_event *, int,
++					struct perf_sample_data *,
++					struct pt_regs *regs);
++
+ /**
+  * struct perf_event - performance event kernel representation:
+  */
+@@ -638,10 +641,7 @@ struct perf_event {
+ 	struct pid_namespace		*ns;
+ 	u64				id;
+ 
+-	void (*overflow_handler)(struct perf_event *event,
+-		int nmi, struct perf_sample_data *data,
+-		struct pt_regs *regs);
+-
++	perf_overflow_handler_t         overflow_handler;
+ 	perf_callback_t			callback;
+ #endif
+ };
+@@ -752,7 +752,8 @@ extern int perf_event_release_kernel(struct perf_event *event);
+ extern struct perf_event *
+ perf_event_create_kernel_counter(struct perf_event_attr *attr,
+ 				int cpu,
+-				pid_t pid);
++				pid_t pid,
++				perf_overflow_handler_t callback);
+ extern u64 perf_event_read_value(struct perf_event *event,
+ 				u64 *enabled, u64 *running);
+ 
+diff --git a/kernel/perf_event.c b/kernel/perf_event.c
+index 10ece90..a01d878 100644
+--- a/kernel/perf_event.c
++++ b/kernel/perf_event.c
+@@ -4254,7 +4254,7 @@ perf_event_alloc(struct perf_event_attr *attr,
+ 		   struct perf_event_context *ctx,
+ 		   struct perf_event *group_leader,
+ 		   struct perf_event *parent_event,
+-		   perf_callback_t callback,
++		   perf_overflow_handler_t overflow_handler,
+ 		   gfp_t gfpflags)
+ {
+ 	const struct pmu *pmu;
+@@ -4297,10 +4297,10 @@ perf_event_alloc(struct perf_event_attr *attr,
+ 
+ 	event->state		= PERF_EVENT_STATE_INACTIVE;
+ 
+-	if (!callback && parent_event)
+-		callback = parent_event->callback;
++	if (!overflow_handler && parent_event)
++		overflow_handler = parent_event->overflow_handler;
+ 
+-	event->callback = callback;
++	event->overflow_handler = overflow_handler;
+ 
+ 	if (attr->disabled)
+ 		event->state = PERF_EVENT_STATE_OFF;
+@@ -4635,7 +4635,8 @@ err_put_context:
+  */
+ struct perf_event *
+ perf_event_create_kernel_counter(struct perf_event_attr *attr, int cpu,
+-				 pid_t pid, perf_callback_t callback)
++				 pid_t pid,
++				 perf_overflow_handler_t overflow_handler)
+ {
+ 	struct perf_event *event;
+ 	struct perf_event_context *ctx;
+@@ -4652,7 +4653,7 @@ perf_event_create_kernel_counter(struct perf_event_attr *attr, int cpu,
+ 	}
+ 
+ 	event = perf_event_alloc(attr, cpu, ctx, NULL,
+-				     NULL, callback, GFP_KERNEL);
++				 NULL, overflow_handler, GFP_KERNEL);
+ 	if (IS_ERR(event)) {
+ 		err = PTR_ERR(event);
+ 		goto err_put_context;

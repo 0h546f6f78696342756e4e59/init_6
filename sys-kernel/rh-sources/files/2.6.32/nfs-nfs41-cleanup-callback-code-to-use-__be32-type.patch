@@ -1,0 +1,176 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 21:09:59 -0500
+Subject: [nfs] nfs41: cleanup callback code to use __be32 type
+Message-id: <4B674327.6090102@RedHat.com>
+Patchwork-id: 23082
+O-Subject: [RHEL6] [PATCH 13/13] nfs41: cleanup callback code to use __be32 type
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 7539c41cfcee76710a97c9c4d6854157bdd3873b
+Author: Andy Adamson <andros@netapp.com>
+Date:   Fri Jan 22 12:03:08 2010 -0500
+
+    nfs41: cleanup callback code to use __be32 type
+
+    Signed-off-by: Andy Adamson <andros@netapp.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/callback_proc.c b/fs/nfs/callback_proc.c
+index c79e18c..84761b5 100644
+--- a/fs/nfs/callback_proc.c
++++ b/fs/nfs/callback_proc.c
+@@ -151,7 +151,7 @@ int nfs41_validate_delegation_stateid(struct nfs_delegation *delegation, const n
+  * checking the used_slots bit array on the table.  The lower layer guarantees
+  * a single outstanding callback request at a time.
+  */
+-static int
++static __be32
+ validate_seqid(struct nfs4_slot_table *tbl, struct cb_sequenceargs * args)
+ {
+ 	struct nfs4_slot *slot;
+@@ -285,11 +285,12 @@ out:
+ 	return status;
+ }
+ 
+-unsigned nfs4_callback_sequence(struct cb_sequenceargs *args,
++__be32 nfs4_callback_sequence(struct cb_sequenceargs *args,
+ 				struct cb_sequenceres *res)
+ {
+ 	struct nfs_client *clp;
+-	int i, status;
++	int i;
++	__be32 status;
+ 
+ 	status = htonl(NFS4ERR_BADSESSION);
+ 	clp = find_client_with_session(args->csa_addr, 4, &args->csa_sessionid);
+@@ -333,10 +334,10 @@ out:
+ 	return status;
+ }
+ 
+-unsigned nfs4_callback_recallany(struct cb_recallanyargs *args, void *dummy)
++__be32 nfs4_callback_recallany(struct cb_recallanyargs *args, void *dummy)
+ {
+ 	struct nfs_client *clp;
+-	int status;
++	__be32 status;
+ 	fmode_t flags = 0;
+ 
+ 	status = htonl(NFS4ERR_OP_NOT_IN_SESSION);
+@@ -363,11 +364,11 @@ out:
+ }
+ 
+ /* Reduce the fore channel's max_slots to the target value */
+-unsigned nfs4_callback_recallslot(struct cb_recallslotargs *args, void *dummy)
++__be32 nfs4_callback_recallslot(struct cb_recallslotargs *args, void *dummy)
+ {
+ 	struct nfs_client *clp;
+ 	struct nfs4_slot_table *fc_tbl;
+-	int status;
++	__be32 status;
+ 
+ 	status = htonl(NFS4ERR_OP_NOT_IN_SESSION);
+ 	clp = nfs_find_client(args->crsa_addr, 4);
+diff --git a/fs/nfs/callback_xdr.c b/fs/nfs/callback_xdr.c
+index acf489c..a2b8b4d 100644
+--- a/fs/nfs/callback_xdr.c
++++ b/fs/nfs/callback_xdr.c
+@@ -219,10 +219,10 @@ out:
+ 
+ #if defined(CONFIG_NFS_V4_1)
+ 
+-static unsigned decode_sessionid(struct xdr_stream *xdr,
++static __be32 decode_sessionid(struct xdr_stream *xdr,
+ 				 struct nfs4_sessionid *sid)
+ {
+-	uint32_t *p;
++	__be32 *p;
+ 	int len = NFS4_MAX_SESSIONID_LEN;
+ 
+ 	p = read_buf(xdr, len);
+@@ -233,12 +233,12 @@ static unsigned decode_sessionid(struct xdr_stream *xdr,
+ 	return 0;
+ }
+ 
+-static unsigned decode_rc_list(struct xdr_stream *xdr,
++static __be32 decode_rc_list(struct xdr_stream *xdr,
+ 			       struct referring_call_list *rc_list)
+ {
+-	uint32_t *p;
++	__be32 *p;
+ 	int i;
+-	unsigned status;
++	__be32 status;
+ 
+ 	status = decode_sessionid(xdr, &rc_list->rcl_sessionid);
+ 	if (status)
+@@ -271,13 +271,13 @@ out:
+ 	return status;
+ }
+ 
+-static unsigned decode_cb_sequence_args(struct svc_rqst *rqstp,
++static __be32 decode_cb_sequence_args(struct svc_rqst *rqstp,
+ 					struct xdr_stream *xdr,
+ 					struct cb_sequenceargs *args)
+ {
+-	uint32_t *p;
++	__be32 *p;
+ 	int i;
+-	unsigned status;
++	__be32 status;
+ 
+ 	status = decode_sessionid(xdr, &args->csa_sessionid);
+ 	if (status)
+@@ -331,11 +331,11 @@ out_free:
+ 	goto out;
+ }
+ 
+-static unsigned decode_recallany_args(struct svc_rqst *rqstp,
++static __be32 decode_recallany_args(struct svc_rqst *rqstp,
+ 				      struct xdr_stream *xdr,
+ 				      struct cb_recallanyargs *args)
+ {
+-	uint32_t *p;
++	__be32 *p;
+ 
+ 	args->craa_addr = svc_addr(rqstp);
+ 	p = read_buf(xdr, 4);
+@@ -350,7 +350,7 @@ static unsigned decode_recallany_args(struct svc_rqst *rqstp,
+ 	return 0;
+ }
+ 
+-static unsigned decode_recallslot_args(struct svc_rqst *rqstp,
++static __be32 decode_recallslot_args(struct svc_rqst *rqstp,
+ 					struct xdr_stream *xdr,
+ 					struct cb_recallslotargs *args)
+ {
+@@ -517,10 +517,10 @@ out:
+ 
+ #if defined(CONFIG_NFS_V4_1)
+ 
+-static unsigned encode_sessionid(struct xdr_stream *xdr,
++static __be32 encode_sessionid(struct xdr_stream *xdr,
+ 				 const struct nfs4_sessionid *sid)
+ {
+-	uint32_t *p;
++	__be32 *p;
+ 	int len = NFS4_MAX_SESSIONID_LEN;
+ 
+ 	p = xdr_reserve_space(xdr, len);
+@@ -531,11 +531,11 @@ static unsigned encode_sessionid(struct xdr_stream *xdr,
+ 	return 0;
+ }
+ 
+-static unsigned encode_cb_sequence_res(struct svc_rqst *rqstp,
++static __be32 encode_cb_sequence_res(struct svc_rqst *rqstp,
+ 				       struct xdr_stream *xdr,
+ 				       const struct cb_sequenceres *res)
+ {
+-	uint32_t *p;
++	__be32 *p;
+ 	unsigned status = res->csr_status;
+ 
+ 	if (unlikely(status != 0))

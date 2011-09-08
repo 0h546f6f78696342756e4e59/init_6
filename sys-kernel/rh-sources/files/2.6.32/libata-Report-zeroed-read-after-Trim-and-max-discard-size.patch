@@ -1,0 +1,88 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 20:59:17 -0500
+Subject: [libata] Report zeroed read after Trim and max discard size
+Message-id: <1260305958-3673-7-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21816
+O-Subject: [RHEL6 PATCH 6/7] libata: Report zeroed read after Trim and max
+	discard size
+Bugzilla: 528046
+RH-Acked-by: David Milburn <dmilburn@redhat.com>
+
+fixes bug 528046
+
+commit 000e4381c128893cd74fdf54b9bb87b34c2db6d0
+Author: Martin K. Petersen <martin.petersen@oracle.com>
+Date:   Thu Nov 26 22:39:41 2009 -0500
+
+    libata: Report zeroed read after Trim and max discard size
+
+    Our current Trim payload is a single sector that can accommodate 64 *
+    65535 blocks being unmapped.  Report this value in the Block Limits
+    Maximum Unmap LBA count field.
+
+    If a storage device supports Trim and the DRAT and RZAT bits are set,
+    report TPRZ=1 in Read Capacity(16).
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/ata/libata-scsi.c b/drivers/ata/libata-scsi.c
+index e0995c4..08d4ab7 100644
+--- a/drivers/ata/libata-scsi.c
++++ b/drivers/ata/libata-scsi.c
+@@ -2116,8 +2116,10 @@ static unsigned int ata_scsiop_inq_b0(struct ata_scsi_args *args, u8 *rbuf)
+ 	 * that we support some form of unmap - in thise case via WRITE SAME
+ 	 * with the unmap bit set.
+ 	 */
+-	if (ata_id_has_trim(args->id))
++	if (ata_id_has_trim(args->id)) {
++		put_unaligned_be32(65535 * 512 / 8, &rbuf[20]);
+ 		put_unaligned_be32(1, &rbuf[28]);
++	}
+ 
+ 	return 0;
+ }
+@@ -2412,8 +2414,12 @@ static unsigned int ata_scsiop_read_cap(struct ata_scsi_args *args, u8 *rbuf)
+ 		rbuf[14] = (lowest_aligned >> 8) & 0x3f;
+ 		rbuf[15] = lowest_aligned;
+ 
+-		if (ata_id_has_trim(args->id))
+-			rbuf[14] |= 0x80;
++		if (ata_id_has_trim(args->id)) {
++			rbuf[14] |= 0x80; /* TPE */
++
++			if (ata_id_has_zero_after_trim(args->id))
++				rbuf[14] |= 0x40; /* TPRZ */
++		}
+ 	}
+ 
+ 	return 0;
+diff --git a/include/linux/ata.h b/include/linux/ata.h
+index e2595e8..dfa2298 100644
+--- a/include/linux/ata.h
++++ b/include/linux/ata.h
+@@ -75,6 +75,7 @@ enum {
+ 	ATA_ID_EIDE_DMA_TIME	= 66,
+ 	ATA_ID_EIDE_PIO		= 67,
+ 	ATA_ID_EIDE_PIO_IORDY	= 68,
++	ATA_ID_ADDITIONAL_SUPP	= 69,
+ 	ATA_ID_QUEUE_DEPTH	= 75,
+ 	ATA_ID_MAJOR_VER	= 80,
+ 	ATA_ID_COMMAND_SET_1	= 82,
+@@ -816,6 +817,16 @@ static inline int ata_id_has_trim(const u16 *id)
+ 	return 0;
+ }
+ 
++static inline int ata_id_has_zero_after_trim(const u16 *id)
++{
++	/* DSM supported, deterministic read, and read zero after trim set */
++	if (ata_id_has_trim(id) &&
++	    (id[ATA_ID_ADDITIONAL_SUPP] & 0x4020) == 0x4020)
++		return 1;
++
++	return 0;
++}
++
+ static inline int ata_id_current_chs_valid(const u16 *id)
+ {
+ 	/* For ATA-1 devices, if the INITIALIZE DEVICE PARAMETERS command

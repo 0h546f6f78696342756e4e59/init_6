@@ -1,0 +1,69 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 18 Dec 2009 20:36:25 -0500
+Subject: [block] cfq-iosched: reduce write depth only if sync was delayed
+Message-id: <1261168595-15386-2-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 22169
+O-Subject: [RHEL6 PATCH 01/11] cfq-iosched: reduce write depth only if sync was
+	delayed
+Bugzilla: 548796
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+The commit ID below is from the block tree.
+
+fixes bug 548796
+
+commit 573412b29586e58477adb70e022193a337763319
+Author: Corrado Zoccolo <czoccolo@gmail.com>
+Date:   Sun Dec 6 11:48:52 2009 +0100
+
+    cfq-iosched: reduce write depth only if sync was delayed
+
+    The introduction of ramp-up formula for async queue depths has
+    slowed down dirty page reclaim, by reducing async write performance.
+    This patch makes sure the formula kicks in only when sync request
+    was recently delayed.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 240003b..b726fed 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -282,7 +282,7 @@ struct cfq_data {
+ 	 */
+ 	struct cfq_queue oom_cfqq;
+ 
+-	unsigned long last_end_sync_rq;
++	unsigned long last_delayed_sync;
+ 
+ 	/* List of cfq groups being managed on this device*/
+ 	struct hlist_head cfqg_list;
+@@ -2263,7 +2263,7 @@ static bool cfq_may_dispatch(struct cfq_data *cfqd, struct cfq_queue *cfqq)
+ 	 * based on the last sync IO we serviced
+ 	 */
+ 	if (!cfq_cfqq_sync(cfqq) && cfqd->cfq_latency) {
+-		unsigned long last_sync = jiffies - cfqd->last_end_sync_rq;
++		unsigned long last_sync = jiffies - cfqd->last_delayed_sync;
+ 		unsigned int depth;
+ 
+ 		depth = last_sync / cfqd->cfq_slice[1];
+@@ -3272,7 +3272,8 @@ static void cfq_completed_request(struct request_queue *q, struct request *rq)
+ 
+ 	if (sync) {
+ 		RQ_CIC(rq)->last_end_request = now;
+-		cfqd->last_end_sync_rq = now;
++		if (!time_after(rq->start_time + cfqd->cfq_fifo_expire[1], now))
++			cfqd->last_delayed_sync = now;
+ 	}
+ 
+ 	/*
+@@ -3710,7 +3711,7 @@ static void *cfq_init_queue(struct request_queue *q)
+ 	cfqd->cfq_latency = 1;
+ 	cfqd->cfq_group_isolation = 0;
+ 	cfqd->hw_tag = -1;
+-	cfqd->last_end_sync_rq = jiffies;
++	cfqd->last_delayed_sync = jiffies - HZ;
+ 	INIT_RCU_HEAD(&cfqd->rcu);
+ 	return cfqd;
+ }

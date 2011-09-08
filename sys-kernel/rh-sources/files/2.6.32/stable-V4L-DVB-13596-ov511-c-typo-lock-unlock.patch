@@ -1,0 +1,33 @@
+From: Dan Carpenter <error27@gmail.com>
+Date: Thu, 10 Dec 2009 16:44:51 -0300
+Subject: [stable] V4L/DVB (13596): ov511.c typo: lock => unlock
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 50e9d31183ed61c787b870cb3ee8f6c3db8c8a1e upstream.
+
+This was found with a static checker and has not been tested, but it seems
+pretty clear that the mutex_lock() was supposed to be mutex_unlock()
+
+Signed-off-by: Dan Carpenter <error27@gmail.com>
+Signed-off-by: Douglas Schilling Landgraf <dougsland@redhat.com>
+Signed-off-by: Mauro Carvalho Chehab <mchehab@redhat.com>
+Cc: Brandon Philips <brandon@ifup.org>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/media/video/ov511.c b/drivers/media/video/ov511.c
+index 0bc2cf5..2bed9e2 100644
+--- a/drivers/media/video/ov511.c
++++ b/drivers/media/video/ov511.c
+@@ -5878,7 +5878,7 @@ ov51x_probe(struct usb_interface *intf, const struct usb_device_id *id)
+ 		goto error;
+ 	}
+ 
+-	mutex_lock(&ov->lock);
++	mutex_unlock(&ov->lock);
+ 
+ 	return 0;
+ 

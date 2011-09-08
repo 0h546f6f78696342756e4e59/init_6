@@ -1,0 +1,27 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:35 -0500
+Subject: [Fedora] [debug] always inline kzalloc
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6-debug-always-inline-kzalloc.patch
+
+This patch makes kzalloc() always inline.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/slab.h b/include/linux/slab.h
+index 2da8372..d4ef74f 100644
+--- a/include/linux/slab.h
++++ b/include/linux/slab.h
+@@ -310,7 +310,7 @@ static inline void *kmem_cache_zalloc(struct kmem_cache *k, gfp_t flags)
+  * @size: how many bytes of memory are required.
+  * @flags: the type of memory to allocate (see kmalloc).
+  */
+-static inline void *kzalloc(size_t size, gfp_t flags)
++static __always_inline void *kzalloc(size_t size, gfp_t flags)
+ {
+ 	return kmalloc(size, flags | __GFP_ZERO);
+ }

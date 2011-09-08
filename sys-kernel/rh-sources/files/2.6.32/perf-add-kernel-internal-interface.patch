@@ -1,0 +1,178 @@
+From: Jason Baron <jbaron@redhat.com>
+Date: Tue, 19 Jan 2010 22:35:14 -0500
+Subject: [perf] add kernel internal interface
+Message-id: <f3ff3ecc4838c01a39b237268d2730c6ca930a59.1263939114.git.jbaron@redhat.com>
+Patchwork-id: 22657
+O-Subject: [RHEL6 PATCH 1/9] - add kernel internal interface to perf counters v2
+	- add kernel internal inteface
+Bugzilla: 525517
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+RH-Acked-by: Dave Anderson <anderson@redhat.com>
+
+commit fb0459d75c1d0a4ba3cafdd2c754e7486968a676
+
+    perf/core: Provide a kernel-internal interface to get to performance counters
+
+    There are reasons for kernel code to ask for, and use, performance
+    counters.
+    For example, in CPU freq governors this tends to be a good idea, but
+    there are other examples possible as well of course.
+
+    This patch adds the needed bits to do enable this functionality; they
+    have been tested in an experimental cpufreq driver that I'm working on,
+    and the changes are all that I needed to access counters properly.
+
+    [fweisbec@gmail.com: added pid to perf_event_create_kernel_counter so
+    that we can profile a particular task too
+
+    TODO: Have a better error reporting, don't just return NULL in fail
+    case.]
+
+    v2: Remove the wrong comment about the fact
+        perf_event_create_kernel_counter must be called from a kernel
+        thread.
+
+    Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
+    Acked-by: Peter Zijlstra <peterz@infradead.org>
+    Cc: "K.Prasad" <prasad@linux.vnet.ibm.com>
+    Cc: Alan Stern <stern@rowland.harvard.edu>
+    Cc: Arnaldo Carvalho de Melo <acme@redhat.com>
+    Cc: Steven Rostedt <rostedt@goodmis.org>
+    Cc: Ingo Molnar <mingo@elte.hu>
+    Cc: Jan Kiszka <jan.kiszka@siemens.com>
+    Cc: Jiri Slaby <jirislaby@gmail.com>
+    Cc: Li Zefan <lizf@cn.fujitsu.com>
+    Cc: Avi Kivity <avi@redhat.com>
+    Cc: Paul Mackerras <paulus@samba.org>
+    Cc: Mike Galbraith <efault@gmx.de>
+    Cc: Masami Hiramatsu <mhiramat@redhat.com>
+    Cc: Paul Mundt <lethal@linux-sh.org>
+    Cc: Jan Kiszka <jan.kiszka@web.de>
+    Cc: Avi Kivity <avi@redhat.com>
+    LKML-Reference: <20090925122556.2f8bd939@infradead.org>
+    Signed-off-by: Frederic Weisbecker <fweisbec@gmail.com>
+
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index 81c9689..1d215ee 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -738,6 +738,12 @@ extern int hw_perf_group_sched_in(struct perf_event *group_leader,
+ 	       struct perf_cpu_context *cpuctx,
+ 	       struct perf_event_context *ctx, int cpu);
+ extern void perf_event_update_userpage(struct perf_event *event);
++extern int perf_event_release_kernel(struct perf_event *event);
++extern struct perf_event *
++perf_event_create_kernel_counter(struct perf_event_attr *attr,
++				int cpu,
++				pid_t pid);
++extern u64 perf_event_read_value(struct perf_event *event);
+ 
+ struct perf_sample_data {
+ 	u64				type;
+diff --git a/kernel/perf_event.c b/kernel/perf_event.c
+index 6eee915..92c9517 100644
+--- a/kernel/perf_event.c
++++ b/kernel/perf_event.c
+@@ -1721,6 +1721,26 @@ static int perf_release(struct inode *inode, struct file *file)
+ 	return 0;
+ }
+ 
++int perf_event_release_kernel(struct perf_event *event)
++{
++	struct perf_event_context *ctx = event->ctx;
++
++	WARN_ON_ONCE(ctx->parent_ctx);
++	mutex_lock(&ctx->mutex);
++	perf_event_remove_from_context(event);
++	mutex_unlock(&ctx->mutex);
++
++	mutex_lock(&event->owner->perf_event_mutex);
++	list_del_init(&event->owner_entry);
++	mutex_unlock(&event->owner->perf_event_mutex);
++	put_task_struct(event->owner);
++
++	free_event(event);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(perf_event_release_kernel);
++
+ static int perf_event_read_size(struct perf_event *event)
+ {
+ 	int entry = sizeof(u64); /* value */
+@@ -1746,7 +1766,7 @@ static int perf_event_read_size(struct perf_event *event)
+ 	return size;
+ }
+ 
+-static u64 perf_event_read_value(struct perf_event *event)
++u64 perf_event_read_value(struct perf_event *event)
+ {
+ 	struct perf_event *child;
+ 	u64 total = 0;
+@@ -1757,6 +1777,7 @@ static u64 perf_event_read_value(struct perf_event *event)
+ 
+ 	return total;
+ }
++EXPORT_SYMBOL_GPL(perf_event_read_value);
+ 
+ static int perf_event_read_entry(struct perf_event *event,
+ 				   u64 read_format, char __user *buf)
+@@ -4596,6 +4617,58 @@ err_put_context:
+ 	return err;
+ }
+ 
++/**
++ * perf_event_create_kernel_counter
++ *
++ * @attr: attributes of the counter to create
++ * @cpu: cpu in which the counter is bound
++ * @pid: task to profile
++ */
++struct perf_event *
++perf_event_create_kernel_counter(struct perf_event_attr *attr, int cpu,
++				 pid_t pid)
++{
++	struct perf_event *event;
++	struct perf_event_context *ctx;
++	int err;
++
++	/*
++	 * Get the target context (task or percpu):
++	 */
++
++	ctx = find_get_context(pid, cpu);
++	if (IS_ERR(ctx))
++		return NULL ;
++
++	event = perf_event_alloc(attr, cpu, ctx, NULL,
++				     NULL, GFP_KERNEL);
++	err = PTR_ERR(event);
++	if (IS_ERR(event))
++		goto err_put_context;
++
++	event->filp = NULL;
++	WARN_ON_ONCE(ctx->parent_ctx);
++	mutex_lock(&ctx->mutex);
++	perf_install_in_context(ctx, event, cpu);
++	++ctx->generation;
++	mutex_unlock(&ctx->mutex);
++
++	event->owner = current;
++	get_task_struct(current);
++	mutex_lock(&current->perf_event_mutex);
++	list_add_tail(&event->owner_entry, &current->perf_event_list);
++	mutex_unlock(&current->perf_event_mutex);
++
++	return event;
++
++err_put_context:
++	if (err < 0)
++		put_ctx(ctx);
++
++	return NULL;
++}
++EXPORT_SYMBOL_GPL(perf_event_create_kernel_counter);
++
+ /*
+  * inherit a event from parent task to child task:
+  */

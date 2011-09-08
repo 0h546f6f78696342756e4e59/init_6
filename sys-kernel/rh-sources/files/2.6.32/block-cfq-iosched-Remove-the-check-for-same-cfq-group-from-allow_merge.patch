@@ -1,0 +1,50 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 18 Dec 2009 20:36:33 -0500
+Subject: [block] cfq-iosched: Remove the check for same cfq group from allow_merge
+Message-id: <1261168595-15386-10-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 22179
+O-Subject: [RHEL6 PATCH 09/11] cfq-iosched: Remove the check for same cfq group
+	from allow_merge
+Bugzilla: 548796
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+The commit id is from the block tree.  fixes bug 548796.
+
+commit 1db32c40600437c5e049796bd32f49f61244c6ef
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Wed Dec 16 17:52:57 2009 -0500
+
+    cfq-iosched: Remove the check for same cfq group from allow_merge
+
+    o allow_merge() already checks if submitting task is pointing to same cfqq
+      as rq has been queued in. If everything is fine, we should not be having
+      a task in one cgroup and having a pointer to cfqq in other cgroup.
+
+      Well I guess in some situations it can happen and that is, when a random
+      IO queue has been moved into root cgroup for group_isolation=0. In
+      this case, tasks's cgroup/group is different from where actually cfqq is,
+      but this is intentional and in this case merging should be allowed.
+
+      The second situation is where due to close cooperator patches, multiple
+      processes can be sharing a cfqq. If everything implemented right, we shoul
+      not end up in a situation where tasks from different processes in differen
+      groups are sharing the same cfqq as we allow merging of cooperating queues
+      only if they are in same group.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index ceb3b43..061ade0 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -1512,9 +1512,6 @@ static int cfq_allow_merge(struct request_queue *q, struct request *rq,
+ 	struct cfq_io_context *cic;
+ 	struct cfq_queue *cfqq;
+ 
+-	/* Deny merge if bio and rq don't belong to same cfq group */
+-	if ((RQ_CFQQ(rq))->cfqg != cfq_get_cfqg(cfqd, 0))
+-		return false;
+ 	/*
+ 	 * Disallow merge of a sync bio into an async request.
+ 	 */

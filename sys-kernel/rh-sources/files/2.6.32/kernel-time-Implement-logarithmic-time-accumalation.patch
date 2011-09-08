@@ -1,0 +1,162 @@
+From: Prarit Bhargava <prarit@redhat.com>
+Date: Tue, 16 Feb 2010 13:39:29 -0500
+Subject: [kernel] time: Implement logarithmic time accumalation
+Message-id: <20100216133928.13940.72676.sendpatchset@prarit.bos.redhat.com>
+Patchwork-id: 23280
+O-Subject: [RHEL6 1/2]: time: Implement logarithmic time accumalation
+Bugzilla: 563135
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+Backport of a092ff0f90cae22b2ac8028ecd2c6f6c1a9e4601.
+
+When we've had a long delay and there are many time ticks that have
+accumulated, the offset (the "shifted" value) may get so large that it
+overflows.  This overflow results in an off-by-one calculational error on
+some systems such as the dell-pe2900.
+
+Upstream has moved to a logarithmic time accumulation method, commit
+a092ff0f90cae22b2ac8028ecd2c6f6c1a9e4601.  As part of this change, John Stultz
+@ IBM also implemented better overflow checking -- which resolves our issue.
+
+I could just implement a better method of checking for an overflow, however,
+at this time in development it is much better to stick with upstream.
+Besides that, it works ;).
+
+This backport does not explicitly require the additional change in commit
+7bc7d637452383d56ba4368d4336b0dde1bb476d, however, it is probably a good idea
+to take it in as well.
+
+Successfully tested by me.
+
+Resolves BZ 563135.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/timex.h b/include/linux/timex.h
+index e6967d1..0c0ef7d 100644
+--- a/include/linux/timex.h
++++ b/include/linux/timex.h
+@@ -261,11 +261,7 @@ static inline int ntp_synced(void)
+ 
+ #define NTP_SCALE_SHIFT		32
+ 
+-#ifdef CONFIG_NO_HZ
+-#define NTP_INTERVAL_FREQ  (2)
+-#else
+ #define NTP_INTERVAL_FREQ  (HZ)
+-#endif
+ #define NTP_INTERVAL_LENGTH (NSEC_PER_SEC/NTP_INTERVAL_FREQ)
+ 
+ /* Returns how long ticks are at present, in ns / 2^NTP_SCALE_SHIFT. */
+diff --git a/kernel/time/timekeeping.c b/kernel/time/timekeeping.c
+index c3a4e29..8f1a86a 100644
+--- a/kernel/time/timekeeping.c
++++ b/kernel/time/timekeeping.c
+@@ -722,6 +722,51 @@ static void timekeeping_adjust(s64 offset)
+ 				timekeeper.ntp_error_shift;
+ }
+ 
++
++/**
++ * logarithmic_accumulation - shifted accumulation of cycles
++ *
++ * This functions accumulates a shifted interval of cycles into
++ * into a shifted interval nanoseconds. Allows for O(log) accumulation
++ * loop.
++ *
++ * Returns the unconsumed cycles.
++ */
++static cycle_t logarithmic_accumulation(cycle_t offset, int shift)
++{
++	u64 nsecps = (u64)NSEC_PER_SEC << timekeeper.shift;
++
++	/* If the offset is smaller then a shifted interval, do nothing */
++	if (offset < timekeeper.cycle_interval<<shift)
++		return offset;
++
++	/* Accumulate one shifted interval */
++	offset -= timekeeper.cycle_interval << shift;
++	timekeeper.clock->cycle_last += timekeeper.cycle_interval << shift;
++
++	timekeeper.xtime_nsec += timekeeper.xtime_interval << shift;
++	while (timekeeper.xtime_nsec >= nsecps) {
++		timekeeper.xtime_nsec -= nsecps;
++		xtime.tv_sec++;
++		second_overflow();
++	}
++
++	/* Accumulate into raw time */
++	raw_time.tv_nsec += timekeeper.raw_interval << shift;;
++	while (raw_time.tv_nsec >= NSEC_PER_SEC) {
++		raw_time.tv_nsec -= NSEC_PER_SEC;
++		raw_time.tv_sec++;
++	}
++
++	/* Accumulate error between NTP and clock interval */
++	timekeeper.ntp_error += tick_length << shift;
++	timekeeper.ntp_error -= timekeeper.xtime_interval <<
++				(timekeeper.ntp_error_shift + shift);
++
++	return offset;
++}
++
++
+ /**
+  * update_wall_time - Uses the current clocksource to increment the wall time
+  *
+@@ -732,6 +777,7 @@ void update_wall_time(void)
+ 	struct clocksource *clock;
+ 	cycle_t offset;
+ 	u64 nsecs;
++	int shift = 0, maxshift;
+ 
+ 	/* Make sure we're fully resumed: */
+ 	if (unlikely(timekeeping_suspended))
+@@ -745,33 +791,22 @@ void update_wall_time(void)
+ #endif
+ 	timekeeper.xtime_nsec = (s64)xtime.tv_nsec << timekeeper.shift;
+ 
+-	/* normally this loop will run just once, however in the
+-	 * case of lost or late ticks, it will accumulate correctly.
++	/*
++	 * With NO_HZ we may have to accumulate many cycle_intervals
++	 * (think "ticks") worth of time at once. To do this efficiently,
++	 * we calculate the largest doubling multiple of cycle_intervals
++	 * that is smaller then the offset. We then accumulate that
++	 * chunk in one go, and then try to consume the next smaller
++	 * doubled multiple.
+ 	 */
++	shift = ilog2(offset) - ilog2(timekeeper.cycle_interval);
++	shift = max(0, shift);
++	/* Bound shift to one less then what overflows tick_length */
++	maxshift = (8*sizeof(tick_length) - (ilog2(tick_length)+1)) - 1;
++	shift = min(shift, maxshift);
+ 	while (offset >= timekeeper.cycle_interval) {
+-		u64 nsecps = (u64)NSEC_PER_SEC << timekeeper.shift;
+-
+-		/* accumulate one interval */
+-		offset -= timekeeper.cycle_interval;
+-		clock->cycle_last += timekeeper.cycle_interval;
+-
+-		timekeeper.xtime_nsec += timekeeper.xtime_interval;
+-		if (timekeeper.xtime_nsec >= nsecps) {
+-			timekeeper.xtime_nsec -= nsecps;
+-			xtime.tv_sec++;
+-			second_overflow();
+-		}
+-
+-		raw_time.tv_nsec += timekeeper.raw_interval;
+-		if (raw_time.tv_nsec >= NSEC_PER_SEC) {
+-			raw_time.tv_nsec -= NSEC_PER_SEC;
+-			raw_time.tv_sec++;
+-		}
+-
+-		/* accumulate error between NTP and clock interval */
+-		timekeeper.ntp_error += tick_length;
+-		timekeeper.ntp_error -= timekeeper.xtime_interval <<
+-					timekeeper.ntp_error_shift;
++		offset = logarithmic_accumulation(offset, shift);
++		shift--;
+ 	}
+ 
+ 	/* correct the clock when NTP error is too big */

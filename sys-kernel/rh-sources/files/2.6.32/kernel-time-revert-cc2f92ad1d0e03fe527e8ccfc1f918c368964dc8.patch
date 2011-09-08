@@ -1,0 +1,205 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Sun, 7 Mar 2010 23:16:12 -0500
+Subject: [kernel/time] revert cc2f92ad1d0e03fe527e8ccfc1f918c368964dc8
+Message-id: <20100307231612.GR27749@redhat.com>
+Patchwork-id: 23508
+O-Subject: [RHEL6 PATCH] kernel/time: revert
+	cc2f92ad1d0e03fe527e8ccfc1f918c368964dc8
+Bugzilla: 567551
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+BZ#567551
+
+Short version: this patch reverts cc2f92ad1d0e03fe527e8ccfc1f918c368964dc8
+based on a revert also done upstream matching exactly the problem we're seeing
+in BZ#567551 and I wasn't able to test so far.
+
+Long version:
+This patch needs more explanation than the usual. The BZ in question reports a
+problem during installation in which cp fails to preserve the modification
+timestamp while copying keymap files in order to build the initrd. After
+further analysis, it was found that the source file indeed had 1s worth in
+nanoseconds in atime timespec. It's hard to reproduce and I only could
+reproduce it during installation. Now here's the catch.
+
+cc2f92ad1d0e03fe527e8ccfc1f918c368964dc8 is the backport of upstream's
+7bc7d637452383d56ba4368d4336b0dde1bb476d, which removes xtime_cache. In both
+upstream and in the backport, it was done as cleanup since xtime_cache wasn't
+useful anymore. On the upstream's description of the revert:
+
+    This reverts commit 7bc7d637452383d56ba4368d4336b0dde1bb476d, as
+    requested by John Stultz. Quoting John:
+
+     "Petr TitÄ<9B>ra reported an issue where he saw odd atime regressions with
+      2.6.33 where there were a full second worth of nanoseconds in the
+      nanoseconds field.
+
+      He also reviewed the time code and narrowed down the problem: unhandled
+      overflow of the nanosecond field caused by rounding up the
+      sub-nanosecond accumulated time.
+
+      Details:
+
+       * At the end of update_wall_time(), we currently round up the
+      sub-nanosecond portion of accumulated time when storing it into xtime.
+      This was added to avoid time inconsistencies caused when the
+      sub-nanosecond portion was truncated when storing into xtime.
+      Unfortunately we don't handle the possible second overflow caused by
+      that rounding.
+
+       * Previously the xtime_cache code hid this overflow by normalizing the
+      xtime value when storing into the xtime_cache.
+
+       * We could try to handle the second overflow after the rounding up, but
+      since this affects the timekeeping's internal state, this would further
+      complicate the next accumulation cycle, causing small errors in ntp
+      steering. As much as I'd like to get rid of it, the xtime_cache code is
+      known to work.
+
+       * The correct fix is really to include the sub-nanosecond portion in the
+      timekeeping accessor function, so we don't need to round up at during
+      accumulation. This would greatly simplify the accumulation code.
+      Unfortunately, we can't do this safely until the last three
+      non-GENERIC_TIME arches (sparc32, arm, cris) are converted  (those
+      patches are in -mm) and we kill off the spots where arches set xtime
+      directly. This is all 2.6.34 material, so I think reverting the
+      xtime_cache change is the best approach for now.
+
+      Many thanks to Petr for both reporting and finding the issue!"
+
+which matches exaclty what we're seeing here. The problem is that to test this
+patch I need a new compose (it must be the kernel that anaconda is using during
+installation, not later). Ticket #60254 was filled with eng-ops to get this
+done. Further tries to get this running other way around didn't work so far.
+
+Eric Sandeen checked for possible problems on ext4 handling of nanosecond
+timestamps and couldn't find any.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/time.c b/kernel/time.c
+index 2ef4fe2..2e2e469 100644
+--- a/kernel/time.c
++++ b/kernel/time.c
+@@ -136,6 +136,7 @@ static inline void warp_clock(void)
+ 	write_seqlock_irq(&xtime_lock);
+ 	wall_to_monotonic.tv_sec -= sys_tz.tz_minuteswest * 60;
+ 	xtime.tv_sec += sys_tz.tz_minuteswest * 60;
++	update_xtime_cache(0);
+ 	write_sequnlock_irq(&xtime_lock);
+ 	clock_was_set();
+ }
+diff --git a/kernel/time/timekeeping.c b/kernel/time/timekeeping.c
+index 5a447b9..8f1a86a 100644
+--- a/kernel/time/timekeeping.c
++++ b/kernel/time/timekeeping.c
+@@ -165,6 +165,13 @@ struct timespec raw_time;
+ /* flag for if timekeeping is suspended */
+ int __read_mostly timekeeping_suspended;
+ 
++static struct timespec xtime_cache __attribute__ ((aligned (16)));
++void update_xtime_cache(u64 nsec)
++{
++	xtime_cache = xtime;
++	timespec_add_ns(&xtime_cache, nsec);
++}
++
+ /* must hold xtime_lock */
+ void timekeeping_leap_insert(int leapsecond)
+ {
+@@ -325,6 +332,8 @@ int do_settimeofday(struct timespec *tv)
+ 
+ 	xtime = *tv;
+ 
++	update_xtime_cache(0);
++
+ 	timekeeper.ntp_error = 0;
+ 	ntp_clear();
+ 
+@@ -539,6 +548,7 @@ void __init timekeeping_init(void)
+ 	}
+ 	set_normalized_timespec(&wall_to_monotonic,
+ 				-boot.tv_sec, -boot.tv_nsec);
++	update_xtime_cache(0);
+ 	total_sleep_time.tv_sec = 0;
+ 	total_sleep_time.tv_nsec = 0;
+ 	write_sequnlock_irqrestore(&xtime_lock, flags);
+@@ -572,6 +582,7 @@ static int timekeeping_resume(struct sys_device *dev)
+ 		wall_to_monotonic = timespec_sub(wall_to_monotonic, ts);
+ 		total_sleep_time = timespec_add_safe(total_sleep_time, ts);
+ 	}
++	update_xtime_cache(0);
+ 	/* re-base the last cycle value */
+ 	timekeeper.clock->cycle_last = timekeeper.clock->read(timekeeper.clock);
+ 	timekeeper.ntp_error = 0;
+@@ -711,6 +722,7 @@ static void timekeeping_adjust(s64 offset)
+ 				timekeeper.ntp_error_shift;
+ }
+ 
++
+ /**
+  * logarithmic_accumulation - shifted accumulation of cycles
+  *
+@@ -754,6 +766,7 @@ static cycle_t logarithmic_accumulation(cycle_t offset, int shift)
+ 	return offset;
+ }
+ 
++
+ /**
+  * update_wall_time - Uses the current clocksource to increment the wall time
+  *
+@@ -763,6 +776,7 @@ void update_wall_time(void)
+ {
+ 	struct clocksource *clock;
+ 	cycle_t offset;
++	u64 nsecs;
+ 	int shift = 0, maxshift;
+ 
+ 	/* Make sure we're fully resumed: */
+@@ -828,6 +842,9 @@ void update_wall_time(void)
+ 	timekeeper.ntp_error +=	timekeeper.xtime_nsec <<
+ 				timekeeper.ntp_error_shift;
+ 
++	nsecs = clocksource_cyc2ns(offset, timekeeper.mult, timekeeper.shift);
++	update_xtime_cache(nsecs);
++
+ 	/* check to see if there is a new clocksource to use */
+ 	update_vsyscall(&xtime, timekeeper.clock);
+ }
+@@ -864,13 +881,13 @@ void monotonic_to_bootbased(struct timespec *ts)
+ 
+ unsigned long get_seconds(void)
+ {
+-	return xtime.tv_sec;
++	return xtime_cache.tv_sec;
+ }
+ EXPORT_SYMBOL(get_seconds);
+ 
+ struct timespec __current_kernel_time(void)
+ {
+-	return xtime;
++	return xtime_cache;
+ }
+ 
+ struct timespec current_kernel_time(void)
+@@ -880,7 +897,8 @@ struct timespec current_kernel_time(void)
+ 
+ 	do {
+ 		seq = read_seqbegin(&xtime_lock);
+-		now = xtime;
++
++		now = xtime_cache;
+ 	} while (read_seqretry(&xtime_lock, seq));
+ 
+ 	return now;
+@@ -894,7 +912,8 @@ struct timespec get_monotonic_coarse(void)
+ 
+ 	do {
+ 		seq = read_seqbegin(&xtime_lock);
+-		now = xtime;
++
++		now = xtime_cache;
+ 		mono = wall_to_monotonic;
+ 	} while (read_seqretry(&xtime_lock, seq));
+ 

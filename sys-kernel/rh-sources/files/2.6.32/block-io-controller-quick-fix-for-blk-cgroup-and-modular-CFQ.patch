@@ -1,0 +1,36 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:25 -0500
+Subject: [block] io controller: quick fix for blk-cgroup and modular CFQ
+Message-id: <1260298712-12756-53-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21796
+O-Subject: [RHEL6 PATCH 52/59] io controller: quick fix for blk-cgroup and
+	modular CFQ
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit 237e5bc4e51813e9d8ba9da0f63e7acc608882d7
+Author: Jens Axboe <jens.axboe@oracle.com>
+Date:   Fri Dec 4 10:07:38 2009 +0100
+
+    io controller: quick fix for blk-cgroup and modular CFQ
+
+    It's currently not an allowed configuration, so express that in Kconfig.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/Kconfig.iosched b/block/Kconfig.iosched
+index 0a4b28f..8781bea 100644
+--- a/block/Kconfig.iosched
++++ b/block/Kconfig.iosched
+@@ -44,7 +44,7 @@ config IOSCHED_CFQ
+ 
+ config CFQ_GROUP_IOSCHED
+ 	bool "CFQ Group Scheduling support"
+-	depends on IOSCHED_CFQ && CGROUPS
++	depends on IOSCHED_CFQ=y && CGROUPS
+ 	select BLK_CGROUP
+ 	default n
+ 	---help---

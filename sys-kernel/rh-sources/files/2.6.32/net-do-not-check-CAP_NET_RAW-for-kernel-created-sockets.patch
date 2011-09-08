@@ -1,0 +1,890 @@
+From: Eric Paris <eparis@redhat.com>
+Date: Wed, 10 Feb 2010 21:06:06 -0500
+Subject: [net] do not check CAP_NET_RAW for kernel created sockets
+Message-id: <1265835966-27747-1-git-send-email-eparis@redhat.com>
+Patchwork-id: 23223
+O-Subject: [RHEL-6 PATCH] net: do not check CAP_NET_RAW for kernel created
+	sockets
+Bugzilla: 540560
+RH-Acked-by: David S. Miller <davem@redhat.com>
+RH-Acked-by: James Morris <jmorris@redhat.com>
+
+BZ 540560
+
+This is a mashup of 3 upstream patches:
+13f18aa05f5abe135f47b6417537ae2b2fedc18c
+3f378b684453f2a028eda463ce383370545d9cc9
+c84b3268da3b85c9d8a9e504e1001a14ed829e94
+
+With the ultimate goal of not checking the security properties of the active userspace
+task when the kernel is opening a raw socket to talk to itself and userspace has no
+control over these actions.  In meeting this goal we do three things
+
+1) Drop the whole concept of per proto capability checking which isn't used
+2) Pass a flag down the network stack to indicate if an operation was initiated by the kernel
+3) Do no go security checks if the operation was on behalf of the kernel
+
+The upstream commit messages are as follows:
+
+    net: drop capability from protocol definitions
+
+    struct can_proto had a capability field which wasn't ever used.  It is
+    dropped entirely.
+
+    struct inet_protosw had a capability field which can be more clearly
+    expressed in the code by just checking if sock->type = SOCK_RAW.
+
+*******
+
+    net: pass kern to net_proto_family create function
+
+    The generic __sock_create function has a kern argument which allows the
+    security system to make decisions based on if a socket is being created by
+    the kernel or by userspace.  This patch passes that flag to the
+    net_proto_family specific create function, so it can do the same thing.
+
+*******
+
+    net: check kern before calling security subsystem
+
+    Before calling capable(CAP_NET_RAW) check if this operations is on behalf
+    of the kernel or on behalf of userspace.  Do not do the security check if
+    it is on behalf of the kernel.
+
+    Signed-off-by: Eric Paris <eparis@redhat.com>
+    Acked-by: Arnaldo Carvalho de Melo <acme@redhat.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/isdn/mISDN/socket.c b/drivers/isdn/mISDN/socket.c
+index feb0fa4..8167346 100644
+--- a/drivers/isdn/mISDN/socket.c
++++ b/drivers/isdn/mISDN/socket.c
+@@ -779,7 +779,7 @@ base_sock_create(struct net *net, struct socket *sock, int protocol)
+ }
+ 
+ static int
+-mISDN_sock_create(struct net *net, struct socket *sock, int proto)
++mISDN_sock_create(struct net *net, struct socket *sock, int proto, int kern)
+ {
+ 	int err = -EPROTONOSUPPORT;
+ 
+diff --git a/drivers/net/pppox.c b/drivers/net/pppox.c
+index 4f6d33f..a155baf 100644
+--- a/drivers/net/pppox.c
++++ b/drivers/net/pppox.c
+@@ -104,7 +104,8 @@ int pppox_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
+ 
+ EXPORT_SYMBOL(pppox_ioctl);
+ 
+-static int pppox_create(struct net *net, struct socket *sock, int protocol)
++static int pppox_create(struct net *net, struct socket *sock, int protocol,
++			int kern)
+ {
+ 	int rc = -EPROTOTYPE;
+ 
+diff --git a/include/linux/can/core.h b/include/linux/can/core.h
+index 25085cb..6c507be 100644
+--- a/include/linux/can/core.h
++++ b/include/linux/can/core.h
+@@ -32,14 +32,12 @@
+  * struct can_proto - CAN protocol structure
+  * @type:       type argument in socket() syscall, e.g. SOCK_DGRAM.
+  * @protocol:   protocol number in socket() syscall.
+- * @capability: capability needed to open the socket, or -1 for no restriction.
+  * @ops:        pointer to struct proto_ops for sock->ops.
+  * @prot:       pointer to struct proto structure.
+  */
+ struct can_proto {
+ 	int              type;
+ 	int              protocol;
+-	int              capability;
+ 	struct proto_ops *ops;
+ 	struct proto     *prot;
+ };
+diff --git a/include/linux/net.h b/include/linux/net.h
+index 529a093..3a63efd 100644
+--- a/include/linux/net.h
++++ b/include/linux/net.h
+@@ -200,7 +200,8 @@ struct proto_ops {
+ 
+ struct net_proto_family {
+ 	int		family;
+-	int		(*create)(struct net *net, struct socket *sock, int protocol);
++	int		(*create)(struct net *net, struct socket *sock,
++				  int protocol, int kern);
+ 	struct module	*owner;
+ };
+ 
+diff --git a/include/net/protocol.h b/include/net/protocol.h
+index 60249e5..8321b2c 100644
+--- a/include/net/protocol.h
++++ b/include/net/protocol.h
+@@ -83,10 +83,6 @@ struct inet_protosw {
+ 	struct proto	 *prot;
+ 	const struct proto_ops *ops;
+   
+-	int              capability; /* Which (if any) capability do
+-				      * we need to use this socket
+-				      * interface?
+-                                      */
+ 	char             no_check;   /* checksum on rcv/xmit/none? */
+ 	unsigned char	 flags;      /* See INET_PROTOSW_* below.  */
+ };
+diff --git a/net/appletalk/ddp.c b/net/appletalk/ddp.c
+index b1a4290..7c22d90 100644
+--- a/net/appletalk/ddp.c
++++ b/net/appletalk/ddp.c
+@@ -1021,7 +1021,8 @@ static struct proto ddp_proto = {
+  * Create a socket. Initialise the socket, blank the addresses
+  * set the state.
+  */
+-static int atalk_create(struct net *net, struct socket *sock, int protocol)
++static int atalk_create(struct net *net, struct socket *sock, int protocol,
++			int kern)
+ {
+ 	struct sock *sk;
+ 	int rc = -ESOCKTNOSUPPORT;
+diff --git a/net/atm/pvc.c b/net/atm/pvc.c
+index d4c0245..e879725 100644
+--- a/net/atm/pvc.c
++++ b/net/atm/pvc.c
+@@ -127,7 +127,8 @@ static const struct proto_ops pvc_proto_ops = {
+ };
+ 
+ 
+-static int pvc_create(struct net *net, struct socket *sock,int protocol)
++static int pvc_create(struct net *net, struct socket *sock, int protocol,
++		      int kern)
+ {
+ 	if (net != &init_net)
+ 		return -EAFNOSUPPORT;
+diff --git a/net/atm/svc.c b/net/atm/svc.c
+index f90d143..ed096a6 100644
+--- a/net/atm/svc.c
++++ b/net/atm/svc.c
+@@ -25,7 +25,7 @@
+ #include "signaling.h"
+ #include "addr.h"
+ 
+-static int svc_create(struct net *net, struct socket *sock,int protocol);
++static int svc_create(struct net *net, struct socket *sock, int protocol, int kern);
+ 
+ /*
+  * Note: since all this is still nicely synchronized with the signaling demon,
+@@ -330,7 +330,7 @@ static int svc_accept(struct socket *sock,struct socket *newsock,int flags)
+ 
+ 	lock_sock(sk);
+ 
+-	error = svc_create(sock_net(sk), newsock,0);
++	error = svc_create(sock_net(sk), newsock, 0, 0);
+ 	if (error)
+ 		goto out;
+ 
+@@ -650,7 +650,8 @@ static const struct proto_ops svc_proto_ops = {
+ };
+ 
+ 
+-static int svc_create(struct net *net, struct socket *sock,int protocol)
++static int svc_create(struct net *net, struct socket *sock, int protocol,
++		      int kern)
+ {
+ 	int error;
+ 
+diff --git a/net/ax25/af_ax25.c b/net/ax25/af_ax25.c
+index f454607..274d5c0 100644
+--- a/net/ax25/af_ax25.c
++++ b/net/ax25/af_ax25.c
+@@ -800,7 +800,8 @@ static struct proto ax25_proto = {
+ 	.obj_size = sizeof(struct sock),
+ };
+ 
+-static int ax25_create(struct net *net, struct socket *sock, int protocol)
++static int ax25_create(struct net *net, struct socket *sock, int protocol,
++		       int kern)
+ {
+ 	struct sock *sk;
+ 	ax25_cb *ax25;
+diff --git a/net/bluetooth/af_bluetooth.c b/net/bluetooth/af_bluetooth.c
+index 1ed9926..b7a10bb 100644
+--- a/net/bluetooth/af_bluetooth.c
++++ b/net/bluetooth/af_bluetooth.c
+@@ -126,7 +126,8 @@ int bt_sock_unregister(int proto)
+ }
+ EXPORT_SYMBOL(bt_sock_unregister);
+ 
+-static int bt_sock_create(struct net *net, struct socket *sock, int proto)
++static int bt_sock_create(struct net *net, struct socket *sock, int proto,
++			  int kern)
+ {
+ 	int err;
+ 
+@@ -144,7 +145,7 @@ static int bt_sock_create(struct net *net, struct socket *sock, int proto)
+ 	read_lock(&bt_proto_lock);
+ 
+ 	if (bt_proto[proto] && try_module_get(bt_proto[proto]->owner)) {
+-		err = bt_proto[proto]->create(net, sock, proto);
++		err = bt_proto[proto]->create(net, sock, proto, kern);
+ 		bt_sock_reclassify_lock(sock, proto);
+ 		module_put(bt_proto[proto]->owner);
+ 	}
+diff --git a/net/bluetooth/bnep/sock.c b/net/bluetooth/bnep/sock.c
+index e857628..ee86b31 100644
+--- a/net/bluetooth/bnep/sock.c
++++ b/net/bluetooth/bnep/sock.c
+@@ -195,7 +195,8 @@ static struct proto bnep_proto = {
+ 	.obj_size	= sizeof(struct bt_sock)
+ };
+ 
+-static int bnep_sock_create(struct net *net, struct socket *sock, int protocol)
++static int bnep_sock_create(struct net *net, struct socket *sock, int protocol,
++			    int kern)
+ {
+ 	struct sock *sk;
+ 
+diff --git a/net/bluetooth/cmtp/sock.c b/net/bluetooth/cmtp/sock.c
+index 16b0fad..536482f 100644
+--- a/net/bluetooth/cmtp/sock.c
++++ b/net/bluetooth/cmtp/sock.c
+@@ -190,7 +190,8 @@ static struct proto cmtp_proto = {
+ 	.obj_size	= sizeof(struct bt_sock)
+ };
+ 
+-static int cmtp_sock_create(struct net *net, struct socket *sock, int protocol)
++static int cmtp_sock_create(struct net *net, struct socket *sock, int protocol,
++			    int kern)
+ {
+ 	struct sock *sk;
+ 
+diff --git a/net/bluetooth/hci_sock.c b/net/bluetooth/hci_sock.c
+index 75302a9..94a138f 100644
+--- a/net/bluetooth/hci_sock.c
++++ b/net/bluetooth/hci_sock.c
+@@ -621,7 +621,8 @@ static struct proto hci_sk_proto = {
+ 	.obj_size	= sizeof(struct hci_pinfo)
+ };
+ 
+-static int hci_sock_create(struct net *net, struct socket *sock, int protocol)
++static int hci_sock_create(struct net *net, struct socket *sock, int protocol,
++			   int kern)
+ {
+ 	struct sock *sk;
+ 
+diff --git a/net/bluetooth/hidp/sock.c b/net/bluetooth/hidp/sock.c
+index 37c9d7d..40fac2c 100644
+--- a/net/bluetooth/hidp/sock.c
++++ b/net/bluetooth/hidp/sock.c
+@@ -241,7 +241,8 @@ static struct proto hidp_proto = {
+ 	.obj_size	= sizeof(struct bt_sock)
+ };
+ 
+-static int hidp_sock_create(struct net *net, struct socket *sock, int protocol)
++static int hidp_sock_create(struct net *net, struct socket *sock, int protocol,
++			    int kern)
+ {
+ 	struct sock *sk;
+ 
+diff --git a/net/bluetooth/l2cap.c b/net/bluetooth/l2cap.c
+index 947f8bb..db9a145 100644
+--- a/net/bluetooth/l2cap.c
++++ b/net/bluetooth/l2cap.c
+@@ -819,7 +819,8 @@ static struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock, int p
+ 	return sk;
+ }
+ 
+-static int l2cap_sock_create(struct net *net, struct socket *sock, int protocol)
++static int l2cap_sock_create(struct net *net, struct socket *sock, int protocol,
++			     int kern)
+ {
+ 	struct sock *sk;
+ 
+@@ -831,7 +832,7 @@ static int l2cap_sock_create(struct net *net, struct socket *sock, int protocol)
+ 			sock->type != SOCK_DGRAM && sock->type != SOCK_RAW)
+ 		return -ESOCKTNOSUPPORT;
+ 
+-	if (sock->type == SOCK_RAW && !capable(CAP_NET_RAW))
++	if (sock->type == SOCK_RAW && !kern && !capable(CAP_NET_RAW))
+ 		return -EPERM;
+ 
+ 	sock->ops = &l2cap_sock_ops;
+diff --git a/net/bluetooth/rfcomm/sock.c b/net/bluetooth/rfcomm/sock.c
+index 637b2ef..ec655c5 100644
+--- a/net/bluetooth/rfcomm/sock.c
++++ b/net/bluetooth/rfcomm/sock.c
+@@ -323,7 +323,8 @@ static struct sock *rfcomm_sock_alloc(struct net *net, struct socket *sock, int
+ 	return sk;
+ }
+ 
+-static int rfcomm_sock_create(struct net *net, struct socket *sock, int protocol)
++static int rfcomm_sock_create(struct net *net, struct socket *sock,
++			      int protocol, int kern)
+ {
+ 	struct sock *sk;
+ 
+diff --git a/net/bluetooth/sco.c b/net/bluetooth/sco.c
+index 77f4153..b24bfb7 100644
+--- a/net/bluetooth/sco.c
++++ b/net/bluetooth/sco.c
+@@ -430,7 +430,8 @@ static struct sock *sco_sock_alloc(struct net *net, struct socket *sock, int pro
+ 	return sk;
+ }
+ 
+-static int sco_sock_create(struct net *net, struct socket *sock, int protocol)
++static int sco_sock_create(struct net *net, struct socket *sock, int protocol,
++			   int kern)
+ {
+ 	struct sock *sk;
+ 
+diff --git a/net/can/af_can.c b/net/can/af_can.c
+index f31aabb..4eda97c 100644
+--- a/net/can/af_can.c
++++ b/net/can/af_can.c
+@@ -114,7 +114,8 @@ static void can_sock_destruct(struct sock *sk)
+ 	skb_queue_purge(&sk->sk_receive_queue);
+ }
+ 
+-static int can_create(struct net *net, struct socket *sock, int protocol)
++static int can_create(struct net *net, struct socket *sock, int protocol,
++		      int kern)
+ {
+ 	struct sock *sk;
+ 	struct can_proto *cp;
+@@ -156,11 +157,6 @@ static int can_create(struct net *net, struct socket *sock, int protocol)
+ 		goto errout;
+ 	}
+ 
+-	if (cp->capability >= 0 && !capable(cp->capability)) {
+-		err = -EPERM;
+-		goto errout;
+-	}
+-
+ 	sock->ops = cp->ops;
+ 
+ 	sk = sk_alloc(net, PF_CAN, GFP_KERNEL, cp->prot);
+diff --git a/net/can/bcm.c b/net/can/bcm.c
+index 69def95..c302c2e 100644
+--- a/net/can/bcm.c
++++ b/net/can/bcm.c
+@@ -1581,7 +1581,6 @@ static struct proto bcm_proto __read_mostly = {
+ static struct can_proto bcm_can_proto __read_mostly = {
+ 	.type       = SOCK_DGRAM,
+ 	.protocol   = CAN_BCM,
+-	.capability = -1,
+ 	.ops        = &bcm_ops,
+ 	.prot       = &bcm_proto,
+ };
+diff --git a/net/can/raw.c b/net/can/raw.c
+index 962fc9f..6aebd6b 100644
+--- a/net/can/raw.c
++++ b/net/can/raw.c
+@@ -744,7 +744,6 @@ static struct proto raw_proto __read_mostly = {
+ static struct can_proto raw_can_proto __read_mostly = {
+ 	.type       = SOCK_RAW,
+ 	.protocol   = CAN_RAW,
+-	.capability = -1,
+ 	.ops        = &raw_ops,
+ 	.prot       = &raw_proto,
+ };
+diff --git a/net/dccp/ipv4.c b/net/dccp/ipv4.c
+index 7302e14..17737de 100644
+--- a/net/dccp/ipv4.c
++++ b/net/dccp/ipv4.c
+@@ -987,7 +987,6 @@ static struct inet_protosw dccp_v4_protosw = {
+ 	.protocol	= IPPROTO_DCCP,
+ 	.prot		= &dccp_v4_prot,
+ 	.ops		= &inet_dccp_ops,
+-	.capability	= -1,
+ 	.no_check	= 0,
+ 	.flags		= INET_PROTOSW_ICSK,
+ };
+diff --git a/net/dccp/ipv6.c b/net/dccp/ipv6.c
+index e48ca5d..9d3fbac 100644
+--- a/net/dccp/ipv6.c
++++ b/net/dccp/ipv6.c
+@@ -1188,7 +1188,6 @@ static struct inet_protosw dccp_v6_protosw = {
+ 	.protocol	= IPPROTO_DCCP,
+ 	.prot		= &dccp_v6_prot,
+ 	.ops		= &inet6_dccp_ops,
+-	.capability	= -1,
+ 	.flags		= INET_PROTOSW_ICSK,
+ };
+ 
+diff --git a/net/decnet/af_decnet.c b/net/decnet/af_decnet.c
+index 7a58c87..5540230 100644
+--- a/net/decnet/af_decnet.c
++++ b/net/decnet/af_decnet.c
+@@ -675,7 +675,8 @@ char *dn_addr2asc(__u16 addr, char *buf)
+ 
+ 
+ 
+-static int dn_create(struct net *net, struct socket *sock, int protocol)
++static int dn_create(struct net *net, struct socket *sock, int protocol,
++		     int kern)
+ {
+ 	struct sock *sk;
+ 
+diff --git a/net/econet/af_econet.c b/net/econet/af_econet.c
+index 0e0254f..b9d5f2f 100644
+--- a/net/econet/af_econet.c
++++ b/net/econet/af_econet.c
+@@ -605,7 +605,8 @@ static struct proto econet_proto = {
+  *	Create an Econet socket
+  */
+ 
+-static int econet_create(struct net *net, struct socket *sock, int protocol)
++static int econet_create(struct net *net, struct socket *sock, int protocol,
++			 int kern)
+ {
+ 	struct sock *sk;
+ 	struct econet_sock *eo;
+diff --git a/net/ieee802154/af_ieee802154.c b/net/ieee802154/af_ieee802154.c
+index cd949d5..40dcb54 100644
+--- a/net/ieee802154/af_ieee802154.c
++++ b/net/ieee802154/af_ieee802154.c
+@@ -234,7 +234,7 @@ static const struct proto_ops ieee802154_dgram_ops = {
+  * set the state.
+  */
+ static int ieee802154_create(struct net *net, struct socket *sock,
+-		int protocol)
++			     int protocol, int kern)
+ {
+ 	struct sock *sk;
+ 	int rc;
+diff --git a/net/ipv4/af_inet.c b/net/ipv4/af_inet.c
+index 57737b8..d70e740 100644
+--- a/net/ipv4/af_inet.c
++++ b/net/ipv4/af_inet.c
+@@ -262,7 +262,8 @@ static inline int inet_netns_ok(struct net *net, int protocol)
+  *	Create an inet socket.
+  */
+ 
+-static int inet_create(struct net *net, struct socket *sock, int protocol)
++static int inet_create(struct net *net, struct socket *sock, int protocol,
++		       int kern)
+ {
+ 	struct sock *sk;
+ 	struct inet_protosw *answer;
+@@ -325,7 +326,7 @@ lookup_protocol:
+ 	}
+ 
+ 	err = -EPERM;
+-	if (answer->capability > 0 && !capable(answer->capability))
++	if (sock->type == SOCK_RAW && !kern && !capable(CAP_NET_RAW))
+ 		goto out_rcu_unlock;
+ 
+ 	err = -EAFNOSUPPORT;
+@@ -947,7 +948,6 @@ static struct inet_protosw inetsw_array[] =
+ 		.protocol =   IPPROTO_TCP,
+ 		.prot =       &tcp_prot,
+ 		.ops =        &inet_stream_ops,
+-		.capability = -1,
+ 		.no_check =   0,
+ 		.flags =      INET_PROTOSW_PERMANENT |
+ 			      INET_PROTOSW_ICSK,
+@@ -958,7 +958,6 @@ static struct inet_protosw inetsw_array[] =
+ 		.protocol =   IPPROTO_UDP,
+ 		.prot =       &udp_prot,
+ 		.ops =        &inet_dgram_ops,
+-		.capability = -1,
+ 		.no_check =   UDP_CSUM_DEFAULT,
+ 		.flags =      INET_PROTOSW_PERMANENT,
+        },
+@@ -969,7 +968,6 @@ static struct inet_protosw inetsw_array[] =
+ 	       .protocol =   IPPROTO_IP,	/* wild card */
+ 	       .prot =       &raw_prot,
+ 	       .ops =        &inet_sockraw_ops,
+-	       .capability = CAP_NET_RAW,
+ 	       .no_check =   UDP_CSUM_DEFAULT,
+ 	       .flags =      INET_PROTOSW_REUSE,
+        }
+diff --git a/net/ipv4/udplite.c b/net/ipv4/udplite.c
+index 95248d7..dd7ce60 100644
+--- a/net/ipv4/udplite.c
++++ b/net/ipv4/udplite.c
+@@ -64,7 +64,6 @@ static struct inet_protosw udplite4_protosw = {
+ 	.protocol	=  IPPROTO_UDPLITE,
+ 	.prot		=  &udplite_prot,
+ 	.ops		=  &inet_dgram_ops,
+-	.capability	= -1,
+ 	.no_check	=  0,		/* must checksum (RFC 3828) */
+ 	.flags		=  INET_PROTOSW_PERMANENT,
+ };
+diff --git a/net/ipv6/af_inet6.c b/net/ipv6/af_inet6.c
+index e127a32..2aa1276 100644
+--- a/net/ipv6/af_inet6.c
++++ b/net/ipv6/af_inet6.c
+@@ -95,7 +95,8 @@ static __inline__ struct ipv6_pinfo *inet6_sk_generic(struct sock *sk)
+ 	return (struct ipv6_pinfo *)(((u8 *)sk) + offset);
+ }
+ 
+-static int inet6_create(struct net *net, struct socket *sock, int protocol)
++static int inet6_create(struct net *net, struct socket *sock, int protocol,
++			int kern)
+ {
+ 	struct inet_sock *inet;
+ 	struct ipv6_pinfo *np;
+@@ -158,7 +159,7 @@ lookup_protocol:
+ 	}
+ 
+ 	err = -EPERM;
+-	if (answer->capability > 0 && !capable(answer->capability))
++	if (sock->type == SOCK_RAW && !kern && !capable(CAP_NET_RAW))
+ 		goto out_rcu_unlock;
+ 
+ 	sock->ops = answer->ops;
+diff --git a/net/ipv6/raw.c b/net/ipv6/raw.c
+index d8375bc..d7a0f4b 100644
+--- a/net/ipv6/raw.c
++++ b/net/ipv6/raw.c
+@@ -1338,7 +1338,6 @@ static struct inet_protosw rawv6_protosw = {
+ 	.protocol	= IPPROTO_IP,	/* wild card */
+ 	.prot		= &rawv6_prot,
+ 	.ops		= &inet6_sockraw_ops,
+-	.capability	= CAP_NET_RAW,
+ 	.no_check	= UDP_CSUM_DEFAULT,
+ 	.flags		= INET_PROTOSW_REUSE,
+ };
+diff --git a/net/ipv6/tcp_ipv6.c b/net/ipv6/tcp_ipv6.c
+index 21d100b..a6589ab 100644
+--- a/net/ipv6/tcp_ipv6.c
++++ b/net/ipv6/tcp_ipv6.c
+@@ -2109,7 +2109,6 @@ static struct inet_protosw tcpv6_protosw = {
+ 	.protocol	=	IPPROTO_TCP,
+ 	.prot		=	&tcpv6_prot,
+ 	.ops		=	&inet6_stream_ops,
+-	.capability	=	-1,
+ 	.no_check	=	0,
+ 	.flags		=	INET_PROTOSW_PERMANENT |
+ 				INET_PROTOSW_ICSK,
+diff --git a/net/ipv6/udp.c b/net/ipv6/udp.c
+index 51e7909..6131388 100644
+--- a/net/ipv6/udp.c
++++ b/net/ipv6/udp.c
+@@ -1282,7 +1282,6 @@ static struct inet_protosw udpv6_protosw = {
+ 	.protocol =  IPPROTO_UDP,
+ 	.prot =      &udpv6_prot,
+ 	.ops =       &inet6_dgram_ops,
+-	.capability =-1,
+ 	.no_check =  UDP_CSUM_DEFAULT,
+ 	.flags =     INET_PROTOSW_PERMANENT,
+ };
+diff --git a/net/ipv6/udplite.c b/net/ipv6/udplite.c
+index d737a27..6ea6938 100644
+--- a/net/ipv6/udplite.c
++++ b/net/ipv6/udplite.c
+@@ -62,7 +62,6 @@ static struct inet_protosw udplite6_protosw = {
+ 	.protocol	= IPPROTO_UDPLITE,
+ 	.prot		= &udplitev6_prot,
+ 	.ops		= &inet6_dgram_ops,
+-	.capability	= -1,
+ 	.no_check	= 0,
+ 	.flags		= INET_PROTOSW_PERMANENT,
+ };
+diff --git a/net/ipx/af_ipx.c b/net/ipx/af_ipx.c
+index 66c7a20..7a7ac38 100644
+--- a/net/ipx/af_ipx.c
++++ b/net/ipx/af_ipx.c
+@@ -1352,7 +1352,8 @@ static struct proto ipx_proto = {
+ 	.obj_size = sizeof(struct ipx_sock),
+ };
+ 
+-static int ipx_create(struct net *net, struct socket *sock, int protocol)
++static int ipx_create(struct net *net, struct socket *sock, int protocol,
++		      int kern)
+ {
+ 	int rc = -ESOCKTNOSUPPORT;
+ 	struct sock *sk;
+diff --git a/net/irda/af_irda.c b/net/irda/af_irda.c
+index dd35641..ef1ac44 100644
+--- a/net/irda/af_irda.c
++++ b/net/irda/af_irda.c
+@@ -61,7 +61,7 @@
+ 
+ #include <net/irda/af_irda.h>
+ 
+-static int irda_create(struct net *net, struct socket *sock, int protocol);
++static int irda_create(struct net *net, struct socket *sock, int protocol, int kern);
+ 
+ static const struct proto_ops irda_stream_ops;
+ static const struct proto_ops irda_seqpacket_ops;
+@@ -839,7 +839,7 @@ static int irda_accept(struct socket *sock, struct socket *newsock, int flags)
+ 
+ 	IRDA_DEBUG(2, "%s()\n", __func__);
+ 
+-	err = irda_create(sock_net(sk), newsock, sk->sk_protocol);
++	err = irda_create(sock_net(sk), newsock, sk->sk_protocol, 0);
+ 	if (err)
+ 		return err;
+ 
+@@ -1062,7 +1062,8 @@ static struct proto irda_proto = {
+  *    Create IrDA socket
+  *
+  */
+-static int irda_create(struct net *net, struct socket *sock, int protocol)
++static int irda_create(struct net *net, struct socket *sock, int protocol,
++		       int kern)
+ {
+ 	struct sock *sk;
+ 	struct irda_sock *self;
+diff --git a/net/iucv/af_iucv.c b/net/iucv/af_iucv.c
+index 61470ae..e1651b6 100644
+--- a/net/iucv/af_iucv.c
++++ b/net/iucv/af_iucv.c
+@@ -481,7 +481,8 @@ static struct sock *iucv_sock_alloc(struct socket *sock, int proto, gfp_t prio)
+ }
+ 
+ /* Create an IUCV socket */
+-static int iucv_sock_create(struct net *net, struct socket *sock, int protocol)
++static int iucv_sock_create(struct net *net, struct socket *sock, int protocol,
++			    int kern)
+ {
+ 	struct sock *sk;
+ 
+diff --git a/net/key/af_key.c b/net/key/af_key.c
+index fcb36ba..109eb56 100644
+--- a/net/key/af_key.c
++++ b/net/key/af_key.c
+@@ -177,7 +177,8 @@ static struct proto key_proto = {
+ 	.obj_size = sizeof(struct pfkey_sock),
+ };
+ 
+-static int pfkey_create(struct net *net, struct socket *sock, int protocol)
++static int pfkey_create(struct net *net, struct socket *sock, int protocol,
++			int kern)
+ {
+ 	struct netns_pfkey *net_pfkey = net_generic(net, pfkey_net_id);
+ 	struct sock *sk;
+diff --git a/net/llc/af_llc.c b/net/llc/af_llc.c
+index 7aa4fd1..6f38b8a 100644
+--- a/net/llc/af_llc.c
++++ b/net/llc/af_llc.c
+@@ -140,14 +140,17 @@ static struct proto llc_proto = {
+ 
+ /**
+  *	llc_ui_create - alloc and init a new llc_ui socket
++ *	@net: network namespace (must be default network)
+  *	@sock: Socket to initialize and attach allocated sk to.
+  *	@protocol: Unused.
++ *	@kern: on behalf of kernel or userspace
+  *
+  *	Allocate and initialize a new llc_ui socket, validate the user wants a
+  *	socket type we have available.
+  *	Returns 0 upon success, negative upon failure.
+  */
+-static int llc_ui_create(struct net *net, struct socket *sock, int protocol)
++static int llc_ui_create(struct net *net, struct socket *sock, int protocol,
++			 int kern)
+ {
+ 	struct sock *sk;
+ 	int rc = -ESOCKTNOSUPPORT;
+diff --git a/net/netlink/af_netlink.c b/net/netlink/af_netlink.c
+index 19e9800..e948525 100644
+--- a/net/netlink/af_netlink.c
++++ b/net/netlink/af_netlink.c
+@@ -428,7 +428,8 @@ static int __netlink_create(struct net *net, struct socket *sock,
+ 	return 0;
+ }
+ 
+-static int netlink_create(struct net *net, struct socket *sock, int protocol)
++static int netlink_create(struct net *net, struct socket *sock, int protocol,
++			  int kern)
+ {
+ 	struct module *module = NULL;
+ 	struct mutex *cb_mutex;
+diff --git a/net/netrom/af_netrom.c b/net/netrom/af_netrom.c
+index 7a83495..837e10b 100644
+--- a/net/netrom/af_netrom.c
++++ b/net/netrom/af_netrom.c
+@@ -425,7 +425,8 @@ static struct proto nr_proto = {
+ 	.obj_size = sizeof(struct nr_sock),
+ };
+ 
+-static int nr_create(struct net *net, struct socket *sock, int protocol)
++static int nr_create(struct net *net, struct socket *sock, int protocol,
++		     int kern)
+ {
+ 	struct sock *sk;
+ 	struct nr_sock *nr;
+diff --git a/net/packet/af_packet.c b/net/packet/af_packet.c
+index 27c4225..1bd109e 100644
+--- a/net/packet/af_packet.c
++++ b/net/packet/af_packet.c
+@@ -1340,7 +1340,8 @@ static struct proto packet_proto = {
+  *	Create a packet of type SOCK_PACKET.
+  */
+ 
+-static int packet_create(struct net *net, struct socket *sock, int protocol)
++static int packet_create(struct net *net, struct socket *sock, int protocol,
++			 int kern)
+ {
+ 	struct sock *sk;
+ 	struct packet_sock *po;
+diff --git a/net/phonet/af_phonet.c b/net/phonet/af_phonet.c
+index f60c0c2..61bcae9 100644
+--- a/net/phonet/af_phonet.c
++++ b/net/phonet/af_phonet.c
+@@ -60,7 +60,8 @@ static inline void phonet_proto_put(struct phonet_protocol *pp)
+ 
+ /* protocol family functions */
+ 
+-static int pn_socket_create(struct net *net, struct socket *sock, int protocol)
++static int pn_socket_create(struct net *net, struct socket *sock, int protocol,
++			    int kern)
+ {
+ 	struct sock *sk;
+ 	struct pn_sock *pn;
+diff --git a/net/rds/af_rds.c b/net/rds/af_rds.c
+index 98e0538..ca35aad 100644
+--- a/net/rds/af_rds.c
++++ b/net/rds/af_rds.c
+@@ -407,7 +407,8 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
+ 	return 0;
+ }
+ 
+-static int rds_create(struct net *net, struct socket *sock, int protocol)
++static int rds_create(struct net *net, struct socket *sock, int protocol,
++		      int kern)
+ {
+ 	struct sock *sk;
+ 
+diff --git a/net/rose/af_rose.c b/net/rose/af_rose.c
+index 502cce7..f167ed0 100644
+--- a/net/rose/af_rose.c
++++ b/net/rose/af_rose.c
+@@ -512,7 +512,8 @@ static struct proto rose_proto = {
+ 	.obj_size = sizeof(struct rose_sock),
+ };
+ 
+-static int rose_create(struct net *net, struct socket *sock, int protocol)
++static int rose_create(struct net *net, struct socket *sock, int protocol,
++		       int kern)
+ {
+ 	struct sock *sk;
+ 	struct rose_sock *rose;
+diff --git a/net/rxrpc/af_rxrpc.c b/net/rxrpc/af_rxrpc.c
+index a86afce..b37e304 100644
+--- a/net/rxrpc/af_rxrpc.c
++++ b/net/rxrpc/af_rxrpc.c
+@@ -608,7 +608,8 @@ static unsigned int rxrpc_poll(struct file *file, struct socket *sock,
+ /*
+  * create an RxRPC socket
+  */
+-static int rxrpc_create(struct net *net, struct socket *sock, int protocol)
++static int rxrpc_create(struct net *net, struct socket *sock, int protocol,
++			int kern)
+ {
+ 	struct rxrpc_sock *rx;
+ 	struct sock *sk;
+diff --git a/net/sctp/ipv6.c b/net/sctp/ipv6.c
+index bb280e6..bacd6a7 100644
+--- a/net/sctp/ipv6.c
++++ b/net/sctp/ipv6.c
+@@ -930,7 +930,6 @@ static struct inet_protosw sctpv6_seqpacket_protosw = {
+ 	.protocol      = IPPROTO_SCTP,
+ 	.prot 	       = &sctpv6_prot,
+ 	.ops           = &inet6_seqpacket_ops,
+-	.capability    = -1,
+ 	.no_check      = 0,
+ 	.flags         = SCTP_PROTOSW_FLAG
+ };
+@@ -939,7 +938,6 @@ static struct inet_protosw sctpv6_stream_protosw = {
+ 	.protocol      = IPPROTO_SCTP,
+ 	.prot 	       = &sctpv6_prot,
+ 	.ops           = &inet6_seqpacket_ops,
+-	.capability    = -1,
+ 	.no_check      = 0,
+ 	.flags         = SCTP_PROTOSW_FLAG,
+ };
+diff --git a/net/sctp/protocol.c b/net/sctp/protocol.c
+index 612dc87..75a4ff1 100644
+--- a/net/sctp/protocol.c
++++ b/net/sctp/protocol.c
+@@ -909,7 +909,6 @@ static struct inet_protosw sctp_seqpacket_protosw = {
+ 	.protocol   = IPPROTO_SCTP,
+ 	.prot       = &sctp_prot,
+ 	.ops        = &inet_seqpacket_ops,
+-	.capability = -1,
+ 	.no_check   = 0,
+ 	.flags      = SCTP_PROTOSW_FLAG
+ };
+@@ -918,7 +917,6 @@ static struct inet_protosw sctp_stream_protosw = {
+ 	.protocol   = IPPROTO_SCTP,
+ 	.prot       = &sctp_prot,
+ 	.ops        = &inet_seqpacket_ops,
+-	.capability = -1,
+ 	.no_check   = 0,
+ 	.flags      = SCTP_PROTOSW_FLAG
+ };
+diff --git a/net/socket.c b/net/socket.c
+index 8fd0d5c..2e65798 100644
+--- a/net/socket.c
++++ b/net/socket.c
+@@ -1231,7 +1231,7 @@ static int __sock_create(struct net *net, int family, int type, int protocol,
+ 	/* Now protected by module ref count */
+ 	rcu_read_unlock();
+ 
+-	err = pf->create(net, sock, protocol);
++	err = pf->create(net, sock, protocol, kern);
+ 	if (err < 0)
+ 		goto out_module_put;
+ 
+diff --git a/net/tipc/socket.c b/net/tipc/socket.c
+index e6d9abf..d00c211 100644
+--- a/net/tipc/socket.c
++++ b/net/tipc/socket.c
+@@ -177,6 +177,7 @@ static void reject_rx_queue(struct sock *sk)
+  * @net: network namespace (must be default network)
+  * @sock: pre-allocated socket structure
+  * @protocol: protocol indicator (must be 0)
++ * @kern: caused by kernel or by userspace?
+  *
+  * This routine creates additional data structures used by the TIPC socket,
+  * initializes them, and links them together.
+@@ -184,7 +185,8 @@ static void reject_rx_queue(struct sock *sk)
+  * Returns 0 on success, errno otherwise
+  */
+ 
+-static int tipc_create(struct net *net, struct socket *sock, int protocol)
++static int tipc_create(struct net *net, struct socket *sock, int protocol,
++		       int kern)
+ {
+ 	const struct proto_ops *ops;
+ 	socket_state state;
+@@ -1528,7 +1530,7 @@ static int accept(struct socket *sock, struct socket *new_sock, int flags)
+ 
+ 	buf = skb_peek(&sk->sk_receive_queue);
+ 
+-	res = tipc_create(sock_net(sock->sk), new_sock, 0);
++	res = tipc_create(sock_net(sock->sk), new_sock, 0, 0);
+ 	if (!res) {
+ 		struct sock *new_sk = new_sock->sk;
+ 		struct tipc_sock *new_tsock = tipc_sk(new_sk);
+diff --git a/net/unix/af_unix.c b/net/unix/af_unix.c
+index fc820cd..a1e3c85 100644
+--- a/net/unix/af_unix.c
++++ b/net/unix/af_unix.c
+@@ -621,7 +621,8 @@ out:
+ 	return sk;
+ }
+ 
+-static int unix_create(struct net *net, struct socket *sock, int protocol)
++static int unix_create(struct net *net, struct socket *sock, int protocol,
++		       int kern)
+ {
+ 	if (protocol && protocol != PF_UNIX)
+ 		return -EPROTONOSUPPORT;
+diff --git a/net/x25/af_x25.c b/net/x25/af_x25.c
+index 7fa9c7a..62c47a4 100644
+--- a/net/x25/af_x25.c
++++ b/net/x25/af_x25.c
+@@ -501,7 +501,8 @@ out:
+ 	return sk;
+ }
+ 
+-static int x25_create(struct net *net, struct socket *sock, int protocol)
++static int x25_create(struct net *net, struct socket *sock, int protocol,
++		      int kern)
+ {
+ 	struct sock *sk;
+ 	struct x25_sock *x25;

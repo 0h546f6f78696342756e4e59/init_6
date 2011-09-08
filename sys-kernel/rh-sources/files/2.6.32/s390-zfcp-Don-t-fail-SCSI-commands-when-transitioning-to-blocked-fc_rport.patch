@@ -1,0 +1,81 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Tue, 15 Dec 2009 16:23:12 -0500
+Subject: [s390] zfcp: Don't fail SCSI commands when transitioning to blocked fc_rport
+Message-id: <1260894197-8068-2-git-send-email-brueckner@redhat.com>
+Patchwork-id: 21958
+O-Subject: [RHEL6 PATCH 1/6] [s390] zfcp: Don't fail SCSI commands when
+	transitioning to blocked fc_rport
+Bugzilla: 547379
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+After adapter shutdown, the SCSI midlayer error recovery tries to
+recover failed commands, this fails and leads to offlined SCSI devices.
+
+With the delay between calling scsi_done in softirq context and the call
+to fc_remote_port_delete from the workqueue, there is a window where zfcp
+returns DID_ERROR which leads to SCSI error recovery which then leads to
+offline SCSI devices since all recovery actions will fail with the rport
+now being blocked.
+
+In this window, return DID_IMM_RETRY just as the FC transport class would
+do in fc_remote_port_chkready for the blocked fc_rport.  As soon as the
+fc_rport is BLOCKED, fc_remote_port_chkready will do the right thing.
+
+Bugzilla
+--------
+BZ 547379
+https://bugzilla.redhat.com/show_bug.cgi?id=547379
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=8830271c4819d86d8e87202a1fe8da0bb58912a2
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/scsi/zfcp_scsi.c b/drivers/s390/scsi/zfcp_scsi.c
+index 0e1a346..4509640 100644
+--- a/drivers/s390/scsi/zfcp_scsi.c
++++ b/drivers/s390/scsi/zfcp_scsi.c
+@@ -99,12 +99,26 @@ static int zfcp_scsi_queuecommand(struct scsi_cmnd *scpnt,
+ 	}
+ 
+ 	status = atomic_read(&unit->status);
+-	if (unlikely((status & ZFCP_STATUS_COMMON_ERP_FAILED) ||
+-		     !(status & ZFCP_STATUS_COMMON_RUNNING))) {
++	if (unlikely(status & ZFCP_STATUS_COMMON_ERP_FAILED) &&
++		     !(atomic_read(&unit->port->status) &
++		       ZFCP_STATUS_COMMON_ERP_FAILED)) {
++		/* only unit access denied, but port is good
++		 * not covered by FC transport, have to fail here */
+ 		zfcp_scsi_command_fail(scpnt, DID_ERROR);
+ 		return 0;
+ 	}
+ 
++	if (unlikely(!(status & ZFCP_STATUS_COMMON_UNBLOCKED))) {
++		/* This could be either
++		 * open unit pending: this is temporary, will result in
++		 * 	open unit or ERP_FAILED, so retry command
++		 * call to rport_delete pending: mimic retry from
++		 * 	fc_remote_port_chkready until rport is BLOCKED
++		 */
++		zfcp_scsi_command_fail(scpnt, DID_IMM_RETRY);
++		return 0;
++	}
++
+ 	ret = zfcp_fsf_send_fcp_command_task(unit, scpnt);
+ 	if (unlikely(ret == -EBUSY))
+ 		return SCSI_MLQUEUE_DEVICE_BUSY;

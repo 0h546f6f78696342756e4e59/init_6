@@ -1,0 +1,25 @@
+From: Matthew Garrett <mjg@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:32 -0500
+Subject: [Fedora] [usb] enable autosuspend on UVC by default
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Enable autosuspend on UVC by default
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/media/video/uvc/uvc_driver.c b/drivers/media/video/uvc/uvc_driver.c
+index 8756be5..8ffcada 100644
+--- a/drivers/media/video/uvc/uvc_driver.c
++++ b/drivers/media/video/uvc/uvc_driver.c
+@@ -1788,6 +1788,8 @@ static int uvc_probe(struct usb_interface *intf,
+ 			"supported.\n", ret);
+ 	}
+ 
++	usb_device_autosuspend_enable(udev);
++
+ 	uvc_trace(UVC_TRACE_PROBE, "UVC device initialized.\n");
+ 	return 0;
+ 

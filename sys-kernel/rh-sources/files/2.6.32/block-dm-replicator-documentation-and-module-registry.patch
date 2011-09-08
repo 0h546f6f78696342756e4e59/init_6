@@ -1,0 +1,539 @@
+From: Heinz Mauelshagen <heinzm@redhat.com>
+Date: Fri, 18 Dec 2009 16:31:59 -0500
+Subject: [block] dm-replicator: documentation and module registry
+Message-id: <1261153922-3437-2-git-send-email-heinzm@redhat.com>
+Patchwork-id: 22142
+O-Subject: [RHEL6.0 PATCH 1/4] dm-replicator: documentation and module registry
+Bugzilla: 552364
+RH-Acked-by: Jonathan E Brassow <jbrassow@redhat.com>
+RH-Acked-by: Zdenek Kabelac <zkabelac@redhat.com>
+
+From: Heinz Mauelshagen <heinzm@redhat.com>
+
+The dm-registry module is a general purpose registry for modules.
+
+The remote replicator utilizes it to register its ringbuffer log and
+site link handlers in order to avoid duplicating registry code and logic.
+
+Signed-off-by: Heinz Mauelshagen <heinzm@redhat.com>
+Reviewed-by: Jon Brassow <jbrassow@redhat.com>
+Tested-by: Jon Brassow <jbrassow@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/Documentation/device-mapper/replicator.txt b/Documentation/device-mapper/replicator.txt
+new file mode 100644
+index 0000000..1d408a6
+--- /dev/null
++++ b/Documentation/device-mapper/replicator.txt
+@@ -0,0 +1,203 @@
++dm-replicator
++=============
++
++Device-mapper replicator is designed to enable redundant copies of
++storage devices to be made - preferentially, to remote locations.
++RAID1 (aka mirroring) is often used to maintain redundant copies of
++storage for fault tolerance purposes.  Unlike RAID1, which often
++assumes similar device characteristics, dm-replicator is designed to
++handle devices with different latency and bandwidth characteristics
++which are often the result of the geograhic disparity of multi-site
++architectures.  Simply put, you might choose RAID1 to protect from
++a single device failure, but you would choose remote replication
++via dm-replicator for protection against a site failure.
++
++dm-replicator works by first sending write requests to the "replicator
++log".  Not to be confused with the device-mapper dirty log, this
++replicator log behaves similarly to that of a journal.  Write requests
++go to this log first and then are copied to all the replicate devices
++at their various locations.  Requests are cleared from the log once all
++replicate devices confirm the data is received/copied.  This architecture
++allows dm-replicator to be flexible in terms of device characteristics.
++If one device should fall behind the others - perhaps due to high latency -
++the slack is picked up by the log.  The user has a great deal of
++flexibility in specifying to what degree a particular site is allowed to
++fall behind - if at all.
++
++Device-Mapper's dm-replicator has two targets, "replicator" and
++"replicator-dev".  The "replicator" target is used to setup the
++aforementioned log and allow the specification of site link properties.
++Through the "replicator" target, the user might specify that writes
++that are copied to the local site must happen synchronously (i.e the
++writes are complete only after they have passed through the log device
++and have landed on the local site's disk).  They may also specify that
++a remote link should asynchronously complete writes, but that the remote
++link should never fall more than 100MB behind in terms of processing.
++Again, the "replicator" target is used to define the replicator log and
++the characteristics of each site link.
++
++The "replicator-dev" target is used to define the devices used and
++associate them with a particular replicator log.  You might think of
++this stage in a similar way to setting up RAID1 (mirroring).  You
++define a set of devices which will be copies of each other, but
++access the device through the mirror virtual device which takes care
++of the copying.  The user accessible replicator device is analogous
++to the mirror virtual device, while the set of devices being copied
++to are analogous to the mirror images (sometimes called 'legs').
++When creating a replicator device via the "replicator-dev" target,
++it must be associated with the replicator log (created with the
++aforementioned "replicator" target).  When each redundant device
++is specified as part of the replicator device, it is associated with
++a site link whose properties were defined when the "replicator"
++target was created.
++
++The user can go farther than simply replicating one device.  They
++can continue to add replicator devices - associating them with a
++particular replicator log.  Writes that go through the replicator
++log are guarenteed to have their write ordering preserved.  So, if
++you associate more than one replicator device to a particular
++replicator log, you are preserving write ordering across multiple
++devices.  This might be useful if you had a database that spanned
++multiple disks and write ordering must be preserved or any transaction
++accounting scheme would be foiled.  (You can imagine this like
++preserving write ordering across a number of mirrored devices, where
++each mirror has images/legs in different geographic locations.)
++
++dm-replicator has a modular architecture.  Future implementations for
++the replicator log and site link modules are allowed.  The current
++replication log is ringbuffer - utilized to store all writes being
++subject to replication and enforce write ordering.  The current site
++link code is based on accessing block devices (iSCSI, FC, etc) and
++does device recovery including (initial) resynchronization.
++
++
++Picture of a 2 site configuration with 3 local devices (LDs) in a
++primary site being resycnhronied to 3 remotes sites with 3 remote
++devices (RDs) each via site links (SLINK) 1-2 with site link 0
++as a special case to handle the local devices:
++
++                                           |
++    Local (primary) site                   |      Remote sites
++    --------------------                   |      ------------
++                                           |
++    D1   D2     Dn                         |
++     |   |       |                         |
++     +---+- ... -+                         |
++         |                                 |
++       REPLOG-----------------+- SLINK1 ------------+
++         |                    |            |        |
++       SLINK0 (special case)  |            |        |
++         |                    |            |        |
++     +-----+   ...  +         |            |   +----+- ... -+
++     |     |        |         |            |   |    |       |
++    LD1   LD2      LDn        |            |  RD1  RD2     RDn
++                              |            |
++                              +-- SLINK2------------+
++                              |            |        |
++                              |            |   +----+- ... -+
++                              |            |   |    |       |
++                              |            |  RD1  RD2     RDn
++                              |            |
++                              |            |
++                              |            |
++                              +- SLINKm ------------+
++                                           |        |
++                                           |   +----+- ... -+
++                                           |   |    |       |
++                                           |  RD1  RD2     RDn
++
++
++
++
++The following are descriptions of the device-mapper tables used to
++construct the "replicator" and "replicator-dev" targets.
++
++"replicator" target parameters:
++-------------------------------
++<start> <length> replicator \
++	<replog_type> <#replog_params> <replog_params> \
++	[<slink_type_0> <#slink_params_0> <slink_params_0>]{1..N}
++
++<replog_type>    = "ringbuffer" is currently the only available type
++<#replog_params> = # of args following this one intended for the replog (2 or 4)
++<replog_params>  = <dev_path> <dev_start> [auto/create/open <size>]
++	<dev_path>  = device path of replication log (REPLOG) backing store
++	<dev_start> = offset to REPLOG header
++	create	    = The replication log will be initialized if not active
++		      and sized to "size".  (If already active, the create
++		      will fail.)  Size is always in sectors.
++	open	    = The replication log must be initialized and valid or
++		      the constructor will fail.
++	auto        = If a valid replication log header is found on the
++		      replication device, this will behave like 'open'.
++		      Otherwise, this option behaves like 'create'.
++
++<slink_type>    = "blockdev" is currently the only available type
++<#slink_params> = 1/2/4
++<slink_params>  = <slink_nr> [<slink_policy> [<fall_behind> <N>]]
++	<slink_nr>     = This is a unique number that is used to identify a
++			 particular site/location.  '0' is always used to
++			 identify the local site, while increasing integers
++			 are used to identify remote sites.
++	<slink_policy> = The policy can be either 'sync' or 'async'.
++			 'sync' means write requests will not return until
++			 the data is on the storage device.  'async' allows
++			 a device to "fall behind"; that is, outstanding
++			 write requests are waiting in the replication log
++			 to be processed for this site, but it is not delaying
++			 the writes of other sites.
++	<fall_behind>  = This field is used to specify how far the user is
++			 willing to allow write requests to this specific site
++			 to "fall behind" in processing before switching to
++			 a 'sync' policy.  This "fall behind" threshhold can
++			 be specified in three ways: ios, size, or timeout.
++			 'ios' is the number of pending I/Os allowed (e.g.
++			 "ios 10000").  'size' is the amount of pending data
++			 allowed (e.g. "size 200m").  Size labels include:
++			 s (sectors), k, m, g, t, p, and e.  'timeout' is
++			 the amount of time allowed for writes to be
++			 outstanding.  Time labels include: s, m, h, and d.
++
++
++"replicator-dev" target parameters:
++-----------------------------------
++start> <length> replicator-dev
++       <replicator_device> <dev_nr> \
++       [<slink_nr> <#dev_params> <dev_params>
++        <dlog_type> <#dlog_params> <dlog_params>]{1..N}
++
++<replicator_device> = device previously constructed via "replication" target
++<dev_nr>	    = An integer that is used to 'tag' write requests as
++		      belonging to a particular set of devices - specifically,
++		      the devices that follow this argument (i.e. the site
++		      link devices).
++<slink_nr>	    = This number identifies the site/location where the next
++		      device to be specified comes from.  It is exactly the
++		      same number used to identify the site/location (and its
++		      policies) in the "replicator" target.  Interestingly,
++		      while one might normally expect a "dev_type" argument
++		      here, it can be deduced from the site link number and
++		      the 'slink_type' given in the "replication" target.
++<#dev_params>	    = '1'  (The number of allowed parameters actually depends
++		      on the 'slink_type' given in the "replication" target.
++		      Since our only option there is "blockdev", the only
++		      allowable number here is currently '1'.)
++<dev_params>	    = 'dev_path'  (Again, since "blockdev" is the only
++		      'slink_type' available, the only allowable argument here
++		      is the path to the device.)
++<dlog_type>	    = Not to be confused with the "replicator log", this is
++		      the type of dirty log associated with this particular
++		      device.  Dirty logs are used for synchronization, during
++		      initialization or fall behind conditions, to bring devices
++		      into a coherent state with its peers - analogous to
++		      rebuilding a RAID1 (mirror) device.  Available dirty
++		      log types include: 'nolog', 'core', and 'disk'
++<#dlog_params>	    = The number of arguments required for a particular log
++		      type - 'nolog' = 0, 'core' = 1/2, 'disk' = 2/3.
++<dlog_params>	    = 'nolog' => ~no arguments~
++		      'core'  => <region_size> [sync | nosync]
++		      'disk'  => <dlog_dev_path> <region_size> [sync | nosync]
++	<region_size>   = This sets the granularity at which the dirty log
++			  tracks what areas of the device is in-sync.
++	[sync | nosync] = Optionally specify whether the sync should be forced
++			  or avoided initially.
+diff --git a/drivers/md/Kconfig b/drivers/md/Kconfig
+index 2158377..8eaa082 100644
+--- a/drivers/md/Kconfig
++++ b/drivers/md/Kconfig
+@@ -314,6 +314,14 @@ config DM_DELAY
+ 
+ 	If unsure, say N.
+ 
++config DM_REPLICATOR
++	tristate "Replication target (EXPERIMENTAL)"
++	depends on BLK_DEV_DM && EXPERIMENTAL
++	---help---
++	A target that supports replication of local devices to remote sites.
++
++	If unsure, say N.
++
+ config DM_UEVENT
+ 	bool "DM uevents (EXPERIMENTAL)"
+ 	depends on BLK_DEV_DM && EXPERIMENTAL
+diff --git a/drivers/md/Makefile b/drivers/md/Makefile
+index e355e7f..be05b39 100644
+--- a/drivers/md/Makefile
++++ b/drivers/md/Makefile
+@@ -44,6 +44,7 @@ obj-$(CONFIG_DM_SNAPSHOT)	+= dm-snapshot.o
+ obj-$(CONFIG_DM_MIRROR)		+= dm-mirror.o dm-log.o dm-region-hash.o
+ obj-$(CONFIG_DM_LOG_USERSPACE)	+= dm-log-userspace.o
+ obj-$(CONFIG_DM_ZERO)		+= dm-zero.o
++obj-$(CONFIG_DM_REPLICATOR)	+= dm-log.o dm-registry.o
+ 
+ quiet_cmd_unroll = UNROLL  $@
+       cmd_unroll = $(AWK) -f$(srctree)/$(src)/unroll.awk -vN=$(UNROLL) \
+diff --git a/drivers/md/dm-registry.c b/drivers/md/dm-registry.c
+new file mode 100644
+index 0000000..fb8abbf
+--- /dev/null
++++ b/drivers/md/dm-registry.c
+@@ -0,0 +1,224 @@
++/*
++ * Copyright (C) 2009 Red Hat, Inc. All rights reserved.
++ *
++ * Module Author: Heinz Mauelshagen (heinzm@redhat.com)
++ *
++ * Generic registry for arbitrary structures
++ * (needs dm_registry_type structure upfront each registered structure).
++ *
++ * This file is released under the GPL.
++ *
++ * FIXME: use as registry for e.g. dirty log types as well.
++ */
++
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++
++#include "dm-registry.h"
++
++#define	DM_MSG_PREFIX	"dm-registry"
++
++static const char *version = "0.001";
++
++/* Sizable class registry. */
++static unsigned num_classes;
++static struct list_head *_classes;
++static rwlock_t *_locks;
++
++void *
++dm_get_type(const char *type_name, enum dm_registry_class class)
++{
++	struct dm_registry_type *t;
++
++	read_lock(_locks + class);
++	list_for_each_entry(t, _classes + class, list) {
++		if (!strcmp(type_name, t->name)) {
++			if (!t->use_count && !try_module_get(t->module)) {
++				read_unlock(_locks + class);
++				return ERR_PTR(-ENOMEM);
++			}
++
++			t->use_count++;
++			read_unlock(_locks + class);
++			return t;
++		}
++	}
++
++	read_unlock(_locks + class);
++	return ERR_PTR(-ENOENT);
++}
++EXPORT_SYMBOL(dm_get_type);
++
++void
++dm_put_type(void *type, enum dm_registry_class class)
++{
++	struct dm_registry_type *t = type;
++
++	read_lock(_locks + class);
++	if (!--t->use_count)
++		module_put(t->module);
++
++	read_unlock(_locks + class);
++}
++EXPORT_SYMBOL(dm_put_type);
++
++/* Add a type to the registry. */
++int
++dm_register_type(void *type, enum dm_registry_class class)
++{
++	struct dm_registry_type *t = type, *tt;
++
++	if (unlikely(class >= num_classes))
++		return -EINVAL;
++
++	tt = dm_get_type(t->name, class);
++	if (unlikely(!IS_ERR(tt))) {
++		dm_put_type(t, class);
++		return -EEXIST;
++	}
++
++	write_lock(_locks + class);
++	t->use_count = 0;
++	list_add(&t->list, _classes + class);
++	write_unlock(_locks + class);
++
++	return 0;
++}
++EXPORT_SYMBOL(dm_register_type);
++
++/* Remove a type from the registry. */
++int
++dm_unregister_type(void *type, enum dm_registry_class class)
++{
++	struct dm_registry_type *t = type;
++
++	if (unlikely(class >= num_classes)) {
++		DMERR("Attempt to unregister invalid class");
++		return -EINVAL;
++	}
++
++	write_lock(_locks + class);
++
++	if (unlikely(t->use_count)) {
++		write_unlock(_locks + class);
++		DMWARN("Attempt to unregister a type that is still in use");
++		return -ETXTBSY;
++	} else
++		list_del(&t->list);
++
++	write_unlock(_locks + class);
++	return 0;
++}
++EXPORT_SYMBOL(dm_unregister_type);
++
++/*
++ * Return kmalloc'ed NULL terminated pointer
++ * array of all type names of the given class.
++ *
++ * Caller has to kfree the array!.
++ */
++const char **dm_types_list(enum dm_registry_class class)
++{
++	unsigned i = 0, count = 0;
++	const char **r;
++	struct dm_registry_type *t;
++
++	/* First count the registered types in the class. */
++	read_lock(_locks + class);
++	list_for_each_entry(t, _classes + class, list)
++		count++;
++	read_unlock(_locks + class);
++
++	/* None registered in this class. */
++	if (!count)
++		return NULL;
++
++	/* One member more for array NULL termination. */
++	r = kzalloc((count + 1) * sizeof(*r), GFP_KERNEL);
++	if (!r)
++		return ERR_PTR(-ENOMEM);
++
++	/*
++	 * Go with the counted ones.
++	 * Any new added ones after we counted will be ignored!
++	 */
++	read_lock(_locks + class);
++	list_for_each_entry(t, _classes + class, list) {
++		r[i++] = t->name;
++		if (!--count)
++			break;
++	}
++	read_unlock(_locks + class);
++
++	return r;
++}
++EXPORT_SYMBOL(dm_types_list);
++
++int __init
++dm_registry_init(void)
++{
++	unsigned n;
++
++	BUG_ON(_classes);
++	BUG_ON(_locks);
++
++	/* Module parameter given ? */
++	if (!num_classes)
++		num_classes = DM_REGISTRY_CLASS_END;
++
++	n = num_classes;
++	_classes = kmalloc(n * sizeof(*_classes), GFP_KERNEL);
++	if (!_classes) {
++		DMERR("Failed to allocate classes registry");
++		return -ENOMEM;
++	}
++
++	_locks = kmalloc(n * sizeof(*_locks), GFP_KERNEL);
++	if (!_locks) {
++		DMERR("Failed to allocate classes locks");
++		kfree(_classes);
++		_classes = NULL;
++		return -ENOMEM;
++	}
++
++	while (n--) {
++		INIT_LIST_HEAD(_classes + n);
++		rwlock_init(_locks + n);
++	}
++
++	DMINFO("initialized %s for max %u classes", version, num_classes);
++	return 0;
++}
++
++void __exit
++dm_registry_exit(void)
++{
++	BUG_ON(!_classes);
++	BUG_ON(!_locks);
++
++	kfree(_classes);
++	_classes = NULL;
++	kfree(_locks);
++	_locks = NULL;
++	DMINFO("exit %s", version);
++}
++
++/* Module hooks */
++module_init(dm_registry_init);
++module_exit(dm_registry_exit);
++module_param(num_classes, uint, 0);
++MODULE_PARM_DESC(num_classes, "Maximum number of classes");
++MODULE_DESCRIPTION(DM_NAME "device-mapper registry");
++MODULE_AUTHOR("Heinz Mauelshagen <heinzm@redhat.com>");
++MODULE_LICENSE("GPL");
++
++#ifndef MODULE
++static int __init num_classes_setup(char *str)
++{
++	num_classes = simple_strtol(str, NULL, 0);
++	return num_classes ? 1 : 0;
++}
++
++__setup("num_classes=", num_classes_setup);
++#endif
+diff --git a/drivers/md/dm-registry.h b/drivers/md/dm-registry.h
+new file mode 100644
+index 0000000..1cb0ce8
+--- /dev/null
++++ b/drivers/md/dm-registry.h
+@@ -0,0 +1,38 @@
++/*
++ * Copyright (C) 2009 Red Hat, Inc. All rights reserved.
++ *
++ * Module Author: Heinz Mauelshagen (heinzm@redhat.com)
++ *
++ * Generic registry for arbitrary structures.
++ * (needs dm_registry_type structure upfront each registered structure).
++ *
++ * This file is released under the GPL.
++ */
++
++#include "dm.h"
++
++#ifndef DM_REGISTRY_H
++#define DM_REGISTRY_H
++
++enum dm_registry_class {
++	DM_REPLOG = 0,
++	DM_SLINK,
++	DM_LOG,
++	DM_REGION_HASH,
++	DM_REGISTRY_CLASS_END,
++};
++
++struct dm_registry_type {
++	struct list_head list;	/* Linked list of types in this class. */
++	const char *name;
++	struct module *module;
++	unsigned int use_count;
++};
++
++void *dm_get_type(const char *type_name, enum dm_registry_class class);
++void dm_put_type(void *type, enum dm_registry_class class);
++int dm_register_type(void *type, enum dm_registry_class class);
++int dm_unregister_type(void *type, enum dm_registry_class class);
++const char **dm_types_list(enum dm_registry_class class);
++
++#endif
+diff --git a/redhat/configs/config-generic-rhel b/redhat/configs/config-generic-rhel
+index 30da83f..f8d8b9a 100644

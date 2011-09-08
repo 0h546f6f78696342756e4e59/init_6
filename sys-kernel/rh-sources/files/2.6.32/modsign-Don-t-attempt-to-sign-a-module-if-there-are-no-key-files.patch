@@ -1,0 +1,47 @@
+From: David Howells <dhowells@redhat.com>
+Date: Thu, 7 Jan 2010 16:53:05 -0500
+Subject: [modsign] Don't attempt to sign a module if there are no key files
+Message-id: <8949.1262883185@redhat.com>
+Patchwork-id: 22342
+O-Subject: [RHEL-6 PATCH] MODSIGN: Don't attempt to sign a module if there are
+	no key files [BZ 543529]
+Bugzilla: 543529
+RH-Acked-by: Jon Masters <jcm@redhat.com>
+
+From: David Howells <dhowells@redhat.com>
+
+Don't attempt to sign a module if there's no private key or no public key file
+with which to sign.  Instead, just copy the unsigned module and emit a warning.
+
+This deals with the problem where modules built against the installed kernel
+sources RPM (such as those built by systemtap) won't build because they can't
+be signed [BZ 543529].
+
+Signed-off-by: David Howells <dhowells@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
+index 9bc1e4a..ba42816 100644
+--- a/scripts/Makefile.modpost
++++ b/scripts/Makefile.modpost
+@@ -148,6 +148,7 @@ ifdef MODKEYNAME
+ KEYFLAGS += --default-key $(MODKEYNAME)
+ endif
+ 
++ifeq ($(wildcard $(MODSECKEY))+$(wildcard $(MODPUBKEY)),$(MODSECKEY)+$(MODPUBKEY))
+ quiet_cmd_sign_ko_ko_unsigned = SIGN [M] $@
+       cmd_sign_ko_ko_unsigned = \
+ 		scripts/mod/mod-extract $< $@.digest && \
+@@ -156,6 +157,12 @@ quiet_cmd_sign_ko_ko_unsigned = SIGN [M] $@
+ 		sh scripts/mod/modsign-note.sh $@.digest.sig | \
+ 		  $(CC) -x assembler-with-cpp $(c_flags) $(CFLAGS_MODULE) -c -o $@.note.o - && \
+ 		$(LD) -r -o $@ $< $@.note.o
++else
++quiet_cmd_sign_ko_ko_unsigned = NO SIGN [M] $@
++      cmd_sign_ko_ko_unsigned = \
++		echo "Can't sign module $@ - missing keyfile" && \
++		cp $< $@
++endif
+ 
+ $(modules): %.ko :%.ko.unsigned FORCE
+ 	$(call if_changed,sign_ko_ko_unsigned)

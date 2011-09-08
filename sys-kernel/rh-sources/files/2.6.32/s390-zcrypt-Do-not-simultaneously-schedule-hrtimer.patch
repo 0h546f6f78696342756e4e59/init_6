@@ -1,0 +1,85 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 11 Dec 2009 17:31:31 -0500
+Subject: [s390] zcrypt: Do not simultaneously schedule hrtimer
+Message-id: <20091211173859.600981294@redhat.com>
+Patchwork-id: 21889
+O-Subject: [RHEL6 PATCH 2/5] s390 - zcrypt: Do not simultaneously schedule
+	hrtimer
+Bugzilla: 546291
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+When multiple threads are running in polling mode, a kernel oops
+might happen.
+The problem is caused by multiple processes that schedule the
+hrtimer concurrently with locking.
+The solution is to introduce locking in the ap_schedule_poll_timer()
+function.
+
+Bugzilla
+--------
+BZ 546291
+https://bugzilla.redhat.com/show_bug.cgi?id=546291
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=93521314cb3132f40a4bf6d76b4bbcdbc9e59dfb
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/crypto/ap_bus.c b/drivers/s390/crypto/ap_bus.c
+index 1294876..27326d2 100644
+--- a/drivers/s390/crypto/ap_bus.c
++++ b/drivers/s390/crypto/ap_bus.c
+@@ -102,6 +102,7 @@ static atomic_t ap_poll_requests = ATOMIC_INIT(0);
+ static DECLARE_WAIT_QUEUE_HEAD(ap_poll_wait);
+ static struct task_struct *ap_poll_kthread = NULL;
+ static DEFINE_MUTEX(ap_poll_thread_mutex);
++static DEFINE_SPINLOCK(ap_poll_timer_lock);
+ static void *ap_interrupt_indicator;
+ static struct hrtimer ap_poll_timer;
+ /* In LPAR poll with 4kHz frequency. Poll every 250000 nanoseconds.
+@@ -1163,16 +1164,19 @@ ap_config_timeout(unsigned long ptr)
+ static inline void ap_schedule_poll_timer(void)
+ {
+ 	ktime_t hr_time;
++
++	spin_lock_bh(&ap_poll_timer_lock);
+ 	if (ap_using_interrupts() || ap_suspend_flag)
+-		return;
++		goto out;
+ 	if (hrtimer_is_queued(&ap_poll_timer))
+-		return;
++		goto out;
+ 	if (ktime_to_ns(hrtimer_expires_remaining(&ap_poll_timer)) <= 0) {
+ 		hr_time = ktime_set(0, poll_timeout);
+ 		hrtimer_forward_now(&ap_poll_timer, hr_time);
+ 		hrtimer_restart(&ap_poll_timer);
+ 	}
+-	return;
++out:
++	spin_unlock_bh(&ap_poll_timer_lock);
+ }
+ 
+ /**
+@@ -1658,6 +1662,7 @@ int __init ap_module_init(void)
+ 	 */
+ 	if (MACHINE_IS_VM)
+ 		poll_timeout = 1500000;
++	spin_lock_init(&ap_poll_timer_lock);
+ 	hrtimer_init(&ap_poll_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+ 	ap_poll_timer.function = ap_poll_timeout;
+ 

@@ -1,0 +1,94 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:27 -0500
+Subject: [mm] madvise(MADV_HUGEPAGE)
+Message-id: <20100201152040.651461381@redhat.com>
+Patchwork-id: 23023
+O-Subject: [RHEL6 30/37] madvise(MADV_HUGEPAGE)
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Add madvise MADV_HUGEPAGE to mark regions that are important to be hugepage
+backed. Return -EINVAL if the vma is not of an anonymous type, or the feature
+isn't built into the kernel. Never silently return success.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/huge_mm.h b/include/linux/huge_mm.h
+index 75d2243..3ec53ed 100644
+--- a/include/linux/huge_mm.h
++++ b/include/linux/huge_mm.h
+@@ -103,6 +103,7 @@ extern int split_huge_page(struct page *page);
+ #endif
+ 
+ extern unsigned long vma_address(struct page *page, struct vm_area_struct *vma);
++extern int hugepage_madvise(unsigned long *vm_flags);
+ static inline int PageTransHuge(struct page *page)
+ {
+ 	VM_BUG_ON(PageTail(page));
+@@ -127,6 +128,11 @@ static inline int split_huge_page(struct page *page)
+ #define wait_split_huge_page(__anon_vma, __pmd)	\
+ 	do { } while (0)
+ #define PageTransHuge(page) 0
++static inline int hugepage_madvise(unsigned long *vm_flags)
++{
++	BUG_ON(0);
++	return 0;
++}
+ #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
+ 
+ #endif /* _LINUX_HUGE_MM_H */
+diff --git a/mm/huge_memory.c b/mm/huge_memory.c
+index a529e4e..bdede17 100644
+--- a/mm/huge_memory.c
++++ b/mm/huge_memory.c
+@@ -853,3 +853,19 @@ out_unlock:
+ out:
+ 	return ret;
+ }
++
++int hugepage_madvise(unsigned long *vm_flags)
++{
++	/*
++	 * Be somewhat over-protective like KSM for now!
++	 */
++	if (*vm_flags & (VM_HUGEPAGE | VM_SHARED  | VM_MAYSHARE   |
++			 VM_PFNMAP   | VM_IO      | VM_DONTEXPAND |
++			 VM_RESERVED | VM_HUGETLB | VM_INSERTPAGE |
++			 VM_MIXEDMAP | VM_SAO))
++		return -EINVAL;
++
++	*vm_flags |= VM_HUGEPAGE;
++
++	return 0;
++}
+diff --git a/mm/madvise.c b/mm/madvise.c
+index 319528b..ecde40a 100644
+--- a/mm/madvise.c
++++ b/mm/madvise.c
+@@ -71,6 +71,11 @@ static long madvise_behavior(struct vm_area_struct * vma,
+ 		if (error)
+ 			goto out;
+ 		break;
++	case MADV_HUGEPAGE:
++		error = hugepage_madvise(&new_flags);
++		if (error)
++			goto out;
++		break;
+ 	}
+ 
+ 	if (new_flags == vma->vm_flags) {
+@@ -283,6 +288,9 @@ madvise_behavior_valid(int behavior)
+ 	case MADV_MERGEABLE:
+ 	case MADV_UNMERGEABLE:
+ #endif
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++	case MADV_HUGEPAGE:
++#endif
+ 		return 1;
+ 
+ 	default:

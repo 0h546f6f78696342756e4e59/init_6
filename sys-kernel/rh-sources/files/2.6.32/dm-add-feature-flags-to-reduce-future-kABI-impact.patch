@@ -1,0 +1,119 @@
+From: Mike Snitzer <snitzer@redhat.com>
+Date: Fri, 18 Dec 2009 23:03:30 -0500
+Subject: [dm] add feature flags to reduce future kABI impact
+Message-id: <1261177410-19726-1-git-send-email-snitzer@redhat.com>
+Patchwork-id: 22202
+O-Subject: [RHEL6 PATCH] dm: add feature flags to reduce future kABI impact
+Bugzilla: 547756
+RH-Acked-by: Jonathan E Brassow <jbrassow@redhat.com>
+
+BZ 547756
+
+This patch adds a 'feature flags' field to several structures that we
+anticipate we may wish to extend for enhancements during the lifetime of the
+product, to help us reduce the impact of future kABI changes.
+(Mostly these are lists of function pointers that we might need to
+extend if new features require new hooks)
+
+This patch deals with a problem peculiar to RHEL and is not currently
+upstream.
+
+Signed-off-by: Mike Snitzer <snitzer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/md/dm-exception-store.h b/drivers/md/dm-exception-store.h
+index e8dfa06..0e3e607 100644
+--- a/drivers/md/dm-exception-store.h
++++ b/drivers/md/dm-exception-store.h
+@@ -39,6 +39,7 @@ struct dm_exception {
+  */
+ struct dm_exception_store;
+ struct dm_exception_store_type {
++	uint64_t features;
+ 	const char *name;
+ 	struct module *module;
+ 
+diff --git a/drivers/md/dm-mpath.h b/drivers/md/dm-mpath.h
+index e230f71..defba94 100644
+--- a/drivers/md/dm-mpath.h
++++ b/drivers/md/dm-mpath.h
+@@ -12,6 +12,7 @@
+ struct dm_dev;
+ 
+ struct dm_path {
++	uint64_t features;
+ 	struct dm_dev *dev;	/* Read-only */
+ 	void *pscontext;	/* For path-selector use */
+ };
+diff --git a/drivers/md/dm-path-selector.h b/drivers/md/dm-path-selector.h
+index e7d1fa8..b964510 100644
+--- a/drivers/md/dm-path-selector.h
++++ b/drivers/md/dm-path-selector.h
+@@ -28,6 +28,7 @@ struct path_selector {
+ 
+ /* Information about a path selector type */
+ struct path_selector_type {
++	uint64_t features;
+ 	char *name;
+ 	struct module *module;
+ 
+diff --git a/drivers/md/dm-region-hash.c b/drivers/md/dm-region-hash.c
+index 5f19ceb..faba18b 100644
+--- a/drivers/md/dm-region-hash.c
++++ b/drivers/md/dm-region-hash.c
+@@ -54,6 +54,7 @@
+  *   context, so all other uses will have to suspend local irqs.
+  *---------------------------------------------------------------*/
+ struct dm_region_hash {
++	uint64_t features;
+ 	uint32_t region_size;
+ 	unsigned region_shift;
+ 
+diff --git a/drivers/md/dm-snap.c b/drivers/md/dm-snap.c
+index ee8eb28..4cb0776 100644
+--- a/drivers/md/dm-snap.c
++++ b/drivers/md/dm-snap.c
+@@ -61,6 +61,7 @@ struct dm_exception_table {
+ };
+ 
+ struct dm_snapshot {
++	uint64_t features;
+ 	struct rw_semaphore lock;
+ 
+ 	struct dm_dev *origin;
+diff --git a/drivers/md/dm-table.c b/drivers/md/dm-table.c
+index e4148da..7ff61ea 100644
+--- a/drivers/md/dm-table.c
++++ b/drivers/md/dm-table.c
+@@ -39,6 +39,7 @@
+  */
+ 
+ struct dm_table {
++	uint64_t features;
+ 	struct mapped_device *md;
+ 	atomic_t holders;
+ 	unsigned type;
+diff --git a/drivers/md/dm.c b/drivers/md/dm.c
+index 3167480..7fedd40 100644
+--- a/drivers/md/dm.c
++++ b/drivers/md/dm.c
+@@ -114,6 +114,7 @@ EXPORT_SYMBOL_GPL(dm_get_rq_mapinfo);
+  * Work processed by per-device workqueue.
+  */
+ struct mapped_device {
++	uint64_t features;
+ 	struct rw_semaphore io_lock;
+ 	struct mutex suspend_lock;
+ 	rwlock_t map_lock;
+diff --git a/include/linux/dm-dirty-log.h b/include/linux/dm-dirty-log.h
+index 7084503..bd869bd 100644
+--- a/include/linux/dm-dirty-log.h
++++ b/include/linux/dm-dirty-log.h
+@@ -26,6 +26,7 @@ struct dm_dirty_log {
+ };
+ 
+ struct dm_dirty_log_type {
++	uint64_t features;
+ 	const char *name;
+ 	struct module *module;
+ 

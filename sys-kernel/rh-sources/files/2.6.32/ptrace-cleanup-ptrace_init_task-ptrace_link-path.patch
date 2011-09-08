@@ -1,0 +1,59 @@
+From: Roland McGrath <roland@redhat.com>
+Date: Fri, 18 Dec 2009 10:23:39 -0500
+Subject: [ptrace] cleanup ptrace_init_task()->ptrace_link() path
+Message-id: <39dff9de2c0a500163174c4feaf6edd0ed10ea7f.1261131466.git.roland@redhat.com>
+Patchwork-id: 22109
+O-Subject: [RHEL6.0 PATCH 02/16] ptrace: cleanup
+	ptrace_init_task()->ptrace_link() path
+Bugzilla: 549491
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+From: Oleg Nesterov <oleg@redhat.com>
+
+No functional changes.
+
+ptrace_init_task() looks confusing, as if we always auto-attach when "bool
+ptrace" argument is true, while in fact we attach only if current is
+traced.
+
+Make the code more explicit and kill now unused ptrace_link().
+
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Acked-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+(cherry picked from commit c6a47cc2ccf9649ee09eeddd70a6d061bde69568)
+
+Signed-off-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/ptrace.h b/include/linux/ptrace.h
+index 7456d7d..1951805 100644
+--- a/include/linux/ptrace.h
++++ b/include/linux/ptrace.h
+@@ -105,12 +105,7 @@ static inline int ptrace_reparented(struct task_struct *child)
+ {
+ 	return child->real_parent != child->parent;
+ }
+-static inline void ptrace_link(struct task_struct *child,
+-			       struct task_struct *new_parent)
+-{
+-	if (unlikely(child->ptrace))
+-		__ptrace_link(child, new_parent);
+-}
++
+ static inline void ptrace_unlink(struct task_struct *child)
+ {
+ 	if (unlikely(child->ptrace))
+@@ -169,9 +164,9 @@ static inline void ptrace_init_task(struct task_struct *child, bool ptrace)
+ 	INIT_LIST_HEAD(&child->ptraced);
+ 	child->parent = child->real_parent;
+ 	child->ptrace = 0;
+-	if (unlikely(ptrace)) {
++	if (unlikely(ptrace) && (current->ptrace & PT_PTRACED)) {
+ 		child->ptrace = current->ptrace;
+-		ptrace_link(child, current->parent);
++		__ptrace_link(child, current->parent);
+ 	}
+ }
+ 

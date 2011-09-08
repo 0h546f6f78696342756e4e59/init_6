@@ -1,0 +1,94 @@
+From: Gleb Natapov <gleb@redhat.com>
+Date: Mon, 22 Feb 2010 13:59:51 -0500
+Subject: [kvm] x86 emulator: Add Virtual-8086 mode of emulation
+Message-id: <1266847206-28077-6-git-send-email-gleb@redhat.com>
+Patchwork-id: 23385
+O-Subject: [PATCH 05/20] KVM: x86 emulator: Add Virtual-8086 mode of emulation
+Bugzilla: 560903 560904 563466
+CVE: CVE-2010-0298 CVE-2010-0306 CVE-2010-0419
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+For some instructions CPU behaves differently for real-mode and
+virtual 8086. Let emulator know which mode cpu is in, so it will
+not poke into vcpu state directly.
+
+Signed-off-by: Gleb Natapov <gleb@redhat.com>
+Cc: stable@kernel.org
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/kvm_emulate.h b/arch/x86/include/asm/kvm_emulate.h
+index 7c18e12..92d47a0 100644
+--- a/arch/x86/include/asm/kvm_emulate.h
++++ b/arch/x86/include/asm/kvm_emulate.h
+@@ -168,6 +168,7 @@ struct x86_emulate_ctxt {
+ 
+ /* Execution mode, passed to the emulator. */
+ #define X86EMUL_MODE_REAL     0	/* Real mode.             */
++#define X86EMUL_MODE_VM86     1	/* Virtual 8086 mode.     */
+ #define X86EMUL_MODE_PROT16   2	/* 16-bit protected mode. */
+ #define X86EMUL_MODE_PROT32   4	/* 32-bit protected mode. */
+ #define X86EMUL_MODE_PROT64   8	/* 64-bit (long) mode.    */
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index f9687e6..902a912 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -897,6 +897,7 @@ x86_decode_insn(struct x86_emulate_ctxt *ctxt, struct x86_emulate_ops *ops)
+ 
+ 	switch (mode) {
+ 	case X86EMUL_MODE_REAL:
++	case X86EMUL_MODE_VM86:
+ 	case X86EMUL_MODE_PROT16:
+ 		def_op_bytes = def_ad_bytes = 2;
+ 		break;
+@@ -1486,7 +1487,7 @@ emulate_syscall(struct x86_emulate_ctxt *ctxt)
+ 
+ 	/* syscall is not available in real mode */
+ 	if (c->lock_prefix || ctxt->mode == X86EMUL_MODE_REAL
+-		|| !(ctxt->vcpu->arch.cr0 & X86_CR0_PE))
++	    || ctxt->mode == X86EMUL_MODE_VM86)
+ 		return -1;
+ 
+ 	setup_syscalls_segments(ctxt, &cs, &ss);
+@@ -1538,9 +1539,8 @@ emulate_sysenter(struct x86_emulate_ctxt *ctxt)
+ 	if (c->lock_prefix)
+ 		return -1;
+ 
+-	/* inject #GP if in real mode or paging is disabled */
+-	if (ctxt->mode == X86EMUL_MODE_REAL ||
+-		!(ctxt->vcpu->arch.cr0 & X86_CR0_PE)) {
++	/* inject #GP if in real mode */
++	if (ctxt->mode == X86EMUL_MODE_REAL) {
+ 		kvm_inject_gp(ctxt->vcpu, 0);
+ 		return -1;
+ 	}
+@@ -1604,9 +1604,9 @@ emulate_sysexit(struct x86_emulate_ctxt *ctxt)
+ 	if (c->lock_prefix)
+ 		return -1;
+ 
+-	/* inject #GP if in real mode or paging is disabled */
+-	if (ctxt->mode == X86EMUL_MODE_REAL
+-		|| !(ctxt->vcpu->arch.cr0 & X86_CR0_PE)) {
++	/* inject #GP if in real mode or Virtual 8086 mode */
++	if (ctxt->mode == X86EMUL_MODE_REAL ||
++	    ctxt->mode == X86EMUL_MODE_VM86) {
+ 		kvm_inject_gp(ctxt->vcpu, 0);
+ 		return -1;
+ 	}
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 2b434cd..172a1db 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -3088,8 +3088,9 @@ int emulate_instruction(struct kvm_vcpu *vcpu,
+ 		vcpu->arch.emulate_ctxt.vcpu = vcpu;
+ 		vcpu->arch.emulate_ctxt.eflags = kvm_x86_ops->get_rflags(vcpu);
+ 		vcpu->arch.emulate_ctxt.mode =
++			(!(vcpu->arch.cr0 & X86_CR0_PE)) ? X86EMUL_MODE_REAL :
+ 			(vcpu->arch.emulate_ctxt.eflags & X86_EFLAGS_VM)
+-			? X86EMUL_MODE_REAL : cs_l
++			? X86EMUL_MODE_VM86 : cs_l
+ 			? X86EMUL_MODE_PROT64 :	cs_db
+ 			? X86EMUL_MODE_PROT32 : X86EMUL_MODE_PROT16;
+ 

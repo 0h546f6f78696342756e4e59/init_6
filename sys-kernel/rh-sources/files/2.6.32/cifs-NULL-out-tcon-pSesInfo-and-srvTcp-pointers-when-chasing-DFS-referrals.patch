@@ -1,0 +1,79 @@
+From: Jeff Layton <jlayton@redhat.com>
+Date: Tue, 15 Dec 2009 14:57:41 -0500
+Subject: [cifs] NULL out tcon, pSesInfo, and srvTcp pointers when chasing DFS referrals
+Message-id: <1260889061-10640-1-git-send-email-jlayton@redhat.com>
+Patchwork-id: 21954
+O-Subject: [RHEL6.0 PATCH] BZ#545984: cifs: NULL out tcon, pSesInfo,
+	and srvTcp pointers when chasing DFS referrals
+Bugzilla: 545984
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+
+This is essentially the same patch as the one I recently posted for
+RHEL5.5.  It's slated for inclusion into 2.6.33 and is being pushed to
+stable. I'm not sure however, whether Steve French will send Linus a
+pull request before the patch submission deadline so I'm going ahead and
+posting this to make sure it makes it.
+
+-----------------------[snip]---------------------
+
+The scenario is this:
+
+The kernel gets EREMOTE and starts chasing a DFS referral at mount time.
+The tcon reference is put, which puts the session reference too, but
+neither pointer is zeroed out.
+
+The mount gets retried (goto try_mount_again) with new mount info.
+Session setup fails fails and rc ends up being non-zero. The code then
+falls through to the end and tries to put the previously freed tcon
+pointer again.  Oops at: cifs_put_smb_ses+0x14/0xd0
+
+Fix this by moving the initialization of the rc variable and the tcon,
+pSesInfo and srvTcp pointers below the try_mount_again label. Also, add
+a FreeXid() before the goto to prevent xid "leaks".
+
+Signed-off-by: Jeff Layton <jlayton@redhat.com>
+Reported-by: Gustavo Carvalho Homem <gustavo@angulosolido.pt>
+CC: stable <stable@kernel.org>
+Signed-off-by: Steve French <sfrench@us.ibm.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/cifs/connect.c b/fs/cifs/connect.c
+index 63ea83f..3bbcaa7 100644
+--- a/fs/cifs/connect.c
++++ b/fs/cifs/connect.c
+@@ -2287,12 +2287,12 @@ int
+ cifs_mount(struct super_block *sb, struct cifs_sb_info *cifs_sb,
+ 		char *mount_data_global, const char *devname)
+ {
+-	int rc = 0;
++	int rc;
+ 	int xid;
+ 	struct smb_vol *volume_info;
+-	struct cifsSesInfo *pSesInfo = NULL;
+-	struct cifsTconInfo *tcon = NULL;
+-	struct TCP_Server_Info *srvTcp = NULL;
++	struct cifsSesInfo *pSesInfo;
++	struct cifsTconInfo *tcon;
++	struct TCP_Server_Info *srvTcp;
+ 	char   *full_path;
+ 	char *mount_data = mount_data_global;
+ #ifdef CONFIG_CIFS_DFS_UPCALL
+@@ -2301,6 +2301,10 @@ cifs_mount(struct super_block *sb, struct cifs_sb_info *cifs_sb,
+ 	int referral_walks_count = 0;
+ try_mount_again:
+ #endif
++	rc = 0;
++	tcon = NULL;
++	pSesInfo = NULL;
++	srvTcp = NULL;
+ 	full_path = NULL;
+ 
+ 	xid = GetXid();
+@@ -2597,6 +2601,7 @@ remote_path_check:
+ 
+ 			cleanup_volume_info(&volume_info);
+ 			referral_walks_count++;
++			FreeXid(xid);
+ 			goto try_mount_again;
+ 		}
+ #else /* No DFS support, return error on mount */

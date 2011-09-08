@@ -1,0 +1,160 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:34 -0500
+Subject: [mm] remove madvise(MADV_HUGEPAGE)
+Message-id: <20100201152041.743789099@redhat.com>
+Patchwork-id: 23052
+O-Subject: [RHEL6 37/37] remove madvise(MADV_HUGEPAGE)
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+With madvise removed the only way to enable this is:
+
+	echo always >/sys/kernel/mm/redhat_transparent_hugepage/enabled
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/alpha/include/asm/mman.h b/arch/alpha/include/asm/mman.h
+index f746541..99c56d4 100644
+--- a/arch/alpha/include/asm/mman.h
++++ b/arch/alpha/include/asm/mman.h
+@@ -53,8 +53,6 @@
+ #define MADV_MERGEABLE   12		/* KSM may merge identical pages */
+ #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
+ 
+-#define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
+-
+ /* compatibility flags */
+ #define MAP_FILE	0
+ 
+diff --git a/arch/mips/include/asm/mman.h b/arch/mips/include/asm/mman.h
+index 9d8184c..c892bfb 100644
+--- a/arch/mips/include/asm/mman.h
++++ b/arch/mips/include/asm/mman.h
+@@ -77,8 +77,6 @@
+ #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
+ #define MADV_HWPOISON    100		/* poison a page for testing */
+ 
+-#define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
+-
+ /* compatibility flags */
+ #define MAP_FILE	0
+ 
+diff --git a/arch/parisc/include/asm/mman.h b/arch/parisc/include/asm/mman.h
+index 533c5dc..9749c8a 100644
+--- a/arch/parisc/include/asm/mman.h
++++ b/arch/parisc/include/asm/mman.h
+@@ -59,8 +59,6 @@
+ #define MADV_MERGEABLE   65		/* KSM may merge identical pages */
+ #define MADV_UNMERGEABLE 66		/* KSM may not merge identical pages */
+ 
+-#define MADV_HUGEPAGE	67		/* Worth backing with hugepages */
+-
+ /* compatibility flags */
+ #define MAP_FILE	0
+ #define MAP_VARIABLE	0
+diff --git a/arch/xtensa/include/asm/mman.h b/arch/xtensa/include/asm/mman.h
+index 41be9a1..fca4db4 100644
+--- a/arch/xtensa/include/asm/mman.h
++++ b/arch/xtensa/include/asm/mman.h
+@@ -83,8 +83,6 @@
+ #define MADV_MERGEABLE   12		/* KSM may merge identical pages */
+ #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
+ 
+-#define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
+-
+ /* compatibility flags */
+ #define MAP_FILE	0
+ 
+diff --git a/include/asm-generic/mman-common.h b/include/asm-generic/mman-common.h
+index 8bbc4cf..40b9731 100644
+--- a/include/asm-generic/mman-common.h
++++ b/include/asm-generic/mman-common.h
+@@ -40,8 +40,6 @@
+ #define MADV_MERGEABLE   12		/* KSM may merge identical pages */
+ #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
+ 
+-#define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
+-
+ /* compatibility flags */
+ #define MAP_FILE	0
+ 
+diff --git a/include/linux/huge_mm.h b/include/linux/huge_mm.h
+index e70840a..37a24f4 100644
+--- a/include/linux/huge_mm.h
++++ b/include/linux/huge_mm.h
+@@ -105,7 +105,6 @@ extern int split_huge_page(struct page *page);
+ #endif
+ 
+ extern unsigned long vma_address(struct page *page, struct vm_area_struct *vma);
+-extern int hugepage_madvise(unsigned long *vm_flags);
+ static inline int PageTransHuge(struct page *page)
+ {
+ 	VM_BUG_ON(PageTail(page));
+@@ -135,11 +134,6 @@ static inline int split_huge_page(struct page *page)
+ 	do { } while (0)
+ #define PageTransHuge(page) 0
+ #define PageTransCompound(page) 0
+-static inline int hugepage_madvise(unsigned long *vm_flags)
+-{
+-	BUG_ON(0);
+-	return 0;
+-}
+ #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
+ 
+ #endif /* _LINUX_HUGE_MM_H */
+diff --git a/mm/huge_memory.c b/mm/huge_memory.c
+index b8c49e3..24c9634 100644
+--- a/mm/huge_memory.c
++++ b/mm/huge_memory.c
+@@ -1168,22 +1168,6 @@ out:
+ 	return ret;
+ }
+ 
+-int hugepage_madvise(unsigned long *vm_flags)
+-{
+-	/*
+-	 * Be somewhat over-protective like KSM for now!
+-	 */
+-	if (*vm_flags & (VM_HUGEPAGE | VM_SHARED  | VM_MAYSHARE   |
+-			 VM_PFNMAP   | VM_IO      | VM_DONTEXPAND |
+-			 VM_RESERVED | VM_HUGETLB | VM_INSERTPAGE |
+-			 VM_MIXEDMAP | VM_SAO))
+-		return -EINVAL;
+-
+-	*vm_flags |= VM_HUGEPAGE;
+-
+-	return 0;
+-}
+-
+ static int __init khugepaged_slab_init(void)
+ {
+ 	mm_slot_cache = kmem_cache_create("khugepaged_mm_slot",
+diff --git a/mm/madvise.c b/mm/madvise.c
+index ecde40a..319528b 100644
+--- a/mm/madvise.c
++++ b/mm/madvise.c
+@@ -71,11 +71,6 @@ static long madvise_behavior(struct vm_area_struct * vma,
+ 		if (error)
+ 			goto out;
+ 		break;
+-	case MADV_HUGEPAGE:
+-		error = hugepage_madvise(&new_flags);
+-		if (error)
+-			goto out;
+-		break;
+ 	}
+ 
+ 	if (new_flags == vma->vm_flags) {
+@@ -288,9 +283,6 @@ madvise_behavior_valid(int behavior)
+ 	case MADV_MERGEABLE:
+ 	case MADV_UNMERGEABLE:
+ #endif
+-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+-	case MADV_HUGEPAGE:
+-#endif
+ 		return 1;
+ 
+ 	default:

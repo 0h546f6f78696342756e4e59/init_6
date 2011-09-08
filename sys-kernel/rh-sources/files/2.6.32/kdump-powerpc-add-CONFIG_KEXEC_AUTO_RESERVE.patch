@@ -1,0 +1,37 @@
+From: Amerigo Wang <amwang@redhat.com>
+Date: Fri, 20 Nov 2009 18:25:23 -0500
+Subject: [kdump] powerpc: add CONFIG_KEXEC_AUTO_RESERVE
+Message-id: <20090914071803.4415.61884.sendpatchset@localhost.localdomain>
+Patchwork-id: 20856
+O-Subject: [RHEL6 Patch 5/8] powerpc: add CONFIG_KEXEC_AUTO_RESERVE
+Bugzilla: 523091
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+Introduce a new config option KEXEC_AUTO_RESERVE for powerpc.
+
+Signed-off-by: WANG Cong <amwang@redhat.com>
+Acked-by: Neil Horman <nhorman@tuxdriver.com>
+
+
+diff --git a/arch/powerpc/Kconfig b/arch/powerpc/Kconfig
+index 2ba14e7..90e449b 100644
+--- a/arch/powerpc/Kconfig
++++ b/arch/powerpc/Kconfig
+@@ -346,6 +346,17 @@ config KEXEC
+ 	  support.  As of this writing the exact hardware interface is
+ 	  strongly in flux, so no good recommendation can be made.
+ 
++config KEXEC_AUTO_RESERVE
++	bool "automatically reserve memory for kexec kernel"
++	depends on KEXEC
++	default y
++	---help---
++	  Automatically reserve memory for a kexec kernel, so that you don't
++	  need to specify numbers for the "crashkernel=X@Y" boot option,
++	  instead you can use "crashkernel=auto". To make this work, you need
++	  to have more than 2G/8G memory. On PPC, 128M or 256M is reserved, on
++	  PPC64 1/32 of your physical memory, but it will not exceed 4G.
++
+ config CRASH_DUMP
+ 	bool "Build a kdump crash kernel"
+ 	depends on PPC64 || 6xx

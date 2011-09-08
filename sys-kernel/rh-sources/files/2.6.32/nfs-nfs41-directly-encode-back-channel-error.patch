@@ -1,0 +1,48 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 21:02:37 -0500
+Subject: [nfs] nfs41: directly encode back channel error
+Message-id: <4B67416D.3000504@RedHat.com>
+Patchwork-id: 23074
+O-Subject: [RHEL6] [PATCH 5/13] nfs41: directly encode back channel error
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit a7f2ae66ca82a9d9b5ae975526f02db929a9dc87
+Author: Andy Adamson <andros@netapp.com>
+Date:   Thu Jan 14 17:45:05 2010 -0500
+
+    nfs41: directly encode back channel error
+
+    Skip all other processing when error is encountered.
+
+    Signed-off-by: Andy Adamson <andros@netapp.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/callback_xdr.c b/fs/nfs/callback_xdr.c
+index 646c2c0..11c80a4 100644
+--- a/fs/nfs/callback_xdr.c
++++ b/fs/nfs/callback_xdr.c
+@@ -625,16 +625,19 @@ static __be32 process_op(uint32_t minorversion, int nop,
+ 				preprocess_nfs4_op(op_nr, &op);
+ 	if (status == htonl(NFS4ERR_OP_ILLEGAL))
+ 		op_nr = OP_CB_ILLEGAL;
++	if (status)
++		goto encode_hdr;
+ 
+ 	maxlen = xdr_out->end - xdr_out->p;
+ 	if (maxlen > 0 && maxlen < PAGE_SIZE) {
+-		if (likely(status == 0 && op->decode_args != NULL))
++		if (likely(op->decode_args != NULL))
+ 			status = op->decode_args(rqstp, xdr_in, argp);
+ 		if (likely(status == 0 && op->process_op != NULL))
+ 			status = op->process_op(argp, resp);
+ 	} else
+ 		status = htonl(NFS4ERR_RESOURCE);
+ 
++encode_hdr:
+ 	res = encode_op_hdr(xdr_out, op_nr, status);
+ 	if (unlikely(res))
+ 		return res;

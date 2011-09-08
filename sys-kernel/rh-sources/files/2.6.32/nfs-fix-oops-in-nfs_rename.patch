@@ -1,0 +1,51 @@
+From: Jeff Layton <jlayton@redhat.com>
+Date: Wed, 13 Jan 2010 20:43:19 -0500
+Subject: [nfs] fix oops in nfs_rename()
+Message-id: <1263415399-14040-1-git-send-email-jlayton@redhat.com>
+Patchwork-id: 22488
+O-Subject: [RHEL6 PATCH] BZ#554337: nfs: fix oops in nfs_rename()
+Bugzilla: 554337
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Aristeu Rozanski <aris@redhat.com>
+
+From: OGAWA Hirofumi <hirofumi@mail.parknet.co.jp>
+
+(Upstream commit 56335936de1a41c8978fde62b2158af77ddc7258)
+
+The following patch went to Linus' tree a week or so ago and fixes a
+dcache corruption bug that was introduced upstream during the 2.6.33
+merge cycle. If a file is renamed on top of another file that's busy,
+the current RHEL6 code can hash the target dentry twice.
+
+This manifested itself here as panics in __d_lookup during connectathon
+test runs. Aristeu has tested the patch and it seems to fix the problem.
+
+Original patch description follows:
+
+----------------------[snip]----------------
+
+Recent change is missing to update "rehash".  With that change, it will
+become the cause of adding dentry to hash twice.
+
+This explains the reason of Oops (dereference the freed dentry in
+__d_lookup()) on my machine.
+
+Signed-off-by: OGAWA Hirofumi <hirofumi@mail.parknet.co.jp>
+Reported-by: Marvin <marvin24@gmx.de>
+Cc: Trond Myklebust <trond.myklebust@fys.uio.no>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/dir.c b/fs/nfs/dir.c
+index 2c5ace4..3c7f03b 100644
+--- a/fs/nfs/dir.c
++++ b/fs/nfs/dir.c
+@@ -1615,6 +1615,7 @@ static int nfs_rename(struct inode *old_dir, struct dentry *old_dentry,
+ 				goto out;
+ 
+ 			new_dentry = dentry;
++			rehash = NULL;
+ 			new_inode = NULL;
+ 		}
+ 	}

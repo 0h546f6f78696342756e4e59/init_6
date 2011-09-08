@@ -1,0 +1,30 @@
+From: Mark Brown <broonie@opensource.wolfsonmicro.com>
+Date: Thu, 7 Jan 2010 16:29:20 +0000
+Subject: [stable] ASoC: Fix WM8350 DSP mode B configuration
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 5ee518ecbcb5934e284ea51a19a939c891f5f7ea upstream.
+
+We need to set the LRCLK inversion bit to select DSP mode.
+
+Signed-off-by: Mark Brown <broonie@opensource.wolfsonmicro.com>
+Acked-by: Liam Girdwood <lrg@slimlogic.co.uk>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/sound/soc/codecs/wm8350.c b/sound/soc/codecs/wm8350.c
+index 593d5b9..2089fe7 100644
+--- a/sound/soc/codecs/wm8350.c
++++ b/sound/soc/codecs/wm8350.c
+@@ -925,7 +925,7 @@ static int wm8350_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
+ 		iface |= 0x3 << 8;
+ 		break;
+ 	case SND_SOC_DAIFMT_DSP_B:
+-		iface |= 0x3 << 8;	/* lg not sure which mode */
++		iface |= 0x3 << 8 | WM8350_AIF_LRCLK_INV;
+ 		break;
+ 	default:
+ 		return -EINVAL;

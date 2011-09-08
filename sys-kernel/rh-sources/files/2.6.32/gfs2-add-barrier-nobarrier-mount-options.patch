@@ -1,0 +1,101 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Fri, 11 Dec 2009 16:44:46 -0500
+Subject: [gfs2] add barrier/nobarrier mount options
+Message-id: <1260549886.14393.84.camel@localhost.localdomain>
+Patchwork-id: 21885
+O-Subject: [RHEL6] [01/02] GFS2: add barrier/nobarrier mount options (bz #546665)
+Bugzilla: 546665
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+This is a feature to disable the barrier support in GFS2 at mount time.
+Barrier support is otherwise enabled by default. This is taken from
+upstream where it has been tested. This fixes bz #546665,
+
+Steve.
+
+>From f25934c5f88655a8d5c3c40a540daed1f0e6dedc Mon Sep 17 00:00:00 2001
+From: Christoph Hellwig <hch@lst.de>
+Date: Fri, 30 Oct 2009 08:03:27 +0100
+Subject: GFS2: add barrier/nobarrier mount options
+
+Currently gfs2 issues barrier unconditionally.  There are various reasons
+to disable them, be that just for testing or for stupid devices flushing
+large battert backed caches.  Add a nobarrier option that matches xfs and
+btrfs for this.  Also add a symmetric barrier option to turn it back on
+at remount time.
+
+Signed-off-by: Christoph Hellwig <hch@lst.de>
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/incore.h b/fs/gfs2/incore.h
+index c239b0f..4792200 100644
+--- a/fs/gfs2/incore.h
++++ b/fs/gfs2/incore.h
+@@ -429,6 +429,7 @@ struct gfs2_args {
+ 	unsigned int ar_meta:1;			/* mount metafs */
+ 	unsigned int ar_discard:1;		/* discard requests */
+ 	unsigned int ar_errors:2;               /* errors=withdraw | panic */
++	unsigned int ar_nobarrier:1;            /* do not send barriers */
+ 	int ar_commit;				/* Commit interval */
+ 	int ar_statfs_quantum;			/* The fast statfs interval */
+ 	int ar_quota_quantum;			/* The quota interval */
+diff --git a/fs/gfs2/ops_fstype.c b/fs/gfs2/ops_fstype.c
+index 9744ee9..edfee24 100644
+--- a/fs/gfs2/ops_fstype.c
++++ b/fs/gfs2/ops_fstype.c
+@@ -1131,6 +1131,8 @@ static int fill_super(struct super_block *sb, struct gfs2_args *args, int silent
+ 	}
+ 	if (sdp->sd_args.ar_posix_acl)
+ 		sb->s_flags |= MS_POSIXACL;
++	if (sdp->sd_args.ar_nobarrier)
++		set_bit(SDF_NOBARRIERS, &sdp->sd_flags);
+ 
+ 	sb->s_magic = GFS2_MAGIC;
+ 	sb->s_op = &gfs2_super_ops;
+diff --git a/fs/gfs2/super.c b/fs/gfs2/super.c
+index b1dcfab..5e4b314 100644
+--- a/fs/gfs2/super.c
++++ b/fs/gfs2/super.c
+@@ -73,6 +73,8 @@ enum {
+ 	Opt_statfs_quantum,
+ 	Opt_statfs_percent,
+ 	Opt_quota_quantum,
++	Opt_barrier,
++	Opt_nobarrier,
+ 	Opt_error,
+ };
+ 
+@@ -107,6 +109,8 @@ static const match_table_t tokens = {
+ 	{Opt_statfs_quantum, "statfs_quantum=%d"},
+ 	{Opt_statfs_percent, "statfs_percent=%d"},
+ 	{Opt_quota_quantum, "quota_quantum=%d"},
++	{Opt_barrier, "barrier"},
++	{Opt_nobarrier, "nobarrier"},
+ 	{Opt_error, NULL}
+ };
+ 
+@@ -253,6 +257,12 @@ int gfs2_mount_args(struct gfs2_args *args, char *options)
+ 			}
+ 			args->ar_errors = GFS2_ERRORS_PANIC;
+ 			break;
++		case Opt_barrier:
++			args->ar_nobarrier = 0;
++			break;
++		case Opt_nobarrier:
++			args->ar_nobarrier = 1;
++			break;
+ 		case Opt_error:
+ 		default:
+ 			printk(KERN_WARNING "GFS2: invalid mount option: %s\n", o);
+@@ -1143,6 +1153,10 @@ static int gfs2_remount_fs(struct super_block *sb, int *flags, char *data)
+ 		sb->s_flags |= MS_POSIXACL;
+ 	else
+ 		sb->s_flags &= ~MS_POSIXACL;
++	if (sdp->sd_args.ar_nobarrier)
++		set_bit(SDF_NOBARRIERS, &sdp->sd_flags);
++	else
++		clear_bit(SDF_NOBARRIERS, &sdp->sd_flags);
+ 	spin_lock(&gt->gt_spin);
+ 	gt->gt_log_flush_secs = args.ar_commit;
+ 	gt->gt_quota_quantum = args.ar_quota_quantum;

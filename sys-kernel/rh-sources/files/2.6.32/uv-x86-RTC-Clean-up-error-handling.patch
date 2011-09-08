@@ -1,0 +1,68 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Thu, 17 Dec 2009 18:45:22 -0500
+Subject: [uv] x86 RTC: Clean up error handling
+Message-id: <20091217133141.25514.16944.sendpatchset@localhost.localdomain>
+Patchwork-id: 22092
+O-Subject: [RHEL6 PATCH 6/8] x86: UV RTC: Clean up error handling
+Bugzilla: 548181
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+commit d5991ff297ad2f7e2698eefcd8269df5ecec150f
+Author: Dimitri Sivanich <sivanich@sgi.com>
+Date:   Wed Oct 14 09:21:03 2009 -0500
+
+    x86: UV RTC: Clean up error handling
+
+    Cleanup error handling in uv_rtc_setup_clock.
+
+    Signed-off-by: Dimitri Sivanich <sivanich@sgi.com>
+    LKML-Reference: <20091014142103.GD11048@sgi.com>
+    Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/uv_time.c b/arch/x86/kernel/uv_time.c
+index c6324ad..2556450 100644
+--- a/arch/x86/kernel/uv_time.c
++++ b/arch/x86/kernel/uv_time.c
+@@ -380,15 +380,12 @@ static __init int uv_rtc_setup_clock(void)
+ 	if (rc || !uv_rtc_evt_enable)
+ 		return rc;
+ 
+-	generic_interrupt_extension = uv_rtc_interrupt;
+-
+ 	/* Setup and register clockevents */
+ 	rc = uv_rtc_allocate_timers();
+-	if (rc) {
+-		clocksource_unregister(&clocksource_uv);
+-		generic_interrupt_extension = NULL;
+-		return rc;
+-	}
++	if (rc)
++		goto error;
++
++	generic_interrupt_extension = uv_rtc_interrupt;
+ 
+ 	clock_event_device_uv.mult = div_sc(sn_rtc_cycles_per_second,
+ 				NSEC_PER_SEC, clock_event_device_uv.shift);
+@@ -401,11 +398,19 @@ static __init int uv_rtc_setup_clock(void)
+ 
+ 	rc = schedule_on_each_cpu(uv_rtc_register_clockevents);
+ 	if (rc) {
+-		clocksource_unregister(&clocksource_uv);
+ 		generic_interrupt_extension = NULL;
+ 		uv_rtc_deallocate_timers();
++		goto error;
+ 	}
+ 
++	printk(KERN_INFO "UV RTC clockevents registered\n");
++
++	return 0;
++
++error:
++	clocksource_unregister(&clocksource_uv);
++	printk(KERN_INFO "UV RTC clockevents failed rc %d\n", rc);
++
+ 	return rc;
+ }
+ arch_initcall(uv_rtc_setup_clock);

@@ -1,0 +1,39 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:21 -0500
+Subject: [mm] kvm mmu transparent hugepage support
+Message-id: <20100201152039.710158620@redhat.com>
+Patchwork-id: 23047
+O-Subject: [RHEL6 24/37] kvm mmu transparent hugepage support
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Marcelo Tosatti <mtosatti@redhat.com>
+
+This should work for both hugetlbfs and transparent hugepages.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/mmu.c b/arch/x86/kvm/mmu.c
+index 5933bba..f9107d7 100644
+--- a/arch/x86/kvm/mmu.c
++++ b/arch/x86/kvm/mmu.c
+@@ -490,6 +490,15 @@ static int host_mapping_level(struct kvm *kvm, gfn_t gfn)
+ out:
+ 	up_read(&current->mm->mmap_sem);
+ 
++	/* check for transparent hugepages */
++	if (page_size == PAGE_SIZE) {
++		struct page *page = gfn_to_page(kvm, gfn);
++
++		if (!is_error_page(page) && PageHead(page))
++			page_size = KVM_HPAGE_SIZE(2);
++		kvm_release_page_clean(page);
++	}
++
+ 	for (i = PT_PAGE_TABLE_LEVEL;
+ 	     i < (PT_PAGE_TABLE_LEVEL + KVM_NR_PAGE_SIZES); ++i) {
+ 		if (page_size >= KVM_HPAGE_SIZE(i))

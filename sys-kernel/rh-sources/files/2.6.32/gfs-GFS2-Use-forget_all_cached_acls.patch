@@ -1,0 +1,37 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Mon, 11 Jan 2010 11:06:05 -0500
+Subject: [gfs] GFS2: Use forget_all_cached_acls()
+Message-id: <1263207970-7099-4-git-send-email-swhiteho@redhat.com>
+Patchwork-id: 22367
+O-Subject: [PATCH 03/08] GFS2: Use forget_all_cached_acls()
+Bugzilla: 546294
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+Invalidate all the cached ACLs when we drop the glock.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+
+diff --git a/fs/gfs2/glops.c b/fs/gfs2/glops.c
+index 6985eef..78554ac 100644
+--- a/fs/gfs2/glops.c
++++ b/fs/gfs2/glops.c
+@@ -13,6 +13,7 @@
+ #include <linux/buffer_head.h>
+ #include <linux/gfs2_ondisk.h>
+ #include <linux/bio.h>
++#include <linux/posix_acl.h>
+ 
+ #include "gfs2.h"
+ #include "incore.h"
+@@ -184,8 +185,10 @@ static void inode_go_inval(struct gfs2_glock *gl, int flags)
+ 	if (flags & DIO_METADATA) {
+ 		struct address_space *mapping = gl->gl_aspace->i_mapping;
+ 		truncate_inode_pages(mapping, 0);
+-		if (ip)
++		if (ip) {
+ 			set_bit(GIF_INVALID, &ip->i_flags);
++			forget_all_cached_acls(&ip->i_inode);
++		}
+ 	}
+ 
+ 	if (ip == GFS2_I(gl->gl_sbd->sd_rindex))

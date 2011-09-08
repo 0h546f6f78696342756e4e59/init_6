@@ -1,0 +1,70 @@
+From: Zhenyu Wang <zhenyuw@linux.intel.com>
+Date: Fri, 27 Nov 2009 11:44:36 +0800
+Subject: [stable] drm/i915: PineView only has LVDS and CRT ports
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 103a196f4224dc6872081305cf7f82ebf67aa7bd upstream.
+
+PineView only has 2 ports for LVDS and CRT. Don't enable other
+ports for it.
+
+Cc: Shaohua Li <shaohua.li@intel.com>
+Signed-off-by: Zhenyu Wang <zhenyuw@linux.intel.com>
+Signed-off-by: Eric Anholt <eric@anholt.net>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/gpu/drm/i915/i915_drv.h b/drivers/gpu/drm/i915/i915_drv.h
+index a725f65..ecbafd0 100644
+--- a/drivers/gpu/drm/i915/i915_drv.h
++++ b/drivers/gpu/drm/i915/i915_drv.h
+@@ -957,6 +957,7 @@ extern int i915_wait_ring(struct drm_device * dev, int n, const char *caller);
+ #define IS_I85X(dev) ((dev)->pci_device == 0x3582)
+ #define IS_I855(dev) ((dev)->pci_device == 0x3582)
+ #define IS_I865G(dev) ((dev)->pci_device == 0x2572)
++#define IS_I8XX(dev) (IS_I830(dev) || IS_845G(dev) || IS_I85X(dev) || IS_I865G(dev))
+ 
+ #define IS_I915G(dev) ((dev)->pci_device == 0x2582 || (dev)->pci_device == 0x258a)
+ #define IS_I915GM(dev) ((dev)->pci_device == 0x2592)
+@@ -1018,9 +1019,12 @@ extern int i915_wait_ring(struct drm_device * dev, int n, const char *caller);
+  */
+ #define HAS_128_BYTE_Y_TILING(dev) (IS_I9XX(dev) && !(IS_I915G(dev) || \
+ 						      IS_I915GM(dev)))
++#define SUPPORTS_DIGITAL_OUTPUTS(dev)	(IS_I9XX(dev) && !IS_IGD(dev))
+ #define SUPPORTS_INTEGRATED_HDMI(dev)	(IS_G4X(dev) || IS_IGDNG(dev))
+ #define SUPPORTS_INTEGRATED_DP(dev)	(IS_G4X(dev) || IS_IGDNG(dev))
+ #define SUPPORTS_EDP(dev)		(IS_IGDNG_M(dev))
++#define SUPPORTS_TV(dev)		(IS_I9XX(dev) && IS_MOBILE(dev) && \
++					!IS_IGDNG(dev) && !IS_IGD(dev))
+ #define I915_HAS_HOTPLUG(dev) (IS_I945G(dev) || IS_I945GM(dev) || IS_G33(dev) || IS_I965G(dev))
+ /* dsparb controlled by hw only */
+ #define DSPARB_HWCONTROL(dev) (IS_G4X(dev) || IS_IGDNG(dev))
+diff --git a/drivers/gpu/drm/i915/intel_display.c b/drivers/gpu/drm/i915/intel_display.c
+index 816bf38..9be9cc6 100644
+--- a/drivers/gpu/drm/i915/intel_display.c
++++ b/drivers/gpu/drm/i915/intel_display.c
+@@ -4118,7 +4118,7 @@ static void intel_setup_outputs(struct drm_device *dev)
+ 		if (I915_READ(PCH_DP_D) & DP_DETECTED)
+ 			intel_dp_init(dev, PCH_DP_D);
+ 
+-	} else if (IS_I9XX(dev)) {
++	} else if (SUPPORTS_DIGITAL_OUTPUTS(dev)) {
+ 		bool found = false;
+ 
+ 		if (I915_READ(SDVOB) & SDVO_DETECTED) {
+@@ -4145,10 +4145,10 @@ static void intel_setup_outputs(struct drm_device *dev)
+ 
+ 		if (SUPPORTS_INTEGRATED_DP(dev) && (I915_READ(DP_D) & DP_DETECTED))
+ 			intel_dp_init(dev, DP_D);
+-	} else
++	} else if (IS_I8XX(dev))
+ 		intel_dvo_init(dev);
+ 
+-	if (IS_I9XX(dev) && IS_MOBILE(dev) && !IS_IGDNG(dev))
++	if (SUPPORTS_TV(dev))
+ 		intel_tv_init(dev);
+ 
+ 	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {

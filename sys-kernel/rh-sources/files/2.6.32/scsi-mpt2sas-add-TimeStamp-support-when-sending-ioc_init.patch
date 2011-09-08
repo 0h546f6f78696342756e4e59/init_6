@@ -1,0 +1,48 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Tue, 22 Dec 2009 16:26:57 -0500
+Subject: [scsi] mpt2sas: add TimeStamp support when sending ioc_init
+Message-id: <4B30F351.10700@redhat.com>
+Patchwork-id: 22252
+O-Subject: Re: [RHEL6 10/20] bz478848 mpt2sas: add TimeStamp support when sending
+	ioc_init
+Bugzilla: 470848
+RH-Acked-by: Rob Evers <revers@redhat.com>
+
+mpt2sas: add TimeStamp support when sending ioc_init
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_base.c b/drivers/scsi/mpt2sas/mpt2sas_base.c
+index 935cfc7..617b9c8 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_base.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_base.c
+@@ -57,6 +57,7 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/sort.h>
+ #include <linux/io.h>
++#include <linux/time.h>
+ 
+ #include "mpt2sas_base.h"
+ 
+@@ -2946,6 +2947,7 @@ _base_send_ioc_init(struct MPT2SAS_ADAPTER *ioc, int sleep_flag)
+ 	Mpi2IOCInitRequest_t mpi_request;
+ 	Mpi2IOCInitReply_t mpi_reply;
+ 	int r;
++	struct timeval current_time;
+ 
+ 	dinitprintk(ioc, printk(MPT2SAS_DEBUG_FMT "%s\n", ioc->name,
+ 	    __func__));
+@@ -2996,6 +2998,13 @@ _base_send_ioc_init(struct MPT2SAS_ADAPTER *ioc, int sleep_flag)
+ 	    cpu_to_le32(ioc->reply_post_free_dma);
+ #endif
+ 
++	/* This time stamp specifies number of milliseconds
++	 * since epoch ~ midnight January 1, 1970.
++	 */
++	do_gettimeofday(&current_time);
++	mpi_request.TimeStamp = cpu_to_le64((u64)current_time.tv_sec * 1000 +
++		current_time.tv_usec / 1000);
++
+ 	if (ioc->logging_level & MPT_DEBUG_INIT) {
+ 		u32 *mfp;
+ 		int i;

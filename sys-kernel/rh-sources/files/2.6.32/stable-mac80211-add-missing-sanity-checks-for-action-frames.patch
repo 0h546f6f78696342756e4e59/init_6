@@ -1,0 +1,52 @@
+From: Felix Fietkau <nbd@openwrt.org>
+Date: Thu, 7 Jan 2010 20:23:53 +0100
+Subject: [stable] mac80211: add missing sanity checks for action frames
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit d79074488083ec0d7ecd15352192dc1631f25643 upstream.
+
+Various missing sanity checks caused rejected action frames to be
+interpreted as channel switch announcements, which can cause a client
+mode interface to switch away from its operating channel, thereby losing
+connectivity. This patch ensures that only spectrum management action
+frames are processed by the CSA handling function and prevents rejected
+action frames from getting processed by the MLME code.
+
+Signed-off-by: Felix Fietkau <nbd@openwrt.org>
+Signed-off-by: John W. Linville <linville@tuxdriver.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/net/mac80211/mlme.c b/net/mac80211/mlme.c
+index f13d181..6cae295 100644
+--- a/net/mac80211/mlme.c
++++ b/net/mac80211/mlme.c
+@@ -1953,7 +1953,9 @@ static void ieee80211_sta_rx_queued_mgmt(struct ieee80211_sub_if_data *sdata,
+ 			rma = ieee80211_rx_mgmt_disassoc(sdata, mgmt, skb->len);
+ 			break;
+ 		case IEEE80211_STYPE_ACTION:
+-			/* XXX: differentiate, can only happen for CSA now! */
++			if (mgmt->u.action.category != WLAN_CATEGORY_SPECTRUM_MGMT)
++				break;
++
+ 			ieee80211_sta_process_chanswitch(sdata,
+ 					&mgmt->u.action.u.chan_switch.sw_elem,
+ 					ifmgd->associated);
+diff --git a/net/mac80211/rx.c b/net/mac80211/rx.c
+index 4e14754..674d8c2 100644
+--- a/net/mac80211/rx.c
++++ b/net/mac80211/rx.c
+@@ -1808,6 +1808,10 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
+ 		}
+ 		break;
+ 	default:
++		/* do not process rejected action frames */
++		if (mgmt->u.action.category & 0x80)
++			return RX_DROP_MONITOR;
++
+ 		return RX_CONTINUE;
+ 	}
+ 

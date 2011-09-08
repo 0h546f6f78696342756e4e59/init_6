@@ -1,0 +1,77 @@
+From: Rik van Riel <riel@redhat.com>
+Date: Thu, 17 Dec 2009 14:27:11 -0500
+Subject: [mm] vmscan: do not evict inactive pages when skipping an active list scan
+Message-id: <20091217143337.976675207@redhat.com>
+Patchwork-id: 22027
+O-Subject: [PATCH 21/21 RHEL 6] (bz 548457) vmscan: do not evict inactive pages
+	when skipping an active list scan
+Bugzilla: 548457
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+commit b39415b2731d7dec5e612d2d12595da82399eedf
+Author: Rik van Riel <riel@redhat.com>
+Date:   Mon Dec 14 17:59:48 2009 -0800
+
+    vmscan: do not evict inactive pages when skipping an active list scan
+
+    In AIM7 runs, recent kernels start swapping out anonymous pages well
+    before they should.  This is due to shrink_list falling through to
+    shrink_inactive_list if !inactive_anon_is_low(zone, sc), when all we
+    really wanted to do is pre-age some anonymous pages to give them extra
+    time to be referenced while on the inactive list.
+
+    The obvious fix is to make sure that shrink_list does not fall through to
+    scanning/reclaiming inactive pages when we called it to scan one of the
+    active lists.
+
+    This change should be safe because the loop in shrink_zone ensures that we
+    will still shrink the anon and file inactive lists whenever we should.
+
+    [kosaki.motohiro@jp.fujitsu.com: inactive_file_is_low() should be inactive_anon_is_low()]
+    Reported-by: Larry Woodman <lwoodman@redhat.com>
+    Signed-off-by: Rik van Riel <riel@redhat.com>
+    Acked-by: Johannes Weiner <hannes@cmpxchg.org>
+    Cc: Tomasz Chmielewski <mangoo@wpkg.org>
+    Signed-off-by: KOSAKI Motohiro <kosaki.motohiro@jp.fujitsu.com>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/vmscan.c b/mm/vmscan.c
+index 9804e8a..8271c7f 100644
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
+@@ -1463,20 +1463,26 @@ static int inactive_file_is_low(struct zone *zone, struct scan_control *sc)
+ 	return low;
+ }
+ 
++static int inactive_list_is_low(struct zone *zone, struct scan_control *sc,
++				int file)
++{
++	if (file)
++		return inactive_file_is_low(zone, sc);
++	else
++		return inactive_anon_is_low(zone, sc);
++}
++
+ static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
+ 	struct zone *zone, struct scan_control *sc, int priority)
+ {
+ 	int file = is_file_lru(lru);
+ 
+-	if (lru == LRU_ACTIVE_FILE && inactive_file_is_low(zone, sc)) {
+-		shrink_active_list(nr_to_scan, zone, sc, priority, file);
++	if (is_active_lru(lru)) {
++		if (inactive_list_is_low(zone, sc, file))
++		    shrink_active_list(nr_to_scan, zone, sc, priority, file);
+ 		return 0;
+ 	}
+ 
+-	if (lru == LRU_ACTIVE_ANON && inactive_anon_is_low(zone, sc)) {
+-		shrink_active_list(nr_to_scan, zone, sc, priority, file);
+-		return 0;
+-	}
+ 	return shrink_inactive_list(nr_to_scan, zone, sc, priority, file);
+ }
+ 

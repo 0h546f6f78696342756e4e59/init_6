@@ -1,0 +1,47 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Wed, 27 Jan 2010 21:13:11 -0500
+Subject: [kvm] x86: Fix leak of free lapic date in kvm_arch_vcpu_init()
+Message-id: <20100127211710.994819179@amt.cnet>
+Patchwork-id: 22966
+O-Subject: [RHEL 6 KVM 5/9] KVM: x86: Fix leak of free lapic date in
+	kvm_arch_vcpu_init()
+Bugzilla: 559343
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+commit 3d5c07d83394e84ae44ae1e19fe5fb8b54e26c7e
+Author: Wei Yongjun <yjwei@cn.fujitsu.com>
+Date:   Fri Jan 22 14:21:29 2010 +0800
+
+KVM: x86: Fix leak of free lapic date in kvm_arch_vcpu_init()
+
+In function kvm_arch_vcpu_init(), if the memory malloc for
+vcpu->arch.mce_banks is fail, it does not free the memory
+of lapic date. This patch fixed it.
+
+Signed-off-by: Wei Yongjun <yjwei@cn.fujitsu.com>
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 559343
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 8b1e85d..2b434cd 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -5069,12 +5069,13 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
+ 				       GFP_KERNEL);
+ 	if (!vcpu->arch.mce_banks) {
+ 		r = -ENOMEM;
+-		goto fail_mmu_destroy;
++		goto fail_free_lapic;
+ 	}
+ 	vcpu->arch.mcg_cap = KVM_MAX_MCE_BANKS;
+ 
+ 	return 0;
+-
++fail_free_lapic:
++	kvm_free_lapic(vcpu);
+ fail_mmu_destroy:
+ 	kvm_mmu_destroy(vcpu);
+ fail_free_pio_data:

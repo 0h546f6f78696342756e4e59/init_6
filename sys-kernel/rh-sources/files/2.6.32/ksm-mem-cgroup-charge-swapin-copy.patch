@@ -1,0 +1,54 @@
+From: Izik Eidus <ieidus@redhat.com>
+Date: Thu, 17 Dec 2009 15:52:03 -0500
+Subject: [ksm] mem cgroup charge swapin copy
+Message-id: <1261065127-3342-29-git-send-email-ieidus@redhat.com>
+Patchwork-id: 22072
+O-Subject: [PATCH 28/32] ksm: mem cgroup charge swapin copy
+Bugzilla: 548586
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+From: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+
+But ksm swapping does require one small change in mem cgroup handling.
+When do_swap_page()'s call to ksm_might_need_to_copy() does indeed
+substitute a duplicate page to accommodate a different anon_vma (or a the
+!PageSwapCache check in mem_cgroup_try_charge_swapin().
+
+That was returning success without charging, on the assumption that
+pte_same() would fail after, which is not the case here.  Originally I
+proposed that success, so that an unshrinkable mem cgroup at its limit
+would not fail unnecessarily; but that's a minor point, and there are
+plenty of other places where we may fail an overallocation which might
+later prove unnecessary.  So just go ahead and do what all the other
+exceptions do: proceed to charge current mm.
+
+Signed-off-by: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+Cc: Izik Eidus <ieidus@redhat.com>
+Cc: Andrea Arcangeli <aarcange@redhat.com>
+Cc: Chris Wright <chrisw@redhat.com>
+Acked-by: KAMEZAWA Hiroyuki <kamezawa.hiroyu@jp.fujitsu.com>
+Acked-by: Balbir Singh <balbir@linux.vnet.ibm.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Izik Eidus <ieidus@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/memcontrol.c b/mm/memcontrol.c
+index f99f599..a399e06 100644
+--- a/mm/memcontrol.c
++++ b/mm/memcontrol.c
+@@ -1737,11 +1737,12 @@ int mem_cgroup_try_charge_swapin(struct mm_struct *mm,
+ 		goto charge_cur_mm;
+ 	/*
+ 	 * A racing thread's fault, or swapoff, may have already updated
+-	 * the pte, and even removed page from swap cache: return success
+-	 * to go on to do_swap_page()'s pte_same() test, which should fail.
++	 * the pte, and even removed page from swap cache: in those cases
++	 * do_swap_page()'s pte_same() test will fail; but there's also a
++	 * KSM case which does need to charge the page.
+ 	 */
+ 	if (!PageSwapCache(page))
+-		return 0;
++		goto charge_cur_mm;
+ 	mem = try_get_mem_cgroup_from_swapcache(page);
+ 	if (!mem)
+ 		goto charge_cur_mm;

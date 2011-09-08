@@ -1,0 +1,69 @@
+From: Larry Woodman <lwoodman@redhat.com>
+Date: Fri, 18 Dec 2009 16:34:46 -0500
+Subject: [mm] Add file page writeback mm tracepoints.
+Message-id: <1261154086-15637-6-git-send-email-lwoodman@redhat.com>
+Patchwork-id: 22151
+O-Subject: [RHEL6 Patch 5/5] Add file page writeback mm tracepoints.
+Bugzilla: 523093
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+This patch adds mm tracepoints to the filesystem dirty writeback code.
+Its used to monitor writebacks when the dirty and dirty_background limits
+are exceeded and the writing of old dirty pages(kupdate).
+
+Fixes BZ 523093.
+
+Signed-off-by: Larry Woodman <lwoodman@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/fs-writeback.c b/fs/fs-writeback.c
+index 9d5360c..50c6789 100644
+--- a/fs/fs-writeback.c
++++ b/fs/fs-writeback.c
+@@ -25,6 +25,7 @@
+ #include <linux/blkdev.h>
+ #include <linux/backing-dev.h>
+ #include <linux/buffer_head.h>
++#include <trace/events/kmem.h>
+ #include "internal.h"
+ 
+ #define inode_to_bdi(inode)	((inode)->i_mapping->backing_dev_info)
+@@ -877,7 +878,9 @@ static long wb_check_old_data_flush(struct bdi_writeback *wb)
+ 			.range_cyclic	= 1,
+ 		};
+ 
+-		return wb_writeback(wb, &args);
++		nr_pages = wb_writeback(wb, &args);
++		trace_mm_olddata_writeout(nr_pages);
++		return nr_pages;
+ 	}
+ 
+ 	return 0;
+@@ -917,6 +920,7 @@ long wb_do_writeback(struct bdi_writeback *wb, int force_wait)
+ 		if (args.sync_mode == WB_SYNC_ALL)
+ 			wb_clear_pending(wb, work);
+ 	}
++	trace_mm_background_writeout(wrote);
+ 
+ 	/*
+ 	 * Check for periodic writeback, kupdated() style
+diff --git a/mm/page-writeback.c b/mm/page-writeback.c
+index 2c5d792..ef27e73 100644
+--- a/mm/page-writeback.c
++++ b/mm/page-writeback.c
+@@ -34,6 +34,7 @@
+ #include <linux/syscalls.h>
+ #include <linux/buffer_head.h>
+ #include <linux/pagevec.h>
++#include <trace/events/kmem.h>
+ 
+ /*
+  * After a CPU has dirtied this many pages, balance_dirty_pages_ratelimited
+@@ -578,6 +579,7 @@ static void balance_dirty_pages(struct address_space *mapping,
+ 			pause = HZ / 10;
+ 	}
+ 
++	if(pages_written) trace_mm_balancedirty_writeout(pages_written);
+ 	if (bdi_nr_reclaimable + bdi_nr_writeback < bdi_thresh &&
+ 			bdi->dirty_exceeded)
+ 		bdi->dirty_exceeded = 0;

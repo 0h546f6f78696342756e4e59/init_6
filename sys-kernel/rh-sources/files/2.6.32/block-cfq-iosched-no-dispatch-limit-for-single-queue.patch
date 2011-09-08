@@ -1,0 +1,45 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:01 -0500
+Subject: [block] cfq-iosched: no dispatch limit for single queue
+Message-id: <1260298712-12756-29-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21767
+O-Subject: [RHEL6 PATCH 28/59] cfq-iosched: no dispatch limit for single queue
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit 474b18ccc264c472abeec50f48469b6477202699
+Author: Shaohua Li <shaohua.li@intel.com>
+Date:   Thu Dec 3 12:58:05 2009 +0100
+
+    cfq-iosched: no dispatch limit for single queue
+
+    Since commit 2f5cb7381b737e24c8046fd4aeab571fb71315f5, each queue can send
+    up to 4 * 4 requests if only one queue exists. I wonder why we have such limit.
+    Device supports tag can send more requests. For example, AHCI can send 31
+    requests. Test (direct aio randread) shows the limits reduce about 4% disk
+    thoughput.
+    On the other hand, since we send one request one time, if other queue
+    pop when current is sending more than cfq_quantum requests, current queue will
+    stop send requests soon after one request, so sounds there is no big latency.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 9d79fa0..8743057 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -1617,9 +1617,9 @@ static bool cfq_may_dispatch(struct cfq_data *cfqd, struct cfq_queue *cfqq)
+ 			return false;
+ 
+ 		/*
+-		 * Sole queue user, allow bigger slice
++		 * Sole queue user, no limit
+ 		 */
+-		max_dispatch *= 4;
++		max_dispatch = -1;
+ 	}
+ 
+ 	/*

@@ -1,0 +1,81 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Thu, 18 Feb 2010 08:53:32 -0500
+Subject: [s390] zfcp: report BSG errors in correct field
+Message-id: <1266483215-18709-3-git-send-email-brueckner@redhat.com>
+Patchwork-id: 23329
+O-Subject: [RHEL6 PATCH 2/5] [s390] zfcp: report BSG errors in correct field
+Bugzilla: 564378
+
+Description
+-----------
+Errors are reported even though the request is processed successfully
+because the wrong variables are used to report the execution status.
+
+The status FC_CTELS_STATUS_REJECT for all FC BSG errors is not appropriate.
+Instead, report -EIO in the result field if there was a problem in zfcp
+with the FC BSG request.  If the request is good from our point of view,
+report result 0, status FC_CTELS_STATUS_OK and let userspace read the
+Accept or Reject from the payload (as documented in scsi_bsg_fc.h).
+
+Bugzilla
+--------
+BZ 564378
+https://bugzilla.redhat.com/show_bug.cgi?id=564378
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/jejb/scsi-rc-fixes-2.6.git;a=commitdiff;h=7dec9cf1dfa283feca4b761160112ea4838a6a8c
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+diff --git a/drivers/s390/scsi/zfcp_fc.c b/drivers/s390/scsi/zfcp_fc.c
+index 135fdce..d06005b 100644
+--- a/drivers/s390/scsi/zfcp_fc.c
++++ b/drivers/s390/scsi/zfcp_fc.c
+@@ -714,20 +714,15 @@ static void zfcp_fc_generic_els_handler(unsigned long data)
+ {
+ 	struct zfcp_els_fc_job *els_fc_job = (struct zfcp_els_fc_job *) data;
+ 	struct fc_bsg_job *job = els_fc_job->job;
+-	struct fc_bsg_reply *reply = job->reply;
++	struct fc_bsg_reply *jr = job->reply;
++	struct zfcp_send_els *zfcp_els = job->dd_data;
+ 
+-	if (els_fc_job->els.status) {
+-		/* request rejected or timed out */
+-		reply->reply_data.ctels_reply.status = FC_CTELS_STATUS_REJECT;
+-		goto out;
+-	}
+-
+-	reply->reply_data.ctels_reply.status = FC_CTELS_STATUS_OK;
+-	reply->reply_payload_rcv_len = job->reply_payload.payload_len;
+-
+-out:
++	jr->reply_payload_rcv_len = job->reply_payload.payload_len;
++	jr->reply_data.ctels_reply.status = FC_CTELS_STATUS_OK;
++	jr->result = zfcp_els->status ? -EIO : 0;
+ 	job->state_flags = FC_RQST_STATE_DONE;
+ 	job->job_done(job);
++
+ 	kfree(els_fc_job);
+ }
+ 
+@@ -785,10 +780,12 @@ static void zfcp_fc_generic_ct_handler(unsigned long data)
+ {
+ 	struct zfcp_ct_fc_job *ct_fc_job = (struct zfcp_ct_fc_job *) data;
+ 	struct fc_bsg_job *job = ct_fc_job->job;
++	struct fc_bsg_reply *jr = job->reply;
++	struct zfcp_send_ct *zfcp_ct  = job->dd_data;
+ 
+-	job->reply->reply_data.ctels_reply.status = ct_fc_job->ct.status ?
+-				FC_CTELS_STATUS_REJECT : FC_CTELS_STATUS_OK;
+-	job->reply->reply_payload_rcv_len = job->reply_payload.payload_len;
++	jr->reply_payload_rcv_len = job->reply_payload.payload_len;
++	jr->reply_data.ctels_reply.status = FC_CTELS_STATUS_OK;
++	jr->result = zfcp_ct->status ? -EIO : 0;
+ 	job->state_flags = FC_RQST_STATE_DONE;
+ 	job->job_done(job);
+ 

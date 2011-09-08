@@ -1,0 +1,66 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Sat, 19 Dec 2009 02:33:38 -0500
+Subject: [x86] Remove CPU cache size output for non-Intel too
+Message-id: <20091218211956.23706.53875.sendpatchset@localhost.localdomain>
+Patchwork-id: 22211
+O-Subject: [RHEL6 PATCH 2/9] x86: Remove CPU cache size output for non-Intel too
+Bugzilla: 548840
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+commit b01c845f0f2e3f9e54e6a78d5d56895f5b95e818
+Author: Roland Dreier <rdreier@cisco.com>
+Date:   Fri Nov 13 14:38:26 2009 -0800
+
+    x86: Remove CPU cache size output for non-Intel too
+
+    As Dave Jones said about the output in intel_cacheinfo.c: "They
+    aren't useful, and pollute the dmesg output a lot (especially on
+    machines with many cores).  Also the same information can be
+    trivially found out from userspace."
+
+    Give the generic display_cacheinfo() function the same treatment.
+
+    Signed-off-by: Roland Dreier <rolandd@cisco.com>
+    Acked-by: Dave Jones <davej@redhat.com>
+    Cc: Mike Travis <travis@sgi.com>
+    Cc: Andi Kleen <ak@linux.intel.com>
+    Cc: Heiko Carstens <heiko.carstens@de.ibm.com>
+    Cc: Randy Dunlap <rdunlap@xenotime.net>
+    Cc: Tejun Heo <tj@kernel.org>
+    Cc: Greg Kroah-Hartman <gregkh@suse.de>
+    Cc: Yinghai Lu <yinghai@kernel.org>
+    Cc: David Rientjes <rientjes@google.com>
+    Cc: Steven Rostedt <rostedt@goodmis.org>
+    Cc: Rusty Russell <rusty@rustcorp.com.au>
+    Cc: Hidetoshi Seto <seto.hidetoshi@jp.fujitsu.com>
+    Cc: Jack Steiner <steiner@sgi.com>
+    Cc: Frederic Weisbecker <fweisbec@gmail.com>
+    LKML-Reference: <adaocn6dp99.fsf_-_@roland-alpha.cisco.com>
+    Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/cpu/common.c b/arch/x86/kernel/cpu/common.c
+index 6ce4863..f697e90 100644
+--- a/arch/x86/kernel/cpu/common.c
++++ b/arch/x86/kernel/cpu/common.c
+@@ -391,8 +391,6 @@ void __cpuinit display_cacheinfo(struct cpuinfo_x86 *c)
+ 
+ 	if (n >= 0x80000005) {
+ 		cpuid(0x80000005, &dummy, &ebx, &ecx, &edx);
+-		printk(KERN_INFO "CPU: L1 I Cache: %dK (%d bytes/line), D cache %dK (%d bytes/line)\n",
+-				edx>>24, edx&0xFF, ecx>>24, ecx&0xFF);
+ 		c->x86_cache_size = (ecx>>24) + (edx>>24);
+ #ifdef CONFIG_X86_64
+ 		/* On K8 L1 TLB is inclusive, so don't count it */
+@@ -422,9 +420,6 @@ void __cpuinit display_cacheinfo(struct cpuinfo_x86 *c)
+ #endif
+ 
+ 	c->x86_cache_size = l2size;
+-
+-	printk(KERN_INFO "CPU: L2 Cache: %dK (%d bytes/line)\n",
+-			l2size, ecx & 0xFF);
+ }
+ 
+ void __cpuinit detect_ht(struct cpuinfo_x86 *c)

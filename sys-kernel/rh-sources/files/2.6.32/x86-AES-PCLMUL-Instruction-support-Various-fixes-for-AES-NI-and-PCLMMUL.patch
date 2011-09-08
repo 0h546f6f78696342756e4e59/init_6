@@ -1,0 +1,201 @@
+From: John Villalovos <jvillalo@redhat.com>
+Date: Mon, 22 Feb 2010 18:41:53 -0500
+Subject: [x86] AES/PCLMUL Instruction support: Various fixes for AES-NI and PCLMMUL
+Message-id: <20100222184153.GE6705@linuxjohn.usersys.redhat.com>
+Patchwork-id: 23400
+O-Subject: [RHEL6  BZ463496 4/4] AES/PCLMUL Instruction support: Various fixes
+	for AES-NI and PCLMMUL
+Bugzilla: 463496
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+
+[RHEL 6] AES/PCLMUL Support
+https://bugzilla.redhat.com/show_bug.cgi?id=463496
+
+Patch 4/4: Various fixes for AES-NI and PCLMMUL
+
+commit da0e52676bf3e4353c118c29774c9dec985eeeac
+Author: John L. Villalovos <jvillalo@redhat.com>
+Date:   Mon Feb 22 10:39:09 2010 -0500
+
+    Backport of following commits:
+    Upstream commit 2d06ef7f42ed8c9969c9aa84e95df5d5c6378327
+    Upstream Author: Herbert Xu <herbert@gondor.apana.org.au>
+    Upstream Date:   Sun Nov 1 12:49:44 2009 -0500
+
+        crypto: ghash-intel - Hard-code pshufb
+
+        Old gases don't have a clue what pshufb stands for so we have
+        to hard-code it for now.
+
+    Upstream commit 3b0d65969b549b796abc6f0230f6142fed365d49
+    Upstream Author: Herbert Xu <herbert@gondor.apana.org.au>
+    Upstream Date:   Tue Nov 3 09:11:15 2009 -0500
+
+        crypto: ghash-intel - Add PSHUFB macros
+
+        Add PSHUFB macros instead of repeating byte sequences, suggested
+        by Ingo.
+
+    Upstream commit 564ec0ec05ac6ee409bde81f7ef27a3dadbf3a6a
+    Upstream Author: Huang Ying <ying.huang@intel.com>
+    Upstream Date:   Mon Nov 23 19:55:22 2009 +0800
+
+        crypto: ghash-clmulni-intel - Use gas macro for PCLMULQDQ-NI and PSHUFB
+
+        Old binutils do not support PCLMULQDQ-NI and PSHUFB, to make kernel
+        can be compiled by them, .byte code is used instead of assembly
+        instructions. But the readability and flexibility of raw .byte code is
+        not good.
+
+        So corresponding assembly instruction like gas macro is used instead.
+
+    Upstream commit 507069c91e36786b3fa5d9515c35ed6bb0ce469b
+    Upstream Author: Youquan, Song <youquan.song@intel.com>
+    Upstream Date:   Mon Nov 23 20:23:04 2009 +0800
+
+        crypto: testmgr - Add ghash algorithm test before provide to users
+
+        Add ghash algorithm test before provide it to users
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/crypto/ghash-clmulni-intel_asm.S b/arch/x86/crypto/ghash-clmulni-intel_asm.S
+index b9e787a..1528dc4 100644
+--- a/arch/x86/crypto/ghash-clmulni-intel_asm.S
++++ b/arch/x86/crypto/ghash-clmulni-intel_asm.S
+@@ -17,6 +17,7 @@
+  */
+ 
+ #include <linux/linkage.h>
++#include <asm/inst.h>
+ 
+ .align 16
+ .Lbswap_mask:
+@@ -55,12 +56,9 @@ __clmul_gf128mul_ble:
+ 	pxor DATA, T2
+ 	pxor SHASH, T3
+ 
+-	# pclmulqdq $0x00, SHASH, DATA	# DATA = a0 * b0
+-	.byte 0x66, 0x0f, 0x3a, 0x44, 0xc1, 0x00
+-	# pclmulqdq $0x11, SHASH, T1	# T1 = a1 * b1
+-	.byte 0x66, 0x0f, 0x3a, 0x44, 0xd1, 0x11
+-	# pclmulqdq $0x00, T3, T2	# T2 = (a1 + a0) * (b1 + b0)
+-	.byte 0x66, 0x0f, 0x3a, 0x44, 0xdc, 0x00
++	PCLMULQDQ 0x00 SHASH DATA	# DATA = a0 * b0
++	PCLMULQDQ 0x11 SHASH T1		# T1 = a1 * b1
++	PCLMULQDQ 0x00 T3 T2		# T2 = (a1 + a0) * (b1 + b0)
+ 	pxor DATA, T2
+ 	pxor T1, T2			# T2 = a0 * b1 + a1 * b0
+ 
+@@ -100,9 +98,9 @@ ENTRY(clmul_ghash_mul)
+ 	movups (%rdi), DATA
+ 	movups (%rsi), SHASH
+ 	movaps .Lbswap_mask, BSWAP
+-	pshufb BSWAP, DATA
++	PSHUFB_XMM BSWAP DATA
+ 	call __clmul_gf128mul_ble
+-	pshufb BSWAP, DATA
++	PSHUFB_XMM BSWAP DATA
+ 	movups DATA, (%rdi)
+ 	ret
+ 
+@@ -116,18 +114,18 @@ ENTRY(clmul_ghash_update)
+ 	movaps .Lbswap_mask, BSWAP
+ 	movups (%rdi), DATA
+ 	movups (%rcx), SHASH
+-	pshufb BSWAP, DATA
++	PSHUFB_XMM BSWAP DATA
+ .align 4
+ .Lupdate_loop:
+ 	movups (%rsi), IN1
+-	pshufb BSWAP, IN1
++	PSHUFB_XMM BSWAP IN1
+ 	pxor IN1, DATA
+ 	call __clmul_gf128mul_ble
+ 	sub $16, %rdx
+ 	add $16, %rsi
+ 	cmp $16, %rdx
+ 	jge .Lupdate_loop
+-	pshufb BSWAP, DATA
++	PSHUFB_XMM BSWAP DATA
+ 	movups DATA, (%rdi)
+ .Lupdate_just_ret:
+ 	ret
+@@ -140,7 +138,7 @@ ENTRY(clmul_ghash_update)
+ ENTRY(clmul_ghash_setkey)
+ 	movaps .Lbswap_mask, BSWAP
+ 	movups (%rsi), %xmm0
+-	pshufb BSWAP, %xmm0
++	PSHUFB_XMM BSWAP %xmm0
+ 	movaps %xmm0, %xmm1
+ 	psllq $1, %xmm0
+ 	psrlq $63, %xmm1
+diff --git a/arch/x86/include/asm/i387.h b/arch/x86/include/asm/i387.h
+index 0b20bbb..ebfb8a9 100644
+--- a/arch/x86/include/asm/i387.h
++++ b/arch/x86/include/asm/i387.h
+@@ -10,6 +10,8 @@
+ #ifndef _ASM_X86_I387_H
+ #define _ASM_X86_I387_H
+ 
++#ifndef __ASSEMBLY__
++
+ #include <linux/sched.h>
+ #include <linux/kernel_stat.h>
+ #include <linux/regset.h>
+@@ -411,4 +413,9 @@ static inline unsigned short get_fpu_mxcsr(struct task_struct *tsk)
+ 	}
+ }
+ 
++#endif /* __ASSEMBLY__ */
++
++#define PSHUFB_XMM5_XMM0 .byte 0x66, 0x0f, 0x38, 0x00, 0xc5
++#define PSHUFB_XMM5_XMM6 .byte 0x66, 0x0f, 0x38, 0x00, 0xf5
++
+ #endif /* _ASM_X86_I387_H */
+diff --git a/crypto/testmgr.c b/crypto/testmgr.c
+index 6d5b746..f70ce52 100644
+--- a/crypto/testmgr.c
++++ b/crypto/testmgr.c
+@@ -1943,6 +1943,15 @@ static const struct alg_test_desc alg_test_descs[] = {
+ 			}
+ 		}
+ 	}, {
++		.alg = "ghash",
++		.test = alg_test_hash,
++		.suite = {
++			.hash = {
++				.vecs = ghash_tv_template,
++				.count = GHASH_TEST_VECTORS
++			}
++		}
++	}, {
+ 		.alg = "hmac(md5)",
+ 		.test = alg_test_hash,
+ 		.suite = {
+diff --git a/crypto/testmgr.h b/crypto/testmgr.h
+index 9963b18..fb76517 100644
+--- a/crypto/testmgr.h
++++ b/crypto/testmgr.h
+@@ -1003,6 +1003,21 @@ static struct hash_testvec tgr128_tv_template[] = {
+ 	},
+ };
+ 
++#define GHASH_TEST_VECTORS 1
++
++static struct hash_testvec ghash_tv_template[] =
++{
++	{
++
++		.key	= "\xdf\xa6\xbf\x4d\xed\x81\xdb\x03\xff\xca\xff\x95\xf8\x30\xf0\x61",
++		.ksize	= 16,
++		.plaintext = "\x95\x2b\x2a\x56\xa5\x60\x04a\xc0\xb3\x2b\x66\x56\xa0\x5b\x40\xb6",
++		.psize	= 16,
++		.digest	= "\xda\x53\xeb\x0a\xd2\xc5\x5b\xb6"
++			  "\x4f\xc4\x80\x2c\xc3\xfe\xda\x60",
++	},
++};
++
+ /*
+  * HMAC-MD5 test vectors from RFC2202
+  * (These need to be fixed to not use strlen).

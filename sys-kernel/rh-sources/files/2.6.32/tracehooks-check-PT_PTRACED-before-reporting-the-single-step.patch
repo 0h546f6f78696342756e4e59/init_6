@@ -1,0 +1,47 @@
+From: Roland McGrath <roland@redhat.com>
+Date: Fri, 18 Dec 2009 10:23:48 -0500
+Subject: [tracehooks] check PT_PTRACED before reporting the single-step
+Message-id: <1c86a54169240a4279bd1f21e042f45e10b0f4c7.1261131466.git.roland@redhat.com>
+Patchwork-id: 22123
+O-Subject: [RHEL6.0 PATCH 11/16] tracehooks: check PT_PTRACED before reporting
+	the single-step
+Bugzilla: 549491
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+From: Oleg Nesterov <oleg@redhat.com>
+
+No functional changes, preparation for utrace-ptrace.
+
+tracehook_report_syscall_exit() and tracehook_signal_handler() assume
+that only ptrace can set TIF_SINGLESTEP. Currently this is true but we
+are going to change this, the stepping logic will be moved into utrace
+layer.
+
+Change this code to check PT_PTRACED, ptrace-utrace doesn't set it.
+
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Signed-off-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/tracehook.h b/include/linux/tracehook.h
+index 6f3c61c..c78b2f4 100644
+--- a/include/linux/tracehook.h
++++ b/include/linux/tracehook.h
+@@ -134,7 +134,7 @@ static inline __must_check int tracehook_report_syscall_entry(
+  */
+ static inline void tracehook_report_syscall_exit(struct pt_regs *regs, int step)
+ {
+-	if (step) {
++	if (step && (task_ptrace(current) & PT_PTRACED)) {
+ 		siginfo_t info;
+ 		user_single_step_siginfo(current, regs, &info);
+ 		force_sig_info(SIGTRAP, &info, current);
+@@ -386,7 +386,7 @@ static inline void tracehook_signal_handler(int sig, siginfo_t *info,
+ 					    const struct k_sigaction *ka,
+ 					    struct pt_regs *regs, int stepping)
+ {
+-	if (stepping)
++	if (stepping && (task_ptrace(current) & PT_PTRACED))
+ 		ptrace_notify(SIGTRAP);
+ }
+ 

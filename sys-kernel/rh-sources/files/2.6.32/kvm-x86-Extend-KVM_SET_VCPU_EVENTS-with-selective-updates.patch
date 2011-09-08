@@ -1,0 +1,112 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:33:55 -0500
+Subject: [kvm] x86: Extend KVM_SET_VCPU_EVENTS with selective updates
+Message-id: <20100112214154.100999938@amt.cnet>
+Patchwork-id: 22468
+O-Subject: [RHEL 6 KVM 06/20] KVM: x86: Extend KVM_SET_VCPU_EVENTS with
+	selective updates
+Bugzilla: 554500
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit dab4b911a5327859bb8f969249c6978c26cd4853
+Author: Jan Kiszka <jan.kiszka@web.de>
+Date:   Sun Dec 6 18:24:15 2009 +0100
+
+KVM: x86: Extend KVM_SET_VCPU_EVENTS with selective updates
+
+User space may not want to overwrite asynchronously changing VCPU event
+states on write-back. So allow to skip nmi.pending and sipi_vector by
+setting corresponding bits in the flags field of kvm_vcpu_events.
+
+[avi: advertise the bits in KVM_GET_VCPU_EVENTS]
+
+Signed-off-by: Jan Kiszka <jan.kiszka@siemens.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554500
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/Documentation/kvm/api.txt b/Documentation/kvm/api.txt
+index 48b0f02..fca2b59 100644
+--- a/Documentation/kvm/api.txt
++++ b/Documentation/kvm/api.txt
+@@ -661,7 +661,7 @@ struct kvm_vcpu_events {
+ 		__u8 pad;
+ 	} nmi;
+ 	__u32 sipi_vector;
+-	__u32 flags;   /* must be zero */
++	__u32 flags;
+ };
+ 
+ 4.30 KVM_SET_VCPU_EVENTS
+@@ -677,6 +677,14 @@ vcpu.
+ 
+ See KVM_GET_VCPU_EVENTS for the data structure.
+ 
++Fields that may be modified asynchronously by running VCPUs can be excluded
++from the update. These fields are nmi.pending and sipi_vector. Keep the
++corresponding bits in the flags field cleared to suppress overwriting the
++current in-kernel state. The bits are:
++
++KVM_VCPUEVENT_VALID_NMI_PENDING - transfer nmi.pending to the kernel
++KVM_VCPUEVENT_VALID_SIPI_VECTOR - transfer sipi_vector
++
+ 
+ 5. The kvm_run structure
+ 
+diff --git a/arch/x86/include/asm/kvm.h b/arch/x86/include/asm/kvm.h
+index 8a2821a..ac7596b 100644
+--- a/arch/x86/include/asm/kvm.h
++++ b/arch/x86/include/asm/kvm.h
+@@ -253,6 +253,10 @@ struct kvm_reinject_control {
+ 	__u8 reserved[31];
+ };
+ 
++/* When set in flags, include corresponding fields on KVM_SET_VCPU_EVENTS */
++#define KVM_VCPUEVENT_VALID_NMI_PENDING	0x00000001
++#define KVM_VCPUEVENT_VALID_SIPI_VECTOR	0x00000002
++
+ /* for KVM_GET/SET_VCPU_EVENTS */
+ struct kvm_vcpu_events {
+ 	struct {
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index e76b9bd..19acbfb 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -1872,7 +1872,8 @@ static void kvm_vcpu_ioctl_x86_get_vcpu_events(struct kvm_vcpu *vcpu,
+ 
+ 	events->sipi_vector = vcpu->arch.sipi_vector;
+ 
+-	events->flags = 0;
++	events->flags = (KVM_VCPUEVENT_VALID_NMI_PENDING
++			 | KVM_VCPUEVENT_VALID_SIPI_VECTOR);
+ 
+ 	vcpu_put(vcpu);
+ }
+@@ -1880,7 +1881,8 @@ static void kvm_vcpu_ioctl_x86_get_vcpu_events(struct kvm_vcpu *vcpu,
+ static int kvm_vcpu_ioctl_x86_set_vcpu_events(struct kvm_vcpu *vcpu,
+ 					      struct kvm_vcpu_events *events)
+ {
+-	if (events->flags)
++	if (events->flags & ~(KVM_VCPUEVENT_VALID_NMI_PENDING
++			      | KVM_VCPUEVENT_VALID_SIPI_VECTOR))
+ 		return -EINVAL;
+ 
+ 	vcpu_load(vcpu);
+@@ -1897,10 +1899,12 @@ static int kvm_vcpu_ioctl_x86_set_vcpu_events(struct kvm_vcpu *vcpu,
+ 		kvm_pic_clear_isr_ack(vcpu->kvm);
+ 
+ 	vcpu->arch.nmi_injected = events->nmi.injected;
+-	vcpu->arch.nmi_pending = events->nmi.pending;
++	if (events->flags & KVM_VCPUEVENT_VALID_NMI_PENDING)
++		vcpu->arch.nmi_pending = events->nmi.pending;
+ 	kvm_x86_ops->set_nmi_mask(vcpu, events->nmi.masked);
+ 
+-	vcpu->arch.sipi_vector = events->sipi_vector;
++	if (events->flags & KVM_VCPUEVENT_VALID_SIPI_VECTOR)
++		vcpu->arch.sipi_vector = events->sipi_vector;
+ 
+ 	vcpu_put(vcpu);
+ 

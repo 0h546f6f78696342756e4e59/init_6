@@ -1,0 +1,37 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:29 -0500
+Subject: [block] blkio: Allow CFQ group IO scheduling even when CFQ is a module
+Message-id: <1260298712-12756-57-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21800
+O-Subject: [RHEL6 PATCH 56/59] blkio: Allow CFQ group IO scheduling even when
+	CFQ is a module
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit 846954b0a32f4ae953e082eabd178e7a98dd2efd
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Fri Dec 4 10:36:43 2009 -0500
+
+    blkio: Allow CFQ group IO scheduling even when CFQ is a module
+
+    o Now issues of blkio controller and CFQ in module mode should be fixed.
+      Enable the cfq group scheduling support in module mode.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/Kconfig.iosched b/block/Kconfig.iosched
+index 8781bea..0a4b28f 100644
+--- a/block/Kconfig.iosched
++++ b/block/Kconfig.iosched
+@@ -44,7 +44,7 @@ config IOSCHED_CFQ
+ 
+ config CFQ_GROUP_IOSCHED
+ 	bool "CFQ Group Scheduling support"
+-	depends on IOSCHED_CFQ=y && CGROUPS
++	depends on IOSCHED_CFQ && CGROUPS
+ 	select BLK_CGROUP
+ 	default n
+ 	---help---

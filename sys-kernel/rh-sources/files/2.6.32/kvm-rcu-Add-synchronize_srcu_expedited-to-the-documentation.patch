@@ -1,0 +1,43 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:12:01 -0500
+Subject: [kvm] rcu: Add synchronize_srcu_expedited() to the documentation
+Message-id: <20100114171427.704813457@amt.cnet>
+Patchwork-id: 22534
+O-Subject: [RHEL 6 KVM 13/27] rcu: Add synchronize_srcu_expedited() to the
+	documentation
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 64179861cb801eac4f00c79f39a29ea5ac9470d7
+Author: Paul E. McKenney <paulmck@linux.vnet.ibm.com>
+Date:   Sun Oct 25 19:03:53 2009 -0700
+
+rcu: Add synchronize_srcu_expedited() to the documentation
+
+Signed-off-by: Paul E. McKenney <paulmck@linux.vnet.ibm.com>
+Acked-by: Josh Triplett <josh@joshtriplett.org>
+Reviewed-by: Lai Jiangshan <laijs@cn.fujitsu.com>
+LKML-Reference: <12565226354176-git-send-email->
+Signed-off-by: Ingo Molnar <mingo@elte.hu>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/Documentation/RCU/whatisRCU.txt b/Documentation/RCU/whatisRCU.txt
+index e41a7fe..d542ca2 100644
+--- a/Documentation/RCU/whatisRCU.txt
++++ b/Documentation/RCU/whatisRCU.txt
+@@ -830,7 +830,7 @@ sched:	Critical sections	Grace period		Barrier
+ SRCU:	Critical sections	Grace period		Barrier
+ 
+ 	srcu_read_lock		synchronize_srcu	N/A
+-	srcu_read_unlock
++	srcu_read_unlock	synchronize_srcu_expedited
+ 
+ SRCU:	Initialization/cleanup
+ 	init_srcu_struct

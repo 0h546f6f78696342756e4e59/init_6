@@ -1,0 +1,49 @@
+From: James Paradis <jparadis@redhat.com>
+Date: Fri, 15 Jan 2010 19:38:25 -0500
+Subject: [x86] acpi: Export acpi_pci_irq_{add|del}_prt()
+Message-id: <20100115193542.830.43658.sendpatchset@localhost.localdomain>
+Patchwork-id: 22571
+O-Subject: [RHEL6 PATCH] Export acpi_pci_irq_{add|del}_prt()
+Bugzilla: 553781
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+https://bugzilla.redhat.com/show_bug.cgi?id=553781
+
+This patch is a forward-port of RHEL5 functionality introduced via
+bz-214439.  This problem also was an issue with RHEL4.
+
+The basic problem as that when hotplugging pci busses that contain any
+IOAPICs there are new interrupt routes that come into play.  The system
+BIOS knows about them (PRT tables), but if Linux does not see these
+busses at boot time, it fails to add the PRT BIOS entries to its own
+acpi_prt list.
+
+This means a kernel object needs to add/delete the routes later.
+In RHEL5, we could do this by using the two functions
+acpi_pci_irq_add_prt, and acpi_pci_irq_del_prt.  If the addition is
+performed by a loadable module, said module needs to be able to
+access these routines.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/acpi/pci_irq.c b/drivers/acpi/pci_irq.c
+index 843699e..0e156e2 100644
+--- a/drivers/acpi/pci_irq.c
++++ b/drivers/acpi/pci_irq.c
+@@ -281,6 +281,7 @@ int acpi_pci_irq_add_prt(acpi_handle handle, struct pci_bus *bus)
+ 	kfree(buffer.pointer);
+ 	return 0;
+ }
++EXPORT_SYMBOL_GPL(acpi_pci_irq_add_prt);
+ 
+ void acpi_pci_irq_del_prt(struct pci_bus *bus)
+ {
+@@ -299,6 +300,7 @@ void acpi_pci_irq_del_prt(struct pci_bus *bus)
+ 	}
+ 	spin_unlock(&acpi_prt_lock);
+ }
++EXPORT_SYMBOL_GPL(acpi_pci_irq_del_prt);
+ 
+ /* --------------------------------------------------------------------------
+                           PCI Interrupt Routing Support

@@ -1,0 +1,78 @@
+From: Steve Best <sbest@redhat.com>
+Date: Thu, 25 Feb 2010 18:46:03 -0500
+Subject: [netdrv] ixgbe: prevent speculative processing of descriptors
+Message-id: <20100225183825.10482.94982.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 23437
+O-Subject: [PATCH RHEL6.0 BZ568391] ixgbe: prevent speculative processing of
+	descriptors
+Bugzilla: 568391
+RH-Acked-by: Andy Gospodarek <gospo@redhat.com>
+RH-Acked-by: David S. Miller <davem@redhat.com>
+RH-Acked-by: David Howells <dhowells@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+RHBZ#:
+======
+https://bugzilla.redhat.com/show_bug.cgi?id=568391
+
+Description:
+============
+The PowerPC architecture does not require loads to independent bytes to be
+ordered without adding an explicit barrier.
+
+In ixgbe_clean_rx_irq we load the status bit then load the packet data.
+With packet split disabled if these loads go out of order we get a
+stale packet, but we will notice the bad sequence numbers and drop it.
+
+The problem occurs with packet split enabled where the TCP/IP header and data
+are in different descriptors. If the reads go out of order we may have data
+that doesn't match the TCP/IP header. Since we use hardware checksumming this
+bad data is never verified and it makes it all the way to the application.
+
+This bug was found during stress testing and adding this barrier has been shown
+to fix it.
+
+Signed-off-by: Milton Miller <miltonm@bga.com>
+Signed-off-by: Anton Blanchard <anton@samba.org>
+Acked-by: Don Skidmore <donald.c.skidmore@intel.com>
+Signed-off-by: Jeff Kirsher <jeffrey.t.kirsher@intel.com>
+
+RHEL Version Found:
+===================
+RHEL 6.0
+
+kABI Status:
+============
+No symbols were harmed.
+
+Brew:
+=====
+https://brewweb.devel.redhat.com/taskinfo?taskID=2277186
+
+Upstream Status:
+================
+posted here
+http://marc.info/?l=linux-netdev&m=126663751217198&w=2
+
+Test Status:
+============
+Intel has acked upstream since it has completed their tests successfully
+this week.
+
+===============================================================
+Steve Best
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/net/ixgbe/ixgbe_main.c b/drivers/net/ixgbe/ixgbe_main.c
+index 282a594..2198a4c 100644
+--- a/drivers/net/ixgbe/ixgbe_main.c
++++ b/drivers/net/ixgbe/ixgbe_main.c
+@@ -801,6 +801,7 @@ static bool ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
+ 			break;
+ 		(*work_done)++;
+ 
++		rmb(); /* read descriptor and rx_buffer_info after status DD */
+ 		if (rx_ring->flags & IXGBE_RING_RX_PS_ENABLED) {
+ 			hdr_info = le16_to_cpu(ixgbe_get_hdr_info(rx_desc));
+ 			len = (hdr_info & IXGBE_RXDADV_HDRBUFLEN_MASK) >>

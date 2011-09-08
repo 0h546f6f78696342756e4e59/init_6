@@ -1,0 +1,1000 @@
+From: Dave Airlie <airlied@redhat.com>
+Date: Tue, 12 Jan 2010 05:35:36 -0500
+Subject: [drm] unlocked ioctl support for core + macro fixes
+Message-id: <1263274540-13581-5-git-send-email-airlied@redhat.com>
+Patchwork-id: 22424
+O-Subject: [PATCH 4/8] drm: unlocked ioctl support for core + macro fixes
+Bugzilla: 554601
+
+This rollsup upstream:
+ed8b67040965e4fe695db333d5914e18ea5f146f: drm: convert drm_ioctl to unlocked_ioctl
+156822f7175d9ceb9d7e808502d3c5de8841e047 drm: kill more unused DRM macros
+140a45fc3253746e1e42feafc63509df5d90889e drm: replace DRM_COPY macro w/ a function
+dad07ca71719598bc990dbdbeda763d15a10e98b drm: check return values in drm_version
+
+drm_ioctl is called with the Big Kernel Lock held,
+which shows up very high in statistics on vfs_ioctl.
+
+Moving the lock into the drm_ioctl function itself
+makes sure we blame the right subsystem and it gets
+us one step closer to eliminating the locked version
+of fops->ioctl.
+
+Since drm_ioctl does not require the lock itself,
+we only need to hold it while calling the specific
+handler. The 32 bit conversion handlers do not
+interact with any other code, so they don't need
+the BKL here either and can just call drm_ioctl.
+
+As a bonus, this cleans up all the other users
+of drm_ioctl which now no longer have to find
+the inode or call lock_kernel.
+
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/drm_drv.c b/drivers/gpu/drm/drm_drv.c
+index a75ca63..7bf0b61 100644
+--- a/drivers/gpu/drm/drm_drv.c
++++ b/drivers/gpu/drm/drm_drv.c
+@@ -366,6 +366,29 @@ module_init(drm_core_init);
+ module_exit(drm_core_exit);
+ 
+ /**
++ * Copy and IOCTL return string to user space
++ */
++static int drm_copy_field(char *buf, size_t *buf_len, const char *value)
++{
++	int len;
++
++	/* don't overflow userbuf */
++	len = strlen(value);
++	if (len > *buf_len)
++		len = *buf_len;
++
++	/* let userspace know exact length of driver value (which could be
++	 * larger than the userspace-supplied buffer) */
++	*buf_len = strlen(value);
++
++	/* finally, try filling in the userbuf */
++	if (len && buf)
++		if (copy_to_user(buf, value, len))
++			return -EFAULT;
++	return 0;
++}
++
++/**
+  * Get version information
+  *
+  * \param inode device inode.
+@@ -380,16 +403,21 @@ static int drm_version(struct drm_device *dev, void *data,
+ 		       struct drm_file *file_priv)
+ {
+ 	struct drm_version *version = data;
+-	int len;
++	int err;
+ 
+ 	version->version_major = dev->driver->major;
+ 	version->version_minor = dev->driver->minor;
+ 	version->version_patchlevel = dev->driver->patchlevel;
+-	DRM_COPY(version->name, dev->driver->name);
+-	DRM_COPY(version->date, dev->driver->date);
+-	DRM_COPY(version->desc, dev->driver->desc);
+-
+-	return 0;
++	err = drm_copy_field(version->name, &version->name_len,
++			dev->driver->name);
++	if (!err)
++		err = drm_copy_field(version->date, &version->date_len,
++				dev->driver->date);
++	if (!err)
++		err = drm_copy_field(version->desc, &version->desc_len,
++				dev->driver->desc);
++
++	return err;
+ }
+ 
+ /**
+@@ -404,11 +432,11 @@ static int drm_version(struct drm_device *dev, void *data,
+  * Looks up the ioctl function in the ::ioctls table, checking for root
+  * previleges if so required, and dispatches to the respective function.
+  */
+-int drm_ioctl(struct inode *inode, struct file *filp,
++long drm_ioctl(struct file *filp,
+ 	      unsigned int cmd, unsigned long arg)
+ {
+ 	struct drm_file *file_priv = filp->private_data;
+-	struct drm_device *dev = file_priv->minor->dev;
++	struct drm_device *dev;
+ 	struct drm_ioctl_desc *ioctl;
+ 	drm_ioctl_t *func;
+ 	unsigned int nr = DRM_IOCTL_NR(cmd);
+@@ -416,6 +444,7 @@ int drm_ioctl(struct inode *inode, struct file *filp,
+ 	char stack_kdata[128];
+ 	char *kdata = NULL;
+ 
++	dev = file_priv->minor->dev;
+ 	atomic_inc(&dev->ioctl_count);
+ 	atomic_inc(&dev->counts[_DRM_STAT_IOCTLS]);
+ 	++file_priv->ioctl_count;
+@@ -471,7 +500,13 @@ int drm_ioctl(struct inode *inode, struct file *filp,
+ 				goto err_i1;
+ 			}
+ 		}
+-		retcode = func(dev, kdata, file_priv);
++		if (ioctl->flags & DRM_UNLOCKED)
++			retcode = func(dev, kdata, file_priv);
++		else {
++			lock_kernel();
++			retcode = func(dev, kdata, file_priv);
++			unlock_kernel();
++		}
+ 
+ 		if (cmd & IOC_OUT) {
+ 			if (copy_to_user((void __user *)arg, kdata,
+diff --git a/drivers/gpu/drm/drm_ioc32.c b/drivers/gpu/drm/drm_ioc32.c
+index 282d9fd..d61d185 100644
+--- a/drivers/gpu/drm/drm_ioc32.c
++++ b/drivers/gpu/drm/drm_ioc32.c
+@@ -104,7 +104,7 @@ static int compat_drm_version(struct file *file, unsigned int cmd,
+ 			  &version->desc))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
++	err = drm_ioctl(file,
+ 			DRM_IOCTL_VERSION, (unsigned long)version);
+ 	if (err)
+ 		return err;
+@@ -145,8 +145,7 @@ static int compat_drm_getunique(struct file *file, unsigned int cmd,
+ 			  &u->unique))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_GET_UNIQUE, (unsigned long)u);
++	err = drm_ioctl(file, DRM_IOCTL_GET_UNIQUE, (unsigned long)u);
+ 	if (err)
+ 		return err;
+ 
+@@ -174,8 +173,7 @@ static int compat_drm_setunique(struct file *file, unsigned int cmd,
+ 			  &u->unique))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_SET_UNIQUE, (unsigned long)u);
++	return drm_ioctl(file, DRM_IOCTL_SET_UNIQUE, (unsigned long)u);
+ }
+ 
+ typedef struct drm_map32 {
+@@ -205,8 +203,7 @@ static int compat_drm_getmap(struct file *file, unsigned int cmd,
+ 	if (__put_user(idx, &map->offset))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_GET_MAP, (unsigned long)map);
++	err = drm_ioctl(file, DRM_IOCTL_GET_MAP, (unsigned long)map);
+ 	if (err)
+ 		return err;
+ 
+@@ -246,8 +243,7 @@ static int compat_drm_addmap(struct file *file, unsigned int cmd,
+ 	    || __put_user(m32.flags, &map->flags))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_ADD_MAP, (unsigned long)map);
++	err = drm_ioctl(file, DRM_IOCTL_ADD_MAP, (unsigned long)map);
+ 	if (err)
+ 		return err;
+ 
+@@ -284,8 +280,7 @@ static int compat_drm_rmmap(struct file *file, unsigned int cmd,
+ 	if (__put_user((void *)(unsigned long)handle, &map->handle))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RM_MAP, (unsigned long)map);
++	return drm_ioctl(file, DRM_IOCTL_RM_MAP, (unsigned long)map);
+ }
+ 
+ typedef struct drm_client32 {
+@@ -314,8 +309,7 @@ static int compat_drm_getclient(struct file *file, unsigned int cmd,
+ 	if (__put_user(idx, &client->idx))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_GET_CLIENT, (unsigned long)client);
++	err = drm_ioctl(file, DRM_IOCTL_GET_CLIENT, (unsigned long)client);
+ 	if (err)
+ 		return err;
+ 
+@@ -351,8 +345,7 @@ static int compat_drm_getstats(struct file *file, unsigned int cmd,
+ 	if (!access_ok(VERIFY_WRITE, stats, sizeof(*stats)))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_GET_STATS, (unsigned long)stats);
++	err = drm_ioctl(file, DRM_IOCTL_GET_STATS, (unsigned long)stats);
+ 	if (err)
+ 		return err;
+ 
+@@ -395,8 +388,7 @@ static int compat_drm_addbufs(struct file *file, unsigned int cmd,
+ 	    || __put_user(agp_start, &buf->agp_start))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_ADD_BUFS, (unsigned long)buf);
++	err = drm_ioctl(file, DRM_IOCTL_ADD_BUFS, (unsigned long)buf);
+ 	if (err)
+ 		return err;
+ 
+@@ -427,8 +419,7 @@ static int compat_drm_markbufs(struct file *file, unsigned int cmd,
+ 	    || __put_user(b32.high_mark, &buf->high_mark))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_MARK_BUFS, (unsigned long)buf);
++	return drm_ioctl(file, DRM_IOCTL_MARK_BUFS, (unsigned long)buf);
+ }
+ 
+ typedef struct drm_buf_info32 {
+@@ -469,8 +460,7 @@ static int compat_drm_infobufs(struct file *file, unsigned int cmd,
+ 	    || __put_user(list, &request->list))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_INFO_BUFS, (unsigned long)request);
++	err = drm_ioctl(file, DRM_IOCTL_INFO_BUFS, (unsigned long)request);
+ 	if (err)
+ 		return err;
+ 
+@@ -531,8 +521,7 @@ static int compat_drm_mapbufs(struct file *file, unsigned int cmd,
+ 	    || __put_user(list, &request->list))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_MAP_BUFS, (unsigned long)request);
++	err = drm_ioctl(file, DRM_IOCTL_MAP_BUFS, (unsigned long)request);
+ 	if (err)
+ 		return err;
+ 
+@@ -578,8 +567,7 @@ static int compat_drm_freebufs(struct file *file, unsigned int cmd,
+ 			  &request->list))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_FREE_BUFS, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_FREE_BUFS, (unsigned long)request);
+ }
+ 
+ typedef struct drm_ctx_priv_map32 {
+@@ -605,8 +593,7 @@ static int compat_drm_setsareactx(struct file *file, unsigned int cmd,
+ 			  &request->handle))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_SET_SAREA_CTX, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_SET_SAREA_CTX, (unsigned long)request);
+ }
+ 
+ static int compat_drm_getsareactx(struct file *file, unsigned int cmd,
+@@ -628,8 +615,7 @@ static int compat_drm_getsareactx(struct file *file, unsigned int cmd,
+ 	if (__put_user(ctx_id, &request->ctx_id))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_GET_SAREA_CTX, (unsigned long)request);
++	err = drm_ioctl(file, DRM_IOCTL_GET_SAREA_CTX, (unsigned long)request);
+ 	if (err)
+ 		return err;
+ 
+@@ -664,8 +650,7 @@ static int compat_drm_resctx(struct file *file, unsigned int cmd,
+ 			  &res->contexts))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_RES_CTX, (unsigned long)res);
++	err = drm_ioctl(file, DRM_IOCTL_RES_CTX, (unsigned long)res);
+ 	if (err)
+ 		return err;
+ 
+@@ -718,8 +703,7 @@ static int compat_drm_dma(struct file *file, unsigned int cmd,
+ 			  &d->request_sizes))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_DMA, (unsigned long)d);
++	err = drm_ioctl(file, DRM_IOCTL_DMA, (unsigned long)d);
+ 	if (err)
+ 		return err;
+ 
+@@ -751,8 +735,7 @@ static int compat_drm_agp_enable(struct file *file, unsigned int cmd,
+ 	if (put_user(m32.mode, &mode->mode))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_AGP_ENABLE, (unsigned long)mode);
++	return drm_ioctl(file, DRM_IOCTL_AGP_ENABLE, (unsigned long)mode);
+ }
+ 
+ typedef struct drm_agp_info32 {
+@@ -781,8 +764,7 @@ static int compat_drm_agp_info(struct file *file, unsigned int cmd,
+ 	if (!access_ok(VERIFY_WRITE, info, sizeof(*info)))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_AGP_INFO, (unsigned long)info);
++	err = drm_ioctl(file, DRM_IOCTL_AGP_INFO, (unsigned long)info);
+ 	if (err)
+ 		return err;
+ 
+@@ -827,16 +809,14 @@ static int compat_drm_agp_alloc(struct file *file, unsigned int cmd,
+ 	    || __put_user(req32.type, &request->type))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_AGP_ALLOC, (unsigned long)request);
++	err = drm_ioctl(file, DRM_IOCTL_AGP_ALLOC, (unsigned long)request);
+ 	if (err)
+ 		return err;
+ 
+ 	if (__get_user(req32.handle, &request->handle)
+ 	    || __get_user(req32.physical, &request->physical)
+ 	    || copy_to_user(argp, &req32, sizeof(req32))) {
+-		drm_ioctl(file->f_path.dentry->d_inode, file,
+-			  DRM_IOCTL_AGP_FREE, (unsigned long)request);
++		drm_ioctl(file, DRM_IOCTL_AGP_FREE, (unsigned long)request);
+ 		return -EFAULT;
+ 	}
+ 
+@@ -856,8 +836,7 @@ static int compat_drm_agp_free(struct file *file, unsigned int cmd,
+ 	    || __put_user(handle, &request->handle))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_AGP_FREE, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_AGP_FREE, (unsigned long)request);
+ }
+ 
+ typedef struct drm_agp_binding32 {
+@@ -881,8 +860,7 @@ static int compat_drm_agp_bind(struct file *file, unsigned int cmd,
+ 	    || __put_user(req32.offset, &request->offset))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_AGP_BIND, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_AGP_BIND, (unsigned long)request);
+ }
+ 
+ static int compat_drm_agp_unbind(struct file *file, unsigned int cmd,
+@@ -898,8 +876,7 @@ static int compat_drm_agp_unbind(struct file *file, unsigned int cmd,
+ 	    || __put_user(handle, &request->handle))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_AGP_UNBIND, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_AGP_UNBIND, (unsigned long)request);
+ }
+ #endif				/* __OS_HAS_AGP */
+ 
+@@ -923,8 +900,7 @@ static int compat_drm_sg_alloc(struct file *file, unsigned int cmd,
+ 	    || __put_user(x, &request->size))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_SG_ALLOC, (unsigned long)request);
++	err = drm_ioctl(file, DRM_IOCTL_SG_ALLOC, (unsigned long)request);
+ 	if (err)
+ 		return err;
+ 
+@@ -950,8 +926,7 @@ static int compat_drm_sg_free(struct file *file, unsigned int cmd,
+ 	    || __put_user(x << PAGE_SHIFT, &request->handle))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_SG_FREE, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_SG_FREE, (unsigned long)request);
+ }
+ 
+ #if defined(CONFIG_X86) || defined(CONFIG_IA64)
+@@ -981,8 +956,7 @@ static int compat_drm_update_draw(struct file *file, unsigned int cmd,
+ 	    __put_user(update32.data, &request->data))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_UPDATE_DRAW, (unsigned long)request);
++	err = drm_ioctl(file, DRM_IOCTL_UPDATE_DRAW, (unsigned long)request);
+ 	return err;
+ }
+ #endif
+@@ -1023,8 +997,7 @@ static int compat_drm_wait_vblank(struct file *file, unsigned int cmd,
+ 	    || __put_user(req32.request.signal, &request->request.signal))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_WAIT_VBLANK, (unsigned long)request);
++	err = drm_ioctl(file, DRM_IOCTL_WAIT_VBLANK, (unsigned long)request);
+ 	if (err)
+ 		return err;
+ 
+@@ -1094,16 +1067,14 @@ long drm_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+ 	 * than always failing.
+ 	 */
+ 	if (nr >= ARRAY_SIZE(drm_compat_ioctls))
+-		return drm_ioctl(filp->f_dentry->d_inode, filp, cmd, arg);
++		return drm_ioctl(filp, cmd, arg);
+ 
+ 	fn = drm_compat_ioctls[nr];
+ 
+-	lock_kernel();		/* XXX for now */
+ 	if (fn != NULL)
+ 		ret = (*fn) (filp, cmd, arg);
+ 	else
+-		ret = drm_ioctl(filp->f_path.dentry->d_inode, filp, cmd, arg);
+-	unlock_kernel();
++		ret = drm_ioctl(filp, cmd, arg);
+ 
+ 	return ret;
+ }
+diff --git a/drivers/gpu/drm/i810/i810_dma.c b/drivers/gpu/drm/i810/i810_dma.c
+index 7d1d88c..de32d22 100644
+--- a/drivers/gpu/drm/i810/i810_dma.c
++++ b/drivers/gpu/drm/i810/i810_dma.c
+@@ -115,7 +115,7 @@ static int i810_mmap_buffers(struct file *filp, struct vm_area_struct *vma)
+ static const struct file_operations i810_buffer_fops = {
+ 	.open = drm_open,
+ 	.release = drm_release,
+-	.ioctl = drm_ioctl,
++	.unlocked_ioctl = drm_ioctl,
+ 	.mmap = i810_mmap_buffers,
+ 	.fasync = drm_fasync,
+ };
+diff --git a/drivers/gpu/drm/i810/i810_drv.c b/drivers/gpu/drm/i810/i810_drv.c
+index fabb9a8..c1e0275 100644
+--- a/drivers/gpu/drm/i810/i810_drv.c
++++ b/drivers/gpu/drm/i810/i810_drv.c
+@@ -59,7 +59,7 @@ static struct drm_driver driver = {
+ 		 .owner = THIS_MODULE,
+ 		 .open = drm_open,
+ 		 .release = drm_release,
+-		 .ioctl = drm_ioctl,
++		 .unlocked_ioctl = drm_ioctl,
+ 		 .mmap = drm_mmap,
+ 		 .poll = drm_poll,
+ 		 .fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/i830/i830_dma.c b/drivers/gpu/drm/i830/i830_dma.c
+index 877bf6c..06bd732 100644
+--- a/drivers/gpu/drm/i830/i830_dma.c
++++ b/drivers/gpu/drm/i830/i830_dma.c
+@@ -117,7 +117,7 @@ static int i830_mmap_buffers(struct file *filp, struct vm_area_struct *vma)
+ static const struct file_operations i830_buffer_fops = {
+ 	.open = drm_open,
+ 	.release = drm_release,
+-	.ioctl = drm_ioctl,
++	.unlocked_ioctl = drm_ioctl,
+ 	.mmap = i830_mmap_buffers,
+ 	.fasync = drm_fasync,
+ };
+diff --git a/drivers/gpu/drm/i830/i830_drv.c b/drivers/gpu/drm/i830/i830_drv.c
+index 389597e..44f990b 100644
+--- a/drivers/gpu/drm/i830/i830_drv.c
++++ b/drivers/gpu/drm/i830/i830_drv.c
+@@ -70,7 +70,7 @@ static struct drm_driver driver = {
+ 		 .owner = THIS_MODULE,
+ 		 .open = drm_open,
+ 		 .release = drm_release,
+-		 .ioctl = drm_ioctl,
++		 .unlocked_ioctl = drm_ioctl,
+ 		 .mmap = drm_mmap,
+ 		 .poll = drm_poll,
+ 		 .fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/i915/i915_drv.c b/drivers/gpu/drm/i915/i915_drv.c
+index 7f436ec..26fc458 100644
+--- a/drivers/gpu/drm/i915/i915_drv.c
++++ b/drivers/gpu/drm/i915/i915_drv.c
+@@ -329,7 +329,7 @@ static struct drm_driver driver = {
+ 		 .owner = THIS_MODULE,
+ 		 .open = drm_open,
+ 		 .release = drm_release,
+-		 .ioctl = drm_ioctl,
++		 .unlocked_ioctl = drm_ioctl,
+ 		 .mmap = drm_gem_mmap,
+ 		 .poll = drm_poll,
+ 		 .fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/i915/i915_ioc32.c b/drivers/gpu/drm/i915/i915_ioc32.c
+index 1fe68a2..13b0289 100644
+--- a/drivers/gpu/drm/i915/i915_ioc32.c
++++ b/drivers/gpu/drm/i915/i915_ioc32.c
+@@ -66,8 +66,7 @@ static int compat_i915_batchbuffer(struct file *file, unsigned int cmd,
+ 			  &batchbuffer->cliprects))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_I915_BATCHBUFFER,
++	return drm_ioctl(file, DRM_IOCTL_I915_BATCHBUFFER,
+ 			 (unsigned long)batchbuffer);
+ }
+ 
+@@ -102,8 +101,8 @@ static int compat_i915_cmdbuffer(struct file *file, unsigned int cmd,
+ 			  &cmdbuffer->cliprects))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_I915_CMDBUFFER, (unsigned long)cmdbuffer);
++	return drm_ioctl(file, DRM_IOCTL_I915_CMDBUFFER,
++			 (unsigned long)cmdbuffer);
+ }
+ 
+ typedef struct drm_i915_irq_emit32 {
+@@ -125,8 +124,8 @@ static int compat_i915_irq_emit(struct file *file, unsigned int cmd,
+ 			  &request->irq_seq))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_I915_IRQ_EMIT, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_I915_IRQ_EMIT,
++			 (unsigned long)request);
+ }
+ typedef struct drm_i915_getparam32 {
+ 	int param;
+@@ -149,8 +148,8 @@ static int compat_i915_getparam(struct file *file, unsigned int cmd,
+ 			  &request->value))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_I915_GETPARAM, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_I915_GETPARAM,
++			 (unsigned long)request);
+ }
+ 
+ typedef struct drm_i915_mem_alloc32 {
+@@ -178,8 +177,8 @@ static int compat_i915_alloc(struct file *file, unsigned int cmd,
+ 			  &request->region_offset))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_I915_ALLOC, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_I915_ALLOC,
++			 (unsigned long)request);
+ }
+ 
+ drm_ioctl_compat_t *i915_compat_ioctls[] = {
+@@ -211,12 +210,10 @@ long i915_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+ 	if (nr < DRM_COMMAND_BASE + DRM_ARRAY_SIZE(i915_compat_ioctls))
+ 		fn = i915_compat_ioctls[nr - DRM_COMMAND_BASE];
+ 
+-	lock_kernel();		/* XXX for now */
+ 	if (fn != NULL)
+ 		ret = (*fn) (filp, cmd, arg);
+ 	else
+-		ret = drm_ioctl(filp->f_path.dentry->d_inode, filp, cmd, arg);
+-	unlock_kernel();
++		ret = drm_ioctl(filp, cmd, arg);
+ 
+ 	return ret;
+ }
+diff --git a/drivers/gpu/drm/mga/mga_drv.c b/drivers/gpu/drm/mga/mga_drv.c
+index 97ee566..ddfe161 100644
+--- a/drivers/gpu/drm/mga/mga_drv.c
++++ b/drivers/gpu/drm/mga/mga_drv.c
+@@ -68,7 +68,7 @@ static struct drm_driver driver = {
+ 		.owner = THIS_MODULE,
+ 		.open = drm_open,
+ 		.release = drm_release,
+-		.ioctl = drm_ioctl,
++		.unlocked_ioctl = drm_ioctl,
+ 		.mmap = drm_mmap,
+ 		.poll = drm_poll,
+ 		.fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/mga/mga_ioc32.c b/drivers/gpu/drm/mga/mga_ioc32.c
+index 30d0047..c1f877b 100644
+--- a/drivers/gpu/drm/mga/mga_ioc32.c
++++ b/drivers/gpu/drm/mga/mga_ioc32.c
+@@ -100,8 +100,7 @@ static int compat_mga_init(struct file *file, unsigned int cmd,
+ 	if (err)
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_MGA_INIT, (unsigned long)init);
++	return drm_ioctl(file, DRM_IOCTL_MGA_INIT, (unsigned long)init);
+ }
+ 
+ typedef struct drm_mga_getparam32 {
+@@ -125,8 +124,7 @@ static int compat_mga_getparam(struct file *file, unsigned int cmd,
+ 			  &getparam->value))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_MGA_GETPARAM, (unsigned long)getparam);
++	return drm_ioctl(file, DRM_IOCTL_MGA_GETPARAM, (unsigned long)getparam);
+ }
+ 
+ typedef struct drm_mga_drm_bootstrap32 {
+@@ -166,8 +164,7 @@ static int compat_mga_dma_bootstrap(struct file *file, unsigned int cmd,
+ 	    || __put_user(dma_bootstrap32.agp_size, &dma_bootstrap->agp_size))
+ 		return -EFAULT;
+ 
+-	err = drm_ioctl(file->f_path.dentry->d_inode, file,
+-			DRM_IOCTL_MGA_DMA_BOOTSTRAP,
++	err = drm_ioctl(file, DRM_IOCTL_MGA_DMA_BOOTSTRAP,
+ 			(unsigned long)dma_bootstrap);
+ 	if (err)
+ 		return err;
+@@ -220,12 +217,10 @@ long mga_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+ 	if (nr < DRM_COMMAND_BASE + DRM_ARRAY_SIZE(mga_compat_ioctls))
+ 		fn = mga_compat_ioctls[nr - DRM_COMMAND_BASE];
+ 
+-	lock_kernel();		/* XXX for now */
+ 	if (fn != NULL)
+ 		ret = (*fn) (filp, cmd, arg);
+ 	else
+-		ret = drm_ioctl(filp->f_path.dentry->d_inode, filp, cmd, arg);
+-	unlock_kernel();
++		ret = drm_ioctl(filp, cmd, arg);
+ 
+ 	return ret;
+ }
+diff --git a/drivers/gpu/drm/nouveau/nouveau_drv.c b/drivers/gpu/drm/nouveau/nouveau_drv.c
+index d8de3f6..a2b27e0 100644
+--- a/drivers/gpu/drm/nouveau/nouveau_drv.c
++++ b/drivers/gpu/drm/nouveau/nouveau_drv.c
+@@ -345,7 +345,7 @@ static struct drm_driver driver = {
+ 		.owner = THIS_MODULE,
+ 		.open = drm_open,
+ 		.release = drm_release,
+-		.ioctl = drm_ioctl,
++		.unlocked_ioctl = drm_ioctl,
+ 		.mmap = nouveau_ttm_mmap,
+ 		.poll = drm_poll,
+ 		.fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/nouveau/nouveau_ioc32.c b/drivers/gpu/drm/nouveau/nouveau_ioc32.c
+index a2c30f4..475ba81 100644
+--- a/drivers/gpu/drm/nouveau/nouveau_ioc32.c
++++ b/drivers/gpu/drm/nouveau/nouveau_ioc32.c
+@@ -61,12 +61,10 @@ long nouveau_compat_ioctl(struct file *filp, unsigned int cmd,
+ 	if (nr < DRM_COMMAND_BASE + DRM_ARRAY_SIZE(mga_compat_ioctls))
+ 		fn = nouveau_compat_ioctls[nr - DRM_COMMAND_BASE];
+ #endif
+-	lock_kernel();	  /* XXX for now */
+ 	if (fn != NULL)
+ 		ret = (*fn)(filp, cmd, arg);
+ 	else
+-		ret = drm_ioctl(filp->f_dentry->d_inode, filp, cmd, arg);
+-	unlock_kernel();
++		ret = drm_ioctl(filp, cmd, arg);
+ 
+ 	return ret;
+ }
+diff --git a/drivers/gpu/drm/r128/r128_drv.c b/drivers/gpu/drm/r128/r128_drv.c
+index 601f4c0..b806fdc 100644
+--- a/drivers/gpu/drm/r128/r128_drv.c
++++ b/drivers/gpu/drm/r128/r128_drv.c
+@@ -64,7 +64,7 @@ static struct drm_driver driver = {
+ 		.owner = THIS_MODULE,
+ 		.open = drm_open,
+ 		.release = drm_release,
+-		.ioctl = drm_ioctl,
++		.unlocked_ioctl = drm_ioctl,
+ 		.mmap = drm_mmap,
+ 		.poll = drm_poll,
+ 		.fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/r128/r128_ioc32.c b/drivers/gpu/drm/r128/r128_ioc32.c
+index d3cb676..51c99fc 100644
+--- a/drivers/gpu/drm/r128/r128_ioc32.c
++++ b/drivers/gpu/drm/r128/r128_ioc32.c
+@@ -95,8 +95,7 @@ static int compat_r128_init(struct file *file, unsigned int cmd,
+ 			  &init->agp_textures_offset))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_R128_INIT, (unsigned long)init);
++	return drm_ioctl(file, DRM_IOCTL_R128_INIT, (unsigned long)init);
+ }
+ 
+ typedef struct drm_r128_depth32 {
+@@ -129,8 +128,7 @@ static int compat_r128_depth(struct file *file, unsigned int cmd,
+ 			  &depth->mask))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_R128_DEPTH, (unsigned long)depth);
++	return drm_ioctl(file, DRM_IOCTL_R128_DEPTH, (unsigned long)depth);
+ 
+ }
+ 
+@@ -153,8 +151,7 @@ static int compat_r128_stipple(struct file *file, unsigned int cmd,
+ 			  &stipple->mask))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_R128_STIPPLE, (unsigned long)stipple);
++	return drm_ioctl(file, DRM_IOCTL_R128_STIPPLE, (unsigned long)stipple);
+ }
+ 
+ typedef struct drm_r128_getparam32 {
+@@ -178,8 +175,7 @@ static int compat_r128_getparam(struct file *file, unsigned int cmd,
+ 			  &getparam->value))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_R128_GETPARAM, (unsigned long)getparam);
++	return drm_ioctl(file, DRM_IOCTL_R128_GETPARAM, (unsigned long)getparam);
+ }
+ 
+ drm_ioctl_compat_t *r128_compat_ioctls[] = {
+@@ -210,12 +206,10 @@ long r128_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+ 	if (nr < DRM_COMMAND_BASE + DRM_ARRAY_SIZE(r128_compat_ioctls))
+ 		fn = r128_compat_ioctls[nr - DRM_COMMAND_BASE];
+ 
+-	lock_kernel();		/* XXX for now */
+ 	if (fn != NULL)
+ 		ret = (*fn) (filp, cmd, arg);
+ 	else
+-		ret = drm_ioctl(filp->f_path.dentry->d_inode, filp, cmd, arg);
+-	unlock_kernel();
++		ret = drm_ioctl(filp, cmd, arg);
+ 
+ 	return ret;
+ }
+diff --git a/drivers/gpu/drm/radeon/radeon_drv.c b/drivers/gpu/drm/radeon/radeon_drv.c
+index 7f50fb8..6db55c7 100644
+--- a/drivers/gpu/drm/radeon/radeon_drv.c
++++ b/drivers/gpu/drm/radeon/radeon_drv.c
+@@ -188,7 +188,7 @@ static struct drm_driver driver_old = {
+ 		 .owner = THIS_MODULE,
+ 		 .open = drm_open,
+ 		 .release = drm_release,
+-		 .ioctl = drm_ioctl,
++		 .unlocked_ioctl = drm_ioctl,
+ 		 .mmap = drm_mmap,
+ 		 .poll = drm_poll,
+ 		 .fasync = drm_fasync,
+@@ -276,7 +276,7 @@ static struct drm_driver kms_driver = {
+ 		 .owner = THIS_MODULE,
+ 		 .open = drm_open,
+ 		 .release = drm_release,
+-		 .ioctl = drm_ioctl,
++		 .unlocked_ioctl = drm_ioctl,
+ 		 .mmap = radeon_mmap,
+ 		 .poll = drm_poll,
+ 		 .fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/radeon/radeon_ioc32.c b/drivers/gpu/drm/radeon/radeon_ioc32.c
+index a1bf11d..48b7cea 100644
+--- a/drivers/gpu/drm/radeon/radeon_ioc32.c
++++ b/drivers/gpu/drm/radeon/radeon_ioc32.c
+@@ -92,8 +92,7 @@ static int compat_radeon_cp_init(struct file *file, unsigned int cmd,
+ 			  &init->gart_textures_offset))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_CP_INIT, (unsigned long)init);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_CP_INIT, (unsigned long)init);
+ }
+ 
+ typedef struct drm_radeon_clear32 {
+@@ -125,8 +124,7 @@ static int compat_radeon_cp_clear(struct file *file, unsigned int cmd,
+ 			  &clr->depth_boxes))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_CLEAR, (unsigned long)clr);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_CLEAR, (unsigned long)clr);
+ }
+ 
+ typedef struct drm_radeon_stipple32 {
+@@ -149,8 +147,7 @@ static int compat_radeon_cp_stipple(struct file *file, unsigned int cmd,
+ 			  &request->mask))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_STIPPLE, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_STIPPLE, (unsigned long)request);
+ }
+ 
+ typedef struct drm_radeon_tex_image32 {
+@@ -204,8 +201,7 @@ static int compat_radeon_cp_texture(struct file *file, unsigned int cmd,
+ 			  &image->data))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_TEXTURE, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_TEXTURE, (unsigned long)request);
+ }
+ 
+ typedef struct drm_radeon_vertex2_32 {
+@@ -238,8 +234,7 @@ static int compat_radeon_cp_vertex2(struct file *file, unsigned int cmd,
+ 			  &request->prim))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_VERTEX2, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_VERTEX2, (unsigned long)request);
+ }
+ 
+ typedef struct drm_radeon_cmd_buffer32 {
+@@ -268,8 +263,7 @@ static int compat_radeon_cp_cmdbuf(struct file *file, unsigned int cmd,
+ 			  &request->boxes))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_CMDBUF, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_CMDBUF, (unsigned long)request);
+ }
+ 
+ typedef struct drm_radeon_getparam32 {
+@@ -293,8 +287,7 @@ static int compat_radeon_cp_getparam(struct file *file, unsigned int cmd,
+ 			  &request->value))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_GETPARAM, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_GETPARAM, (unsigned long)request);
+ }
+ 
+ typedef struct drm_radeon_mem_alloc32 {
+@@ -322,8 +315,7 @@ static int compat_radeon_mem_alloc(struct file *file, unsigned int cmd,
+ 			  &request->region_offset))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_ALLOC, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_ALLOC, (unsigned long)request);
+ }
+ 
+ typedef struct drm_radeon_irq_emit32 {
+@@ -345,8 +337,7 @@ static int compat_radeon_irq_emit(struct file *file, unsigned int cmd,
+ 			  &request->irq_seq))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_path.dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_IRQ_EMIT, (unsigned long)request);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_IRQ_EMIT, (unsigned long)request);
+ }
+ 
+ /* The two 64-bit arches where alignof(u64)==4 in 32-bit code */
+@@ -372,8 +363,7 @@ static int compat_radeon_cp_setparam(struct file *file, unsigned int cmd,
+ 			  &request->value))
+ 		return -EFAULT;
+ 
+-	return drm_ioctl(file->f_dentry->d_inode, file,
+-			 DRM_IOCTL_RADEON_SETPARAM, (unsigned long) request);
++	return drm_ioctl(file, DRM_IOCTL_RADEON_SETPARAM, (unsigned long) request);
+ }
+ #else
+ #define compat_radeon_cp_setparam NULL
+@@ -413,12 +403,10 @@ long radeon_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+ 	if (nr < DRM_COMMAND_BASE + DRM_ARRAY_SIZE(radeon_compat_ioctls))
+ 		fn = radeon_compat_ioctls[nr - DRM_COMMAND_BASE];
+ 
+-	lock_kernel();		/* XXX for now */
+ 	if (fn != NULL)
+ 		ret = (*fn) (filp, cmd, arg);
+ 	else
+-		ret = drm_ioctl(filp->f_path.dentry->d_inode, filp, cmd, arg);
+-	unlock_kernel();
++		ret = drm_ioctl(filp, cmd, arg);
+ 
+ 	return ret;
+ }
+@@ -431,9 +419,7 @@ long radeon_kms_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long
+ 	if (nr < DRM_COMMAND_BASE)
+ 		return drm_compat_ioctl(filp, cmd, arg);
+ 
+-	lock_kernel();		/* XXX for now */
+-	ret = drm_ioctl(filp->f_path.dentry->d_inode, filp, cmd, arg);
+-	unlock_kernel();
++	ret = drm_ioctl(filp, cmd, arg);
+ 
+ 	return ret;
+ }
+diff --git a/drivers/gpu/drm/savage/savage_drv.c b/drivers/gpu/drm/savage/savage_drv.c
+index eee52aa..021de44 100644
+--- a/drivers/gpu/drm/savage/savage_drv.c
++++ b/drivers/gpu/drm/savage/savage_drv.c
+@@ -50,7 +50,7 @@ static struct drm_driver driver = {
+ 		 .owner = THIS_MODULE,
+ 		 .open = drm_open,
+ 		 .release = drm_release,
+-		 .ioctl = drm_ioctl,
++		 .unlocked_ioctl = drm_ioctl,
+ 		 .mmap = drm_mmap,
+ 		 .poll = drm_poll,
+ 		 .fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/sis/sis_drv.c b/drivers/gpu/drm/sis/sis_drv.c
+index e725cc0..4fd1f06 100644
+--- a/drivers/gpu/drm/sis/sis_drv.c
++++ b/drivers/gpu/drm/sis/sis_drv.c
+@@ -80,7 +80,7 @@ static struct drm_driver driver = {
+ 		 .owner = THIS_MODULE,
+ 		 .open = drm_open,
+ 		 .release = drm_release,
+-		 .ioctl = drm_ioctl,
++		 .unlocked_ioctl = drm_ioctl,
+ 		 .mmap = drm_mmap,
+ 		 .poll = drm_poll,
+ 		 .fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/tdfx/tdfx_drv.c b/drivers/gpu/drm/tdfx/tdfx_drv.c
+index 012ff2e..ec5a43e 100644
+--- a/drivers/gpu/drm/tdfx/tdfx_drv.c
++++ b/drivers/gpu/drm/tdfx/tdfx_drv.c
+@@ -48,7 +48,7 @@ static struct drm_driver driver = {
+ 		 .owner = THIS_MODULE,
+ 		 .open = drm_open,
+ 		 .release = drm_release,
+-		 .ioctl = drm_ioctl,
++		 .unlocked_ioctl = drm_ioctl,
+ 		 .mmap = drm_mmap,
+ 		 .poll = drm_poll,
+ 		 .fasync = drm_fasync,
+diff --git a/drivers/gpu/drm/via/via_drv.c b/drivers/gpu/drm/via/via_drv.c
+index bc2f518..7a1b210 100644
+--- a/drivers/gpu/drm/via/via_drv.c
++++ b/drivers/gpu/drm/via/via_drv.c
+@@ -58,7 +58,7 @@ static struct drm_driver driver = {
+ 		.owner = THIS_MODULE,
+ 		.open = drm_open,
+ 		.release = drm_release,
+-		.ioctl = drm_ioctl,
++		.unlocked_ioctl = drm_ioctl,
+ 		.mmap = drm_mmap,
+ 		.poll = drm_poll,
+ 		.fasync = drm_fasync,
+diff --git a/include/drm/drmP.h b/include/drm/drmP.h
+index 9d3d684..fc97873 100644
+--- a/include/drm/drmP.h
++++ b/include/drm/drmP.h
+@@ -265,19 +265,8 @@ extern void drm_ut_debug_printk(unsigned int request_level,
+ 
+ #define DRM_LEFTCOUNT(x) (((x)->rp + (x)->count - (x)->wp) % ((x)->count + 1))
+ #define DRM_BUFCOUNT(x) ((x)->count - DRM_LEFTCOUNT(x))
+-#define DRM_WAITCOUNT(dev,idx) DRM_BUFCOUNT(&dev->queuelist[idx]->waitlist)
+ 
+ #define DRM_IF_VERSION(maj, min) (maj << 16 | min)
+-/**
+- * Get the private SAREA mapping.
+- *
+- * \param _dev DRM device.
+- * \param _ctx context number.
+- * \param _map output mapping.
+- */
+-#define DRM_GET_PRIV_SAREA(_dev, _ctx, _map) do {	\
+-	(_map) = (_dev)->context_sareas[_ctx];		\
+-} while(0)
+ 
+ /**
+  * Test that the hardware lock is held by the caller, returning otherwise.
+@@ -297,18 +286,6 @@ do {										\
+ } while (0)
+ 
+ /**
+- * Copy and IOCTL return string to user space
+- */
+-#define DRM_COPY( name, value )						\
+-	len = strlen( value );						\
+-	if ( len > name##_len ) len = name##_len;			\
+-	name##_len = strlen( value );					\
+-	if ( len && name ) {						\
+-		if ( copy_to_user( name, value, len ) )			\
+-			return -EFAULT;					\
+-	}
+-
+-/**
+  * Ioctl function type.
+  *
+  * \param inode device inode.
+@@ -326,6 +303,7 @@ typedef int drm_ioctl_compat_t(struct file *filp, unsigned int cmd,
+ #define	DRM_MASTER	0x2
+ #define DRM_ROOT_ONLY	0x4
+ #define DRM_CONTROL_ALLOW 0x8
++#define DRM_UNLOCKED	0x10
+ 
+ struct drm_ioctl_desc {
+ 	unsigned int cmd;
+@@ -1125,8 +1103,8 @@ static inline int drm_mtrr_del(int handle, unsigned long offset,
+ 				/* Driver support (drm_drv.h) */
+ extern int drm_init(struct drm_driver *driver);
+ extern void drm_exit(struct drm_driver *driver);
+-extern int drm_ioctl(struct inode *inode, struct file *filp,
+-		     unsigned int cmd, unsigned long arg);
++extern long drm_ioctl(struct file *filp,
++		      unsigned int cmd, unsigned long arg);
+ extern long drm_compat_ioctl(struct file *filp,
+ 			     unsigned int cmd, unsigned long arg);
+ extern int drm_lastclose(struct drm_device *dev);

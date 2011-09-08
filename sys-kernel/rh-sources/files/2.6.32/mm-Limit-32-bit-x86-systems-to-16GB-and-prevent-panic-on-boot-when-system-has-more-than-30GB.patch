@@ -1,0 +1,39 @@
+From: Larry Woodman <lwoodman@redhat.com>
+Date: Tue, 24 Nov 2009 16:27:38 -0500
+Subject: [mm] Limit 32-bit x86 systems to 16GB and prevent panic on boot when system has more than ~30GB
+Message-id: <1258493570.17372.8.camel@dhcp-100-19-198.bos.redhat.com>
+Patchwork-id: 21406
+O-Subject: [RHEL6 PATCH] Limit 32-bit x86 systems to 16GB and prevent panic
+	on boot when system has more than ~30GB
+Bugzilla: 532039
+RH-Acked-by: Christopher Lalancette <clalance@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+Since there are so many DEBUG options turned on in the config file a
+32-bit x86 system panics during boot due to the mem_map overflowing
+lowmem at less than 32GB.  While we will eventually turn off all or most
+of these DEBUG config options, 32-bit x86 systems should be limited to
+16GB since thats all we support anyway.  Also, the system will run like
+crap and OOM kill processes if we let 32-bit x86 systems run with more
+than 16GB.
+
+The attached patch limits 32-bit x86 systems to 16GB/4-million pages of
+RAM.
+
+Fixes BZ 532039
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/e820.c b/arch/x86/kernel/e820.c
+index d17d482..83caa0a 100644
+--- a/arch/x86/kernel/e820.c
++++ b/arch/x86/kernel/e820.c
+@@ -1097,7 +1097,7 @@ u64 __init early_reserve_e820(u64 startt, u64 sizet, u64 align)
+ 
+ #ifdef CONFIG_X86_32
+ # ifdef CONFIG_X86_PAE
+-#  define MAX_ARCH_PFN		(1ULL<<(36-PAGE_SHIFT))
++#  define MAX_ARCH_PFN		(1ULL<<(34-PAGE_SHIFT))
+ # else
+ #  define MAX_ARCH_PFN		(1ULL<<(32-PAGE_SHIFT))
+ # endif

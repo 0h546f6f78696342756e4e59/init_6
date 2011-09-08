@@ -1,0 +1,49 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:53 -0500
+Subject: [block] cfq: Make use of service count to estimate the rb_key offset
+Message-id: <1260298712-12756-21-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21768
+O-Subject: [RHEL6 PATCH 20/59] cfq: Make use of service count to estimate the
+	rb_key offset
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit 3586e917f2c7df769d173c4ec99554cb40a911e5
+Author: Gui Jianfeng <guijianfeng@cn.fujitsu.com>
+Date:   Thu Nov 26 09:14:11 2009 +0100
+
+    cfq: Make use of service count to estimate the rb_key offset
+
+    For the moment, different workload cfq queues are put into different
+    service trees. But CFQ still uses "busy_queues" to estimate rb_key
+    offset when inserting a cfq queue into a service tree. I think this
+    isn't appropriate, and it should make use of service tree count to do
+    this estimation. This patch is for for-2.6.33 branch.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 829d87d..2b7b3da 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -599,11 +599,15 @@ cfq_find_next_rq(struct cfq_data *cfqd, struct cfq_queue *cfqq,
+ static unsigned long cfq_slice_offset(struct cfq_data *cfqd,
+ 				      struct cfq_queue *cfqq)
+ {
++	struct cfq_rb_root *service_tree;
++
++	service_tree = service_tree_for(cfqq_prio(cfqq), cfqq_type(cfqq), cfqd);
++
+ 	/*
+ 	 * just an approximation, should be ok.
+ 	 */
+-	return (cfqd->busy_queues - 1) * (cfq_prio_slice(cfqd, 1, 0) -
+-		       cfq_prio_slice(cfqd, cfq_cfqq_sync(cfqq), cfqq->ioprio));
++	return  service_tree->count * (cfq_prio_slice(cfqd, 1, 0) -
++		   cfq_prio_slice(cfqd, cfq_cfqq_sync(cfqq), cfqq->ioprio));
+ }
+ 
+ /*

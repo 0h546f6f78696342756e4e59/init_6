@@ -1,0 +1,152 @@
+From: Mike Snitzer <snitzer@redhat.com>
+Date: Tue, 22 Dec 2009 16:57:46 -0500
+Subject: [block] Fix topology stacking for data and discard alignment
+Message-id: <1261501066-24538-1-git-send-email-snitzer@redhat.com>
+Patchwork-id: 22254
+O-Subject: [RHEL6 PATCH] block: Fix topology stacking for data and discard
+	alignment
+Bugzilla: 549766
+RH-Acked-by: Jeff Moyer <jmoyer@redhat.com>
+RH-Acked-by: Alasdair G Kergon <agk@redhat.com>
+
+BZ 549766
+
+This is a backport of linux-2.6 commits:
+b568be627a7270eba575bc4406a606e1545f91bb block: temporarily disable discard granularity
+9504e0864b58b4a304820dcf3755f1da80d5e72f block: Fix topology stacking for data and discard alignment
+
+Here is a combination comment from the above commits:
+
+Commit 86b37281411cf1e9bc0a6b5406c45edb7bd9ea5d adds a check for
+misaligned stacking offsets, but it's buggy since the defaults are 0.
+
+Hence all dm devices that pass in a non-zero starting offset will be
+marked as misaligned and dm will complain.
+
+The stacking code incorrectly scaled up the data offset in some cases
+causing misaligned devices to report alignment.  Rewrite the stacking
+algorithm to remedy this and apply the same alignment principles to the
+discard handling.
+
+Signed-off-by: Mike Snitzer <snitzer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/blk-settings.c b/block/blk-settings.c
+index 1027e30..03591bd 100644
+--- a/block/blk-settings.c
++++ b/block/blk-settings.c
+@@ -516,9 +516,8 @@ static unsigned int lcm(unsigned int a, unsigned int b)
+ int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
+ 		     sector_t offset)
+ {
+-	int ret;
+-
+-	ret = 0;
++	sector_t alignment;
++	unsigned int top, bottom, granularity;
+ 
+ 	t->max_sectors = min_not_zero(t->max_sectors, b->max_sectors);
+ 	t->max_hw_sectors = min_not_zero(t->max_hw_sectors, b->max_hw_sectors);
+@@ -536,6 +535,19 @@ int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
+ 	t->max_segment_size = min_not_zero(t->max_segment_size,
+ 					   b->max_segment_size);
+ 
++	granularity = max(b->physical_block_size, b->io_min);
++	alignment = b->alignment_offset - (offset & (granularity - 1));
++
++	if (t->alignment_offset != alignment) {
++
++		top = max(t->physical_block_size, t->io_min)
++			+ t->alignment_offset;
++		bottom = granularity + alignment;
++
++		if (max(top, bottom) & (min(top, bottom) - 1))
++			t->misaligned = 1;
++	}
++
+ 	t->logical_block_size = max(t->logical_block_size,
+ 				    b->logical_block_size);
+ 
+@@ -543,47 +555,55 @@ int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
+ 				     b->physical_block_size);
+ 
+ 	t->io_min = max(t->io_min, b->io_min);
++	t->io_opt = lcm(t->io_opt, b->io_opt);
++
+ 	t->no_cluster |= b->no_cluster;
+ 	t->discard_zeroes_data &= b->discard_zeroes_data;
+ 
+-	/* Bottom device offset aligned? */
+-	if (offset &&
+-	    (offset & (b->physical_block_size - 1)) != b->alignment_offset) {
++	if (t->physical_block_size & (t->logical_block_size - 1)) {
++		t->physical_block_size = t->logical_block_size;
+ 		t->misaligned = 1;
+-		ret = -1;
+ 	}
+ 
+-	if (offset &&
+-	    (offset & (b->discard_granularity - 1)) != b->discard_alignment) {
+-		t->discard_misaligned = 1;
+-		ret = -1;
++	if (t->io_min & (t->physical_block_size - 1)) {
++		t->io_min = t->physical_block_size;
++		t->misaligned = 1;
+ 	}
+ 
+-	/* If top has no alignment offset, inherit from bottom */
+-	if (!t->alignment_offset)
+-		t->alignment_offset =
+-			b->alignment_offset & (b->physical_block_size - 1);
++	if (t->io_opt & (t->physical_block_size - 1)) {
++		t->io_opt = 0;
++		t->misaligned = 1;
++	}
+ 
+-	if (!t->discard_alignment)
+-		t->discard_alignment =
+-			b->discard_alignment & (b->discard_granularity - 1);
++	t->alignment_offset = lcm(t->alignment_offset, alignment)
++		& (max(t->physical_block_size, t->io_min) - 1);
+ 
+-	/* Top device aligned on logical block boundary? */
+-	if (t->alignment_offset & (t->logical_block_size - 1)) {
++	if (t->alignment_offset & (t->logical_block_size - 1))
+ 		t->misaligned = 1;
+-		ret = -1;
+-	}
+ 
+-	/* Find lcm() of optimal I/O size and granularity */
+-	t->io_opt = lcm(t->io_opt, b->io_opt);
+-	t->discard_granularity = lcm(t->discard_granularity,
+-				     b->discard_granularity);
++	/* Discard alignment and granularity */
++	if (b->discard_granularity) {
+ 
+-	/* Verify that optimal I/O size is a multiple of io_min */
+-	if (t->io_min && t->io_opt % t->io_min)
+-		ret = -1;
++		alignment = b->discard_alignment -
++			(offset & (b->discard_granularity - 1));
++
++		if (t->discard_granularity != 0 &&
++		    t->discard_alignment != alignment) {
++			top = t->discard_granularity + t->discard_alignment;
++			bottom = b->discard_granularity + alignment;
++
++			/* Verify that top and bottom intervals line up */
++			if (max(top, bottom) & (min(top, bottom) - 1))
++				t->discard_misaligned = 1;
++		}
++
++		t->discard_granularity = max(t->discard_granularity,
++					     b->discard_granularity);
++		t->discard_alignment = lcm(t->discard_alignment, alignment) &
++			(t->discard_granularity - 1);
++	}
+ 
+-	return ret;
++	return t->misaligned ? -1 : 0;
+ }
+ EXPORT_SYMBOL(blk_stack_limits);
+ 

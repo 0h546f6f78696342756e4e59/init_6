@@ -1,0 +1,51 @@
+From: CAI Qian <caiqian@redhat.com>
+Date: Fri, 22 Jan 2010 05:12:18 -0500
+Subject: [s390x] fix loading of PER control registers for utrace.
+Message-id: <622763497.337681264137138894.JavaMail.root@zmail06.collab.prod.int.phx2.redhat.com>
+Patchwork-id: 22734
+O-Subject: [RHEL6.0 PATCH] [S390] fix loading of PER control registers for
+	utrace.
+Bugzilla: 556410
+RH-Acked-by: Roland McGrath <roland@redhat.com>
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+https://bugzilla.redhat.com/show_bug.cgi?id=556410
+
+Testing:
+Tested by Oleg.
+
+Upstream status:
+Linus tree - c3311c13adc1021e986fef12609ceb395ffc5014
+
+Description:
+If the current task enables / disables PER tracing for itself the
+PER control registers need to be loaded in FixPerRegisters.
+
+Signed-off-by: Martin Schwidefsky <schwidefsky@de.ibm.com>
+
+diff --git a/arch/s390/kernel/ptrace.c b/arch/s390/kernel/ptrace.c
+index 653c6a1..87c2b22 100644
+--- a/arch/s390/kernel/ptrace.c
++++ b/arch/s390/kernel/ptrace.c
+@@ -65,6 +65,7 @@ FixPerRegisters(struct task_struct *task)
+ {
+ 	struct pt_regs *regs;
+ 	per_struct *per_info;
++	per_cr_words cr_words;
+ 
+ 	regs = task_pt_regs(task);
+ 	per_info = (per_struct *) &task->thread.per_info;
+@@ -98,6 +99,13 @@ FixPerRegisters(struct task_struct *task)
+ 		per_info->control_regs.bits.storage_alt_space_ctl = 1;
+ 	else
+ 		per_info->control_regs.bits.storage_alt_space_ctl = 0;
++
++	if (task == current) {
++		__ctl_store(cr_words, 9, 11);
++		if (memcmp(&cr_words, &per_info->control_regs.words,
++			   sizeof(cr_words)) != 0)
++			__ctl_load(per_info->control_regs.words, 9, 11);
++	}
+ }
+ 
+ void user_enable_single_step(struct task_struct *task)

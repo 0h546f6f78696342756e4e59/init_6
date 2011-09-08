@@ -1,0 +1,42 @@
+From: Jason Baron <jbaron@redhat.com>
+Date: Tue, 19 Jan 2010 22:35:53 -0500
+Subject: [perf] Remove the "event" callback from perf events
+Message-id: <a7ede071abfeca0093135193772608cadd04b3c9.1263939115.git.jbaron@redhat.com>
+Patchwork-id: 22665
+O-Subject: [RHEL6 PATCH 9/9] - add kernel internal interface to perf counters v2
+	- perf: Remove the "event" callback from perf events
+	commit c0dfb2feb632537cf0a9d2ce3c29bcf5778fec59
+Bugzilla: 525517
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+RH-Acked-by: Dave Anderson <anderson@redhat.com>
+
+perf: Remove the "event" callback from perf events
+
+    As it is not used anymore and has been superseded by overflow_handler.
+
+    Signed-off-by: Frederic Weisbecker <fweisbec@gmail.com>
+    Cc: Peter Zijlstra <peterz@infradead.org>
+    Cc: Paul Mackerras <paulus@samba.org>
+    Cc: Arnaldo Carvalho de Melo <acme@redhat.com>
+    Cc: "K. Prasad" <prasad@linux.vnet.ibm.com>
+
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index 222db8b..b7162f5 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -545,7 +545,6 @@ struct perf_pending_entry {
+ 
+ struct perf_sample_data;
+ 
+-typedef void (*perf_callback_t)(struct perf_event *, void *);
+ typedef void (*perf_overflow_handler_t)(struct perf_event *, int,
+ 					struct perf_sample_data *,
+ 					struct pt_regs *regs);
+@@ -642,7 +641,6 @@ struct perf_event {
+ 	u64				id;
+ 
+ 	perf_overflow_handler_t         overflow_handler;
+-	perf_callback_t			callback;
+ #endif
+ };
+ 

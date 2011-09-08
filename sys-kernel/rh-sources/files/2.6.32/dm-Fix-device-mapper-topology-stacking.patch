@@ -1,0 +1,80 @@
+From: Mike Snitzer <snitzer@redhat.com>
+Date: Mon, 11 Jan 2010 21:30:54 -0500
+Subject: [dm] Fix device mapper topology stacking
+Message-id: <1263245455-7547-5-git-send-email-snitzer@redhat.com>
+Patchwork-id: 22414
+O-Subject: [RHEL6 PATCH 4/5] dm: Fix device mapper topology stacking
+Bugzilla: 554718
+RH-Acked-by: Jeff Moyer <jmoyer@redhat.com>
+
+BZ 549766
+
+backport from linux-2.6-block:
+
+commit b27d7f16d3c6c27345d4280a739809c1c2c4c0b5
+Author: Martin K. Petersen <martin.petersen@oracle.com>
+Date:   Mon Jan 11 03:21:50 2010 -0500
+
+    DM: Fix device mapper topology stacking
+
+    Make DM use bdev_stack_limits() function so that partition offsets get
+    taken into account when calculating alignment.  Clarify stacking
+    warnings.
+
+    Also remove obsolete clearing of final alignment_offset and misalignment
+    flag.
+
+Signed-off-by: Mike Snitzer <snitzer@redhat.com>
+
+diff --git a/drivers/md/dm-table.c b/drivers/md/dm-table.c
+index 3162b9c..e4148da 100644
+--- a/drivers/md/dm-table.c
++++ b/drivers/md/dm-table.c
+@@ -502,16 +502,15 @@ int dm_set_device_limits(struct dm_target *ti, struct dm_dev *dev,
+ 		return 0;
+ 	}
+ 
+-	if (blk_stack_limits(limits, &q->limits, start << 9) < 0)
+-		DMWARN("%s: target device %s is misaligned: "
++	if (bdev_stack_limits(limits, bdev, start) < 0)
++		DMWARN("%s: adding target device %s caused an alignment inconsistency: "
+ 		       "physical_block_size=%u, logical_block_size=%u, "
+ 		       "alignment_offset=%u, start=%llu",
+ 		       dm_device_name(ti->table->md), bdevname(bdev, b),
+ 		       q->limits.physical_block_size,
+ 		       q->limits.logical_block_size,
+ 		       q->limits.alignment_offset,
+-		       (unsigned long long) start << 9);
+-
++		       (unsigned long long) start << SECTOR_SHIFT);
+ 
+ 	/*
+ 	 * Check if merge fn is supported.
+@@ -1028,9 +1027,9 @@ combine_limits:
+ 		 * for the table.
+ 		 */
+ 		if (blk_stack_limits(limits, &ti_limits, 0) < 0)
+-			DMWARN("%s: target device "
++			DMWARN("%s: adding target device "
+ 			       "(start sect %llu len %llu) "
+-			       "is misaligned",
++			       "caused an alignment inconsistency",
+ 			       dm_device_name(table->md),
+ 			       (unsigned long long) ti->begin,
+ 			       (unsigned long long) ti->len);
+@@ -1082,15 +1081,6 @@ void dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,
+ 			       struct queue_limits *limits)
+ {
+ 	/*
+-	 * Each target device in the table has a data area that should normally
+-	 * be aligned such that the DM device's alignment_offset is 0.
+-	 * FIXME: Propagate alignment_offsets up the stack and warn of
+-	 *	  sub-optimal or inconsistent settings.
+-	 */
+-	limits->alignment_offset = 0;
+-	limits->misaligned = 0;
+-
+-	/*
+ 	 * Copy table's limits to the DM device's request_queue
+ 	 */
+ 	q->limits = *limits;

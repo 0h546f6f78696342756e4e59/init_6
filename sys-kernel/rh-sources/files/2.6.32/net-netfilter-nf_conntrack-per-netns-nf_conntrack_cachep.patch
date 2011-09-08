@@ -1,0 +1,175 @@
+From: Jiri Pirko <jpirko@redhat.com>
+Date: Fri, 26 Feb 2010 10:52:08 -0500
+Subject: [net] netfilter: nf_conntrack: per netns nf_conntrack_cachep
+Message-id: <20100226105206.GF2650@psychotron.redhat.com>
+Patchwork-id: 23446
+O-Subject: [RHEL6.0 patch] BZ567181 net: netfilter: nf_conntrack: per netns
+	nf_conntrack_cachep
+Bugzilla: 567181
+RH-Acked-by: David S. Miller <davem@redhat.com>
+RH-Acked-by: Neil Horman <nhorman@redhat.com>
+RH-Acked-by: Stefan Assmann <sassmann@redhat.com>
+RH-Acked-by: Jon Masters <jcm@redhat.com>
+RH-Acked-by: Amerigo Wang <amwang@redhat.com>
+RH-Acked-by: Eugene Teo <eugene@redhat.com>
+
+BZ567181
+https://bugzilla.redhat.com/show_bug.cgi?id=567181
+
+Description:
+nf_conntrack_cachep is currently shared by all netns instances, but
+because of SLAB_DESTROY_BY_RCU special semantics, this is wrong.
+
+If we use a shared slab cache, one object can instantly flight between
+one hash table (netns ONE) to another one (netns TWO), and concurrent
+reader (doing a lookup in netns ONE, 'finding' an object of netns TWO)
+can be fooled without notice, because no RCU grace period has to be
+observed between object freeing and its reuse.
+
+We dont have this problem with UDP/TCP slab caches because TCP/UDP
+hashtables are global to the machine (and each object has a pointer to
+its netns).
+
+If we use per netns conntrack hash tables, we also *must* use per netns
+conntrack slab caches, to guarantee an object can not escape from one
+namespace to another one.
+
+Upstream:
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=5b3501faa8741d50617ce4191c20061c6ef36cb3
+
+Brew:
+https://brewweb.devel.redhat.com/taskinfo?taskID=2287077
+
+Breaks ABI but that was expected. ABI should be changed accordings to this
+patch (Assuming it can still be changed).
+
+Jirka
+
+Signed-off-by: Jiri Pirko <jpirko@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/net/netns/conntrack.h b/include/net/netns/conntrack.h
+index ba1ba0c..aed23b6 100644
+--- a/include/net/netns/conntrack.h
++++ b/include/net/netns/conntrack.h
+@@ -11,6 +11,7 @@ struct nf_conntrack_ecache;
+ struct netns_ct {
+ 	atomic_t		count;
+ 	unsigned int		expect_count;
++	struct kmem_cache	*nf_conntrack_cachep;
+ 	struct hlist_nulls_head	*hash;
+ 	struct hlist_head	*expect_hash;
+ 	struct hlist_nulls_head	unconfirmed;
+@@ -28,5 +29,6 @@ struct netns_ct {
+ #endif
+ 	int			hash_vmalloc;
+ 	int			expect_vmalloc;
++	char			*slabname;
+ };
+ #endif
+diff --git a/net/netfilter/nf_conntrack_core.c b/net/netfilter/nf_conntrack_core.c
+index 4489676..1e1df20 100644
+--- a/net/netfilter/nf_conntrack_core.c
++++ b/net/netfilter/nf_conntrack_core.c
+@@ -63,8 +63,6 @@ EXPORT_SYMBOL_GPL(nf_conntrack_max);
+ struct nf_conn nf_conntrack_untracked __read_mostly;
+ EXPORT_SYMBOL_GPL(nf_conntrack_untracked);
+ 
+-static struct kmem_cache *nf_conntrack_cachep __read_mostly;
+-
+ static int nf_conntrack_hash_rnd_initted;
+ static unsigned int nf_conntrack_hash_rnd;
+ 
+@@ -566,7 +564,7 @@ struct nf_conn *nf_conntrack_alloc(struct net *net,
+ 	 * Do not use kmem_cache_zalloc(), as this cache uses
+ 	 * SLAB_DESTROY_BY_RCU.
+ 	 */
+-	ct = kmem_cache_alloc(nf_conntrack_cachep, gfp);
++	ct = kmem_cache_alloc(net->ct.nf_conntrack_cachep, gfp);
+ 	if (ct == NULL) {
+ 		pr_debug("nf_conntrack_alloc: Can't alloc conntrack.\n");
+ 		atomic_dec(&net->ct.count);
+@@ -605,7 +603,7 @@ void nf_conntrack_free(struct nf_conn *ct)
+ 	nf_ct_ext_destroy(ct);
+ 	atomic_dec(&net->ct.count);
+ 	nf_ct_ext_free(ct);
+-	kmem_cache_free(nf_conntrack_cachep, ct);
++	kmem_cache_free(net->ct.nf_conntrack_cachep, ct);
+ }
+ EXPORT_SYMBOL_GPL(nf_conntrack_free);
+ 
+@@ -1113,7 +1111,6 @@ static void nf_conntrack_cleanup_init_net(void)
+ 
+ 	nf_conntrack_helper_fini();
+ 	nf_conntrack_proto_fini();
+-	kmem_cache_destroy(nf_conntrack_cachep);
+ }
+ 
+ static void nf_conntrack_cleanup_net(struct net *net)
+@@ -1131,6 +1128,8 @@ static void nf_conntrack_cleanup_net(struct net *net)
+ 	nf_conntrack_ecache_fini(net);
+ 	nf_conntrack_acct_fini(net);
+ 	nf_conntrack_expect_fini(net);
++	kmem_cache_destroy(net->ct.nf_conntrack_cachep);
++	kfree(net->ct.slabname);
+ 	free_percpu(net->ct.stat);
+ }
+ 
+@@ -1266,15 +1265,6 @@ static int nf_conntrack_init_init_net(void)
+ 	       NF_CONNTRACK_VERSION, nf_conntrack_htable_size,
+ 	       nf_conntrack_max);
+ 
+-	nf_conntrack_cachep = kmem_cache_create("nf_conntrack",
+-						sizeof(struct nf_conn),
+-						0, SLAB_DESTROY_BY_RCU, NULL);
+-	if (!nf_conntrack_cachep) {
+-		printk(KERN_ERR "Unable to create nf_conn slab cache\n");
+-		ret = -ENOMEM;
+-		goto err_cache;
+-	}
+-
+ 	ret = nf_conntrack_proto_init();
+ 	if (ret < 0)
+ 		goto err_proto;
+@@ -1296,8 +1286,6 @@ static int nf_conntrack_init_init_net(void)
+ err_helper:
+ 	nf_conntrack_proto_fini();
+ err_proto:
+-	kmem_cache_destroy(nf_conntrack_cachep);
+-err_cache:
+ 	return ret;
+ }
+ 
+@@ -1319,6 +1307,21 @@ static int nf_conntrack_init_net(struct net *net)
+ 		ret = -ENOMEM;
+ 		goto err_stat;
+ 	}
++
++	net->ct.slabname = kasprintf(GFP_KERNEL, "nf_conntrack_%p", net);
++	if (!net->ct.slabname) {
++		ret = -ENOMEM;
++		goto err_slabname;
++	}
++
++	net->ct.nf_conntrack_cachep = kmem_cache_create(net->ct.slabname,
++							sizeof(struct nf_conn), 0,
++							SLAB_DESTROY_BY_RCU, NULL);
++	if (!net->ct.nf_conntrack_cachep) {
++		printk(KERN_ERR "Unable to create nf_conn slab cache\n");
++		ret = -ENOMEM;
++		goto err_cache;
++	}
+ 	net->ct.hash = nf_ct_alloc_hashtable(&nf_conntrack_htable_size,
+ 					     &net->ct.hash_vmalloc, 1);
+ 	if (!net->ct.hash) {
+@@ -1346,6 +1349,10 @@ err_expect:
+ 	nf_ct_free_hashtable(net->ct.hash, net->ct.hash_vmalloc,
+ 			     nf_conntrack_htable_size);
+ err_hash:
++	kmem_cache_destroy(net->ct.nf_conntrack_cachep);
++err_cache:
++	kfree(net->ct.slabname);
++err_slabname:
+ 	free_percpu(net->ct.stat);
+ err_stat:
+ 	return ret;

@@ -1,0 +1,55 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 20 Nov 2009 18:25:20 -0500
+Subject: [block] get rid of the WRITE_ODIRECT flag
+Message-id: <1257879766-27240-2-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21348
+O-Subject: [PATCH 1/2] block: get rid of the WRITE_ODIRECT flag
+Bugzilla: 533931
+RH-Acked-by: Josef Bacik <josef@redhat.com>
+
+Hi,
+
+The WRITE_ODIRECT flag is only used in one place, and that code path
+happens to also call blk_run_address_space.  The introduction of this
+flag, then, could result in the device being unplugged twice for every
+I/O.
+
+Further, with the batching changes in the next patch, we don't want an
+O_DIRECT write to imply a queue unplug.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/direct-io.c b/fs/direct-io.c
+index 8b10b87..c86d35f 100644
+--- a/fs/direct-io.c
++++ b/fs/direct-io.c
+@@ -1124,7 +1124,7 @@ __blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
+ 	int acquire_i_mutex = 0;
+ 
+ 	if (rw & WRITE)
+-		rw = WRITE_ODIRECT;
++		rw = WRITE_SYNC_PLUG;
+ 
+ 	if (bdev)
+ 		bdev_blkbits = blksize_bits(bdev_logical_block_size(bdev));
+diff --git a/include/linux/fs.h b/include/linux/fs.h
+index 2620a8c..2f5fca4 100644
+--- a/include/linux/fs.h
++++ b/include/linux/fs.h
+@@ -129,7 +129,6 @@ struct inodes_stat_t {
+  * WRITE_SYNC		Like WRITE_SYNC_PLUG, but also unplugs the device
+  *			immediately after submission. The write equivalent
+  *			of READ_SYNC.
+- * WRITE_ODIRECT	Special case write for O_DIRECT only.
+  * SWRITE_SYNC
+  * SWRITE_SYNC_PLUG	Like WRITE_SYNC/WRITE_SYNC_PLUG, but locks the buffer.
+  *			See SWRITE.
+@@ -151,7 +150,6 @@ struct inodes_stat_t {
+ #define READ_META	(READ | (1 << BIO_RW_META))
+ #define WRITE_SYNC_PLUG	(WRITE | (1 << BIO_RW_SYNCIO) | (1 << BIO_RW_NOIDLE))
+ #define WRITE_SYNC	(WRITE_SYNC_PLUG | (1 << BIO_RW_UNPLUG))
+-#define WRITE_ODIRECT	(WRITE | (1 << BIO_RW_SYNCIO) | (1 << BIO_RW_UNPLUG))
+ #define SWRITE_SYNC_PLUG	\
+ 			(SWRITE | (1 << BIO_RW_SYNCIO) | (1 << BIO_RW_NOIDLE))
+ #define SWRITE_SYNC	(SWRITE_SYNC_PLUG | (1 << BIO_RW_UNPLUG))

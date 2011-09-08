@@ -1,0 +1,66 @@
+From: Peter Jones <pjones@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:40 -0500
+Subject: [Fedora] [serio] disable error messages when i8042 isn't found
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6-silence-noise.patch
+
+Some systems, such as EFI-based Apple systems, won't necessarily have an
+i8042 to initialize. We shouldn't be printing an error message in this
+case, since not detecting the chip is the correct behavior.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/base/power/main.c b/drivers/base/power/main.c
+index 8aa2443..c0ee92b 100644
+--- a/drivers/base/power/main.c
++++ b/drivers/base/power/main.c
+@@ -81,9 +81,6 @@ void device_pm_unlock(void)
+  */
+ void device_pm_add(struct device *dev)
+ {
+-	pr_debug("PM: Adding info for %s:%s\n",
+-		 dev->bus ? dev->bus->name : "No Bus",
+-		 kobject_name(&dev->kobj));
+ 	mutex_lock(&dpm_list_mtx);
+ 	if (dev->parent) {
+ 		if (dev->parent->power.status >= DPM_SUSPENDING)
+diff --git a/drivers/input/serio/i8042.c b/drivers/input/serio/i8042.c
+index 1df02d2..71558f0 100644
+--- a/drivers/input/serio/i8042.c
++++ b/drivers/input/serio/i8042.c
+@@ -777,10 +777,8 @@ static int __init i8042_check_aux(void)
+ 
+ static int i8042_controller_check(void)
+ {
+-	if (i8042_flush() == I8042_BUFFER_SIZE) {
+-		printk(KERN_ERR "i8042.c: No controller found.\n");
++	if (i8042_flush() == I8042_BUFFER_SIZE)
+ 		return -ENODEV;
+-	}
+ 
+ 	return 0;
+ }
+diff --git a/net/can/af_can.c b/net/can/af_can.c
+index 6068321..f31aabb 100644
+--- a/net/can/af_can.c
++++ b/net/can/af_can.c
+@@ -134,13 +134,9 @@ static int can_create(struct net *net, struct socket *sock, int protocol)
+ 		err = request_module("can-proto-%d", protocol);
+ 
+ 		/*
+-		 * In case of error we only print a message but don't
+-		 * return the error code immediately.  Below we will
+-		 * return -EPROTONOSUPPORT
++		 * In case of error we don't return the error code immediately.
++		 * Below we will return -EPROTONOSUPPORT
+ 		 */
+-		if (err && printk_ratelimit())
+-			printk(KERN_ERR "can: request_module "
+-			       "(can-proto-%d) failed.\n", protocol);
+ 	}
+ #endif
+ 

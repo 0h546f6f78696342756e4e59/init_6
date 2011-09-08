@@ -1,0 +1,46 @@
+From: Michael S. Tsirkin <mst@redhat.com>
+Date: Thu, 4 Mar 2010 10:34:06 -0500
+Subject: [vhost] initialize log eventfd context pointer
+Message-id: <0baf8080337a2304a7054fa6f291bd6df9f3693c.1267698800.git.mst@redhat.com>
+Patchwork-id: 23482
+O-Subject: [RHEL6.0 PATCH 3/5] vhost: initialize log eventfd context pointer
+Bugzilla: 562837
+RH-Acked-by: David S. Miller <davem@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+
+BZ#562837
+https://bugzilla.redhat.com/show_bug.cgi?id=562837
+
+Description
+vq log eventfd context pointer needs to be initialized, otherwise
+operation may fail or oops if log is enabled but log eventfd not set by
+userspace.  When log_ctx for device is created, it is copied to the vq.
+This reset was missing.
+
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+Upstream status
+This patch has been merged for 2.6.34, commit
+73a99f083009d67d8e12603420e008d5c21b0b7d
+
+Brew build#: 2297441
+
+The change itself is trivial
+It has been tested in house on x86_64 platform
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/vhost/vhost.c b/drivers/vhost/vhost.c
+index db21518..6c31c0c 100644
+--- a/drivers/vhost/vhost.c
++++ b/drivers/vhost/vhost.c
+@@ -121,6 +121,7 @@ static void vhost_vq_reset(struct vhost_dev *dev,
+ 	vq->kick = NULL;
+ 	vq->call_ctx = NULL;
+ 	vq->call = NULL;
++	vq->log_ctx = NULL;
+ }
+ 
+ long vhost_dev_init(struct vhost_dev *dev,

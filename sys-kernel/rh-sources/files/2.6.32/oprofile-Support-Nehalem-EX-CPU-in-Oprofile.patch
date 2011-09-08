@@ -1,0 +1,54 @@
+From: John Villalovos <jvillalo@redhat.com>
+Date: Tue, 9 Feb 2010 15:05:09 -0500
+Subject: [oprofile] Support Nehalem-EX CPU in Oprofile
+Message-id: <20100209150508.GA22917@linuxjohn.usersys.redhat.com>
+Patchwork-id: 23209
+O-Subject: [RHEL6 BZ528998] Support Nehalem-EX CPU in Oprofile
+Bugzilla: 528998
+RH-Acked-by: Dave Anderson <anderson@redhat.com>
+RH-Acked-by: Don Zickus <dzickus@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+Support for Nehalem-EX in oprofile:
+https://bugzilla.redhat.com/show_bug.cgi?id=528998
+
+Simple one-line change to add the Nehalem-EX (aka Beckton) processor's CPUID of
+06:2E:xx (06:46:xx in decimal) to the list of processors to be reported as
+"i386/core_i7" to the oprofile user space.  Upstream applied without any
+massaging needed, since this upstream commit was the very next commit to the
+arch/x86/oprofile/nmi_int.c from where we are currently in the RHEL 6 tree.
+
+Brew build here:
+http://brewweb.devel.redhat.com/brew/taskinfo?taskID=2247767
+
+I tested on a Boxboro-EX platform and it reports "i386/core_i7" as expected.
+
+commit ce02c6cc5e2de7fe4acd59143a68c4a657f6b24d
+Author: John L. Villalovos <jvillalo@redhat.com>
+Date:   Mon Feb 8 14:10:02 2010 -0500
+
+    Backport of commit e83e452b0692c9c13372540deb88a77d4ae2553d
+        Upstream Author: Andi Kleen <andi@firstfloor.org>
+        Upstream Date:   Thu Jan 21 23:26:27 2010 +0100
+
+        oprofile/x86: add Xeon 7500 series support
+
+        Add Xeon 7500 series support to oprofile.
+
+        Straight forward: it's the same as Core i7, so just detect
+        the model number. No user space changes needed.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/oprofile/nmi_int.c b/arch/x86/oprofile/nmi_int.c
+index 76d4f56..3347f69 100644
+--- a/arch/x86/oprofile/nmi_int.c
++++ b/arch/x86/oprofile/nmi_int.c
+@@ -598,6 +598,7 @@ static int __init ppro_init(char **cpu_type)
+ 	case 15: case 23:
+ 		*cpu_type = "i386/core_2";
+ 		break;
++	case 0x2e:
+ 	case 26:
+ 		spec = &op_arch_perfmon_spec;
+ 		*cpu_type = "i386/core_i7";

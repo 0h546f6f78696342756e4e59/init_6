@@ -1,0 +1,54 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Thu, 18 Feb 2010 08:53:31 -0500
+Subject: [s390] zfcp: cancel all pending work for a to be removed zfcp_port
+Message-id: <1266483215-18709-2-git-send-email-brueckner@redhat.com>
+Patchwork-id: 23330
+O-Subject: [RHEL6 PATCH 1/5] [s390] zfcp: cancel all pending work for a to be
+	removed zfcp_port
+Bugzilla: 564382
+
+Description
+-----------
+In some cases an invalid port cannot be detached because a pending
+work is already queued which is holding a reference to this port.
+This results in stalled queues and processes, finally, leading to an
+unusable adapter.
+
+To avoid this situation ensure no work is pending on the same queue
+on which a port_dequeue is currently running.
+
+Bugzilla
+--------
+BZ 564382
+https://bugzilla.redhat.com/show_bug.cgi?id=564382
+
+Upstream status of the patch
+----------------------------
+The patch is specific for the 2.6.32 kernel.  The problem is solved upstream
+(2.6.33) by changes in locking and reference counting.  Backporting these
+changes would require additional development and test efforts.
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/scsi/zfcp_aux.c b/drivers/s390/scsi/zfcp_aux.c
+index c474290..736c4b9 100644
+--- a/drivers/s390/scsi/zfcp_aux.c
++++ b/drivers/s390/scsi/zfcp_aux.c
+@@ -725,8 +725,11 @@ void zfcp_port_dequeue(struct zfcp_port *port)
+ 	write_lock_irq(&zfcp_data.config_lock);
+ 	list_del(&port->list);
+ 	write_unlock_irq(&zfcp_data.config_lock);
++	if (cancel_work_sync(&port->rport_work))
++		zfcp_port_put(port);
++	if (cancel_work_sync(&port->test_link_work))
++		zfcp_port_put(port);
+ 	wait_event(port->remove_wq, atomic_read(&port->refcount) == 0);
+-	cancel_work_sync(&port->rport_work); /* usually not necessary */
+ 	zfcp_adapter_put(port->adapter);
+ 	sysfs_remove_group(&port->sysfs_device.kobj, &zfcp_sysfs_port_attrs);
+ 	device_unregister(&port->sysfs_device);

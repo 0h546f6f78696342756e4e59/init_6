@@ -1,0 +1,49 @@
+From: David Howells <dhowells@redhat.com>
+Date: Wed, 13 Jan 2010 17:28:13 -0500
+Subject: [modsign] Remove Makefile.modpost qualifying message for module sign failure
+Message-id: <477.1263403693@redhat.com>
+Patchwork-id: 22487
+O-Subject: [RHEL-6 PATCH] MODSIGN: Remove Makefile.modpost qualifying message
+	for module sign failure [BZ 543529]
+Bugzilla: 543529
+
+MODSIGN: Remove Makefile.modpost qualifying message for module sign failure
+
+From: David Howells <dhowells@redhat.com>
+
+When Makefile.modpost is told by CONFIG_MODULE_SIG=y that it should sign a
+module, it looks round for secret and public key files, and if it doesn't find
+them, it reports that the module built wasn't signed, for example:
+
+	  LD [M]  fs/nfs_common/nfs_acl.ko.unsigned
+	  NO SIGN [M] fs/nfs_common/nfs_acl.ko
+	Can't sign module fs/nfs_common/nfs_acl.ko - missing keyfile
+
+However, the systemtap people are of the opinion that this "Can't sign" message
+will confuse users and shouldn't be generated, since when systemtap builds a
+module it doesn't have the keyfiles to hand as they're not distributed.
+
+They are also of the opinion that the message is redundant, since it will only
+be generated if the "NO SIGN" rule is executed, and will always be generated if
+that rule is executed - since that's the only condition for that rule to be
+executed.
+
+I think removing this message may result in confusion when third parties try to
+build an RHEL-6 kernel outside of the RPM and see it, but, for now, there's no
+evidence of this.
+
+Signed-off-by: David Howells <dhowells@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
+index ba42816..e864820 100644
+--- a/scripts/Makefile.modpost
++++ b/scripts/Makefile.modpost
+@@ -160,7 +160,6 @@ quiet_cmd_sign_ko_ko_unsigned = SIGN [M] $@
+ else
+ quiet_cmd_sign_ko_ko_unsigned = NO SIGN [M] $@
+       cmd_sign_ko_ko_unsigned = \
+-		echo "Can't sign module $@ - missing keyfile" && \
+ 		cp $< $@
+ endif
+ 

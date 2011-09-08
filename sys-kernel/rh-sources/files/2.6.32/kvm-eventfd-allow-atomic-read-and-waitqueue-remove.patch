@@ -1,0 +1,110 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Wed, 27 Jan 2010 21:13:14 -0500
+Subject: [kvm] eventfd: allow atomic read and waitqueue remove
+Message-id: <20100127211711.666208615@amt.cnet>
+Patchwork-id: 22963
+O-Subject: [RHEL 6 KVM 8/9] eventfd: allow atomic read and waitqueue remove
+Bugzilla: 559343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Subject: eventfd: allow atomic read and waitqueue remove
+
+This is a backport of commit: 03db343a6320f780937078433fa7d8da955e6fce
+modified in a way that introduces some code duplication on the one hand,
+but reduces the risk of regressing existing eventfd users on the other
+hand.
+
+KVM needs a wait to atomically remove themselves from the eventfd
+->poll() wait queue head, in order to handle correctly their IRQfd
+deassign operation.
+
+This patch introduces such API, plus a way to read an eventfd from its
+context.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Bugzilla: 559343
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/eventfd.c b/fs/eventfd.c
+index 8b47e42..ea9c18a 100644
+--- a/fs/eventfd.c
++++ b/fs/eventfd.c
+@@ -135,6 +135,41 @@ static unsigned int eventfd_poll(struct file *file, poll_table *wait)
+ 	return events;
+ }
+ 
++static void eventfd_ctx_do_read(struct eventfd_ctx *ctx, __u64 *cnt)
++{
++	*cnt = (ctx->flags & EFD_SEMAPHORE) ? 1 : ctx->count;
++	ctx->count -= *cnt;
++}
++
++/**
++ * eventfd_ctx_remove_wait_queue - Read the current counter and removes wait queue.
++ * @ctx: [in] Pointer to eventfd context.
++ * @wait: [in] Wait queue to be removed.
++ * @cnt: [out] Pointer to the 64bit conter value.
++ *
++ * Returns zero if successful, or the following error codes:
++ *
++ * -EAGAIN      : The operation would have blocked.
++ *
++ * This is used to atomically remove a wait queue entry from the eventfd wait
++ * queue head, and read/reset the counter value.
++ */
++int eventfd_ctx_remove_wait_queue(struct eventfd_ctx *ctx, wait_queue_t *wait,
++				  __u64 *cnt)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&ctx->wqh.lock, flags);
++	eventfd_ctx_do_read(ctx, cnt);
++	__remove_wait_queue(&ctx->wqh, wait);
++	if (*cnt != 0 && waitqueue_active(&ctx->wqh))
++		wake_up_locked_poll(&ctx->wqh, POLLOUT);
++	spin_unlock_irqrestore(&ctx->wqh.lock, flags);
++
++	return *cnt != 0 ? 0 : -EAGAIN;
++}
++EXPORT_SYMBOL_GPL(eventfd_ctx_remove_wait_queue);
++
+ static ssize_t eventfd_read(struct file *file, char __user *buf, size_t count,
+ 			    loff_t *ppos)
+ {
+diff --git a/include/linux/eventfd.h b/include/linux/eventfd.h
+index 94dd103..85eac48 100644
+--- a/include/linux/eventfd.h
++++ b/include/linux/eventfd.h
+@@ -10,6 +10,7 @@
+ 
+ #include <linux/fcntl.h>
+ #include <linux/file.h>
++#include <linux/wait.h>
+ 
+ /*
+  * CAREFUL: Check include/asm-generic/fcntl.h when defining
+@@ -34,6 +35,8 @@ struct file *eventfd_fget(int fd);
+ struct eventfd_ctx *eventfd_ctx_fdget(int fd);
+ struct eventfd_ctx *eventfd_ctx_fileget(struct file *file);
+ int eventfd_signal(struct eventfd_ctx *ctx, int n);
++int eventfd_ctx_remove_wait_queue(struct eventfd_ctx *ctx, wait_queue_t *wait,
++				  __u64 *cnt);
+ 
+ #else /* CONFIG_EVENTFD */
+ 
+@@ -61,6 +64,12 @@ static inline void eventfd_ctx_put(struct eventfd_ctx *ctx)
+ 
+ }
+ 
++static inline int eventfd_ctx_remove_wait_queue(struct eventfd_ctx *ctx,
++						wait_queue_t *wait, __u64 *cnt)
++{
++	return -ENOSYS;
++}
++
+ #endif
+ 
+ #endif /* _LINUX_EVENTFD_H */

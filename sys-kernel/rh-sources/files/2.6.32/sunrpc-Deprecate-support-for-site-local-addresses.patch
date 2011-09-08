@@ -1,0 +1,45 @@
+From: Jeff Layton <jlayton@redhat.com>
+Date: Wed, 16 Dec 2009 19:07:49 -0500
+Subject: [sunrpc] Deprecate support for site-local addresses
+Message-id: <1260990470-32248-2-git-send-email-jlayton@redhat.com>
+Patchwork-id: 22007
+O-Subject: [RHEL6.0 PATCH 1/2] BZ#463530: SUNRPC: Deprecate support for
+	site-local addresses
+Bugzilla: 463530
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+
+From: Chuck Lever <chuck.lever@oracle.com>
+
+RFC 3879 "formally deprecates" site-local IPv6 addresses.  We
+interpret that to mean that the scope ID is ignored for all but
+link-local addresses.
+
+Signed-off-by: Chuck Lever <chuck.lever@oracle.com>
+Acked-by: Jeff Layton <jlayton@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/net/sunrpc/addr.c b/net/sunrpc/addr.c
+index c7450c8..56febe3 100644
+--- a/net/sunrpc/addr.c
++++ b/net/sunrpc/addr.c
+@@ -79,8 +79,7 @@ static size_t rpc_ntop6(const struct sockaddr *sap,
+ 	if (unlikely(len == 0))
+ 		return len;
+ 
+-	if (!(ipv6_addr_type(&sin6->sin6_addr) & IPV6_ADDR_LINKLOCAL) &&
+-	    !(ipv6_addr_type(&sin6->sin6_addr) & IPV6_ADDR_SITELOCAL))
++	if (!(ipv6_addr_type(&sin6->sin6_addr) & IPV6_ADDR_LINKLOCAL))
+ 		return len;
+ 
+ 	rc = snprintf(scopebuf, sizeof(scopebuf), "%c%u",
+@@ -173,8 +172,7 @@ static int rpc_parse_scope_id(const char *buf, const size_t buflen,
+ 	if (*delim != IPV6_SCOPE_DELIMITER)
+ 		return 0;
+ 
+-	if (!(ipv6_addr_type(&sin6->sin6_addr) & IPV6_ADDR_LINKLOCAL) &&
+-	    !(ipv6_addr_type(&sin6->sin6_addr) & IPV6_ADDR_SITELOCAL))
++	if (!(ipv6_addr_type(&sin6->sin6_addr) & IPV6_ADDR_LINKLOCAL))
+ 		return 0;
+ 
+ 	len = (buf + buflen) - delim - 1;

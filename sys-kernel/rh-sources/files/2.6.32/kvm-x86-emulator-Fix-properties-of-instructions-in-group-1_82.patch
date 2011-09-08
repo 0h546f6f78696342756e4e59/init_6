@@ -1,0 +1,43 @@
+From: Gleb Natapov <gleb@redhat.com>
+Date: Mon, 22 Feb 2010 13:59:58 -0500
+Subject: [kvm] x86 emulator: Fix properties of instructions in group 1_82
+Message-id: <1266847206-28077-13-git-send-email-gleb@redhat.com>
+Patchwork-id: 23386
+O-Subject: [PATCH 12/20] KVM: x86 emulator: Fix properties of instructions in
+	group 1_82
+Bugzilla: 560903 560904 563466
+CVE: CVE-2010-0298 CVE-2010-0306 CVE-2010-0419
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+Instructions with opcode 82 are not valid in 64bit mode and can be
+locked.
+
+Signed-off-by: Gleb Natapov <gleb@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index 8d667f8..f67df6e 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -308,10 +308,14 @@ static u32 group_table[] = {
+ 	DstMem | SrcImm | ModRM | Lock,
+ 	DstMem | SrcImm | ModRM,
+ 	[Group1_82*8] =
+-	ByteOp | DstMem | SrcImm | ModRM, ByteOp | DstMem | SrcImm | ModRM,
+-	ByteOp | DstMem | SrcImm | ModRM, ByteOp | DstMem | SrcImm | ModRM,
+-	ByteOp | DstMem | SrcImm | ModRM, ByteOp | DstMem | SrcImm | ModRM,
+-	ByteOp | DstMem | SrcImm | ModRM, ByteOp | DstMem | SrcImm | ModRM,
++	ByteOp | DstMem | SrcImm | ModRM | No64 | Lock,
++	ByteOp | DstMem | SrcImm | ModRM | No64 | Lock,
++	ByteOp | DstMem | SrcImm | ModRM | No64 | Lock,
++	ByteOp | DstMem | SrcImm | ModRM | No64 | Lock,
++	ByteOp | DstMem | SrcImm | ModRM | No64 | Lock,
++	ByteOp | DstMem | SrcImm | ModRM | No64 | Lock,
++	ByteOp | DstMem | SrcImm | ModRM | No64 | Lock,
++	ByteOp | DstMem | SrcImm | ModRM | No64,
+ 	[Group1_83*8] =
+ 	DstMem | SrcImmByte | ModRM | Lock,
+ 	DstMem | SrcImmByte | ModRM | Lock,

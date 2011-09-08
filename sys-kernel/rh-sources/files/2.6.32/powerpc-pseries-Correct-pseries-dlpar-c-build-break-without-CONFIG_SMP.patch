@@ -1,0 +1,275 @@
+From: Steve Best <sbest@redhat.com>
+Date: Wed, 13 Jan 2010 20:55:48 -0500
+Subject: [powerpc] pseries: Correct pseries/dlpar.c build break without CONFIG_SMP
+Message-id: <20100113204908.9285.87347.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 22503
+O-Subject: [PATCH RHEL6.0 BZ539318 v3 8/8] powerpc/pseries: Correct
+	pseries/dlpar.c build break without CONFIG_SMP
+Bugzilla: 539318
+RH-Acked-by: David Howells <dhowells@redhat.com>
+
+RHBZ#:
+======
+https://bugzilla.redhat.com/show_bug.cgi?id=539318
+
+Description:
+============
+Patch 8/8: powerpc/pseries: Correct pseries/dlpar.c build break without CONFIG_SMP
+
+commit 275a64f6040073254fa15eaf6e4e720f77d531d6
+
+From: Nathan Fontenot <nfont@austin.ibm.com>
+
+    The recent patch to add cpu offline/online as part of the DLPAR
+    process for pseries causes a build break if CONFIG_SMP is not
+    defined.  Original patch here;
+    http://lists.ozlabs.org/pipermail/linuxppc-dev/2009-November/078299.html
+
+    This corrects the build break by moving the online_node_cpus
+    and offline_node_cpus under the #ifdef CONFIG_ARCH_CPU_PROBE_RELEASE
+    portions of dlpar.c.
+
+    This patch also slightly modifies the online_node_cpus and offline_node_cpus
+    routines to prepend dlpar_ to the them and make them static.  These two
+    routine are only used in the dlpar add/remove of cpus and these changes
+    should help clarify that.
+
+    Signed-off-by: Nathan Fontenot <nfont@austin.ibm.com>
+    Signed-off-by: Benjamin Herrenschmidt <benh@kernel.crashing.org>
+
+Upstream Patch:
+http://lists.ozlabs.org/pipermail/linuxppc-dev/2009-December/078711.html
+
+Brew:
+=====
+Built on all platforms. All patches brewed together.
+https://brewweb.devel.redhat.com/taskinfo?taskID=2191854
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/powerpc/platforms/pseries/dlpar.c b/arch/powerpc/platforms/pseries/dlpar.c
+index 6dd8826..c8d0a4c 100644
+--- a/arch/powerpc/platforms/pseries/dlpar.c
++++ b/arch/powerpc/platforms/pseries/dlpar.c
+@@ -292,98 +292,6 @@ int dlpar_detach_node(struct device_node *dn)
+ 	return 0;
+ }
+ 
+-int online_node_cpus(struct device_node *dn)
+-{
+-	int rc = 0;
+-	unsigned int cpu;
+-	int len, nthreads, i;
+-	const u32 *intserv;
+-
+-	intserv = of_get_property(dn, "ibm,ppc-interrupt-server#s", &len);
+-	if (!intserv)
+-		return -EINVAL;
+-
+-	nthreads = len / sizeof(u32);
+-
+-	cpu_maps_update_begin();
+-	for (i = 0; i < nthreads; i++) {
+-		for_each_present_cpu(cpu) {
+-			if (get_hard_smp_processor_id(cpu) != intserv[i])
+-				continue;
+-			BUG_ON(get_cpu_current_state(cpu)
+-					!= CPU_STATE_OFFLINE);
+-			cpu_maps_update_done();
+-			rc = cpu_up(cpu);
+-			if (rc)
+-				goto out;
+-			cpu_maps_update_begin();
+-
+-			break;
+-		}
+-		if (cpu == num_possible_cpus())
+-			printk(KERN_WARNING "Could not find cpu to online "
+-			       "with physical id 0x%x\n", intserv[i]);
+-	}
+-	cpu_maps_update_done();
+-
+-out:
+-	return rc;
+-
+-}
+-
+-int offline_node_cpus(struct device_node *dn)
+-{
+-	int rc = 0;
+-	unsigned int cpu;
+-	int len, nthreads, i;
+-	const u32 *intserv;
+-
+-	intserv = of_get_property(dn, "ibm,ppc-interrupt-server#s", &len);
+-	if (!intserv)
+-		return -EINVAL;
+-
+-	nthreads = len / sizeof(u32);
+-
+-	cpu_maps_update_begin();
+-	for (i = 0; i < nthreads; i++) {
+-		for_each_present_cpu(cpu) {
+-			if (get_hard_smp_processor_id(cpu) != intserv[i])
+-				continue;
+-
+-			if (get_cpu_current_state(cpu) == CPU_STATE_OFFLINE)
+-				break;
+-
+-			if (get_cpu_current_state(cpu) == CPU_STATE_ONLINE) {
+-				cpu_maps_update_done();
+-				rc = cpu_down(cpu);
+-				if (rc)
+-					goto out;
+-				cpu_maps_update_begin();
+-				break;
+-
+-			}
+-
+-			/*
+-			 * The cpu is in CPU_STATE_INACTIVE.
+-			 * Upgrade it's state to CPU_STATE_OFFLINE.
+-			 */
+-			set_preferred_offline_state(cpu, CPU_STATE_OFFLINE);
+-			BUG_ON(plpar_hcall_norets(H_PROD, intserv[i])
+-								!= H_SUCCESS);
+-			__cpu_die(cpu);
+-			break;
+-		}
+-		if (cpu == num_possible_cpus())
+-			printk(KERN_WARNING "Could not find cpu to offline "
+-			       "with physical id 0x%x\n", intserv[i]);
+-	}
+-	cpu_maps_update_done();
+-
+-out:
+-	return rc;
+-
+-}
+-
+ #define DR_ENTITY_SENSE		9003
+ #define DR_ENTITY_PRESENT	1
+ #define DR_ENTITY_UNUSABLE	2
+@@ -454,6 +362,45 @@ __releases(pseries_cpu_hotplug_mutex)
+ 	mutex_unlock(&pseries_cpu_hotplug_mutex);
+ }
+ 
++static int dlpar_online_cpu(struct device_node *dn)
++{
++	int rc = 0;
++	unsigned int cpu;
++	int len, nthreads, i;
++	const u32 *intserv;
++
++	intserv = of_get_property(dn, "ibm,ppc-interrupt-server#s", &len);
++	if (!intserv)
++		return -EINVAL;
++
++	nthreads = len / sizeof(u32);
++
++	cpu_maps_update_begin();
++	for (i = 0; i < nthreads; i++) {
++		for_each_present_cpu(cpu) {
++			if (get_hard_smp_processor_id(cpu) != intserv[i])
++				continue;
++			BUG_ON(get_cpu_current_state(cpu)
++					!= CPU_STATE_OFFLINE);
++			cpu_maps_update_done();
++			rc = cpu_up(cpu);
++			if (rc)
++				goto out;
++			cpu_maps_update_begin();
++
++			break;
++		}
++		if (cpu == num_possible_cpus())
++			printk(KERN_WARNING "Could not find cpu to online "
++			       "with physical id 0x%x\n", intserv[i]);
++	}
++	cpu_maps_update_done();
++
++out:
++	return rc;
++
++}
++
+ static ssize_t dlpar_cpu_probe(const char *buf, size_t count)
+ {
+ 	struct device_node *dn;
+@@ -501,13 +448,66 @@ static ssize_t dlpar_cpu_probe(const char *buf, size_t count)
+ 		dlpar_free_cc_nodes(dn);
+ 	}
+ 
+-	rc = online_node_cpus(dn);
++	rc = dlpar_online_cpu(dn);
+ out:
+ 	cpu_hotplug_driver_unlock();
+ 
+ 	return rc ? rc : count;
+ }
+ 
++static int dlpar_offline_cpu(struct device_node *dn)
++{
++	int rc = 0;
++	unsigned int cpu;
++	int len, nthreads, i;
++	const u32 *intserv;
++
++	intserv = of_get_property(dn, "ibm,ppc-interrupt-server#s", &len);
++	if (!intserv)
++		return -EINVAL;
++
++	nthreads = len / sizeof(u32);
++
++	cpu_maps_update_begin();
++	for (i = 0; i < nthreads; i++) {
++		for_each_present_cpu(cpu) {
++			if (get_hard_smp_processor_id(cpu) != intserv[i])
++				continue;
++
++			if (get_cpu_current_state(cpu) == CPU_STATE_OFFLINE)
++				break;
++
++			if (get_cpu_current_state(cpu) == CPU_STATE_ONLINE) {
++				cpu_maps_update_done();
++				rc = cpu_down(cpu);
++				if (rc)
++					goto out;
++				cpu_maps_update_begin();
++				break;
++
++			}
++
++			/*
++			 * The cpu is in CPU_STATE_INACTIVE.
++			 * Upgrade it's state to CPU_STATE_OFFLINE.
++			 */
++			set_preferred_offline_state(cpu, CPU_STATE_OFFLINE);
++			BUG_ON(plpar_hcall_norets(H_PROD, intserv[i])
++								!= H_SUCCESS);
++			__cpu_die(cpu);
++			break;
++		}
++		if (cpu == num_possible_cpus())
++			printk(KERN_WARNING "Could not find cpu to offline "
++			       "with physical id 0x%x\n", intserv[i]);
++	}
++	cpu_maps_update_done();
++
++out:
++	return rc;
++
++}
++
+ static ssize_t dlpar_cpu_release(const char *buf, size_t count)
+ {
+ 	struct device_node *dn;
+@@ -525,7 +525,7 @@ static ssize_t dlpar_cpu_release(const char *buf, size_t count)
+ 	}
+ 
+ 	cpu_hotplug_driver_lock();
+-	rc = offline_node_cpus(dn);
++	rc = dlpar_offline_cpu(dn);
+ 	if (rc) {
+ 		of_node_put(dn);
+ 		rc = -EINVAL;

@@ -1,0 +1,64 @@
+From: Michael S. Tsirkin <mst@redhat.com>
+Date: Mon, 8 Feb 2010 20:27:36 -0500
+Subject: [vhost] make default mapping empty by default
+Message-id: <20100208202736.GE17153@redhat.com>
+Patchwork-id: 23200
+O-Subject: [RHEL6 PATCH 4/8] vhost: make default mapping empty by default
+Bugzilla: 562837
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+BZ#562837
+https://bugzilla.redhat.com/show_bug.cgi?id=562837
+
+Description
+vhost now validates each region with access_ok in calling process
+context before access.  Since this fails on a full 64 bit 1:1 mapping
+that vhost had by default, we can't support such a mapping: users will
+have to set up a table with real addresses that actually matches their
+address space.
+Make the default mapping empty.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+Upstream Status of the patches
+this fix has been merged upstream in a single commit
+3a4d5c94e959359ece6d6b55045c3f046677f55c
+
+Brew build#: 2247495
+
+Test Status:
+it has been tested by customers (IBM), and in house on x86 and x86-64
+platforms.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/vhost/vhost.c b/drivers/vhost/vhost.c
+index 33e06bf..2b65d9b 100644
+--- a/drivers/vhost/vhost.c
++++ b/drivers/vhost/vhost.c
+@@ -170,21 +170,14 @@ long vhost_dev_reset_owner(struct vhost_dev *dev)
+ {
+ 	struct vhost_memory *memory;
+ 
+-	/* Restore memory to default 1:1 mapping. */
+-	memory = kmalloc(offsetof(struct vhost_memory, regions) +
+-			 2 * sizeof *memory->regions, GFP_KERNEL);
++	/* Restore memory to default empty mapping. */
++	memory = kmalloc(offsetof(struct vhost_memory, regions), GFP_KERNEL);
+ 	if (!memory)
+ 		return -ENOMEM;
+ 
+ 	vhost_dev_cleanup(dev);
+ 
+-	memory->nregions = 2;
+-	memory->regions[0].guest_phys_addr = 1;
+-	memory->regions[0].userspace_addr = 1;
+-	memory->regions[0].memory_size = ~0ULL;
+-	memory->regions[1].guest_phys_addr = 0;
+-	memory->regions[1].userspace_addr = 0;
+-	memory->regions[1].memory_size = 1;
++	memory->nregions = 0;
+ 	dev->memory = memory;
+ 	return 0;
+ }

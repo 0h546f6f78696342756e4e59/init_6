@@ -1,0 +1,59 @@
+From: Jerome Marchand <jmarchan@redhat.com>
+Date: Fri, 5 Feb 2010 16:05:29 -0500
+Subject: [quota] 64-bit quota format fixes
+Message-id: <4B6C41C9.9020504@redhat.com>
+Patchwork-id: 23147
+O-Subject: BZ54631: Implement 64-bit quota format - new fixes
+Bugzilla: 546311
+RH-Acked-by: Eric Sandeen <sandeen@redhat.com>
+
+This is a follow-up of the patch series I already posted on the
+subject. Since then a couple of fixes went upstream (commits
+82fdfa928cfa19d9627526b2ce164a27f8e9d34b and
+869835dfad3eb6f7d90c3255a24b084fea82f30d)
+
+Bugzilla:
+https://bugzilla.redhat.com/show_bug.cgi?id=546311
+
+Description:
+The first commit fixes a compilation warning.
+The second improves the checking of quota file header, i.e. don't use
+64-bits file if we expect 32-bits (or vice versa) or if the header is
+otherwise corrupted.
+
+Brew Build:
+https://brewweb.devel.redhat.com/taskinfo?taskID=2241201
+
+Regards,
+Jerome
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/quota/quota_v2.c b/fs/quota/quota_v2.c
+index 6384302..3b513e6 100644
+--- a/fs/quota/quota_v2.c
++++ b/fs/quota/quota_v2.c
+@@ -97,8 +97,11 @@ static int v2_read_file_info(struct super_block *sb, int type)
+ 	unsigned int version;
+ 
+ 	if (!v2_read_header(sb, type, &dqhead))
+-		return 0;
++		return -1;
+ 	version = le32_to_cpu(dqhead.dqh_version);
++	if ((info->dqi_fmt_id == QFMT_VFS_V0 && version != 0) ||
++	    (info->dqi_fmt_id == QFMT_VFS_V1 && version != 1))
++		return -1;
+ 
+ 	size = sb->s_op->quota_read(sb, type, (char *)&dinfo,
+ 	       sizeof(struct v2_disk_dqinfo), V2_DQINFOOFF);
+@@ -120,8 +123,8 @@ static int v2_read_file_info(struct super_block *sb, int type)
+ 		info->dqi_maxilimit = 0xffffffff;
+ 	} else {
+ 		/* used space is stored as unsigned 64-bit value */
+-		info->dqi_maxblimit = 0xffffffffffffffff;	/* 2^64-1 */
+-		info->dqi_maxilimit = 0xffffffffffffffff;
++		info->dqi_maxblimit = 0xffffffffffffffffULL;	/* 2^64-1 */
++		info->dqi_maxilimit = 0xffffffffffffffffULL;
+ 	}
+ 	info->dqi_bgrace = le32_to_cpu(dinfo.dqi_bgrace);
+ 	info->dqi_igrace = le32_to_cpu(dinfo.dqi_igrace);

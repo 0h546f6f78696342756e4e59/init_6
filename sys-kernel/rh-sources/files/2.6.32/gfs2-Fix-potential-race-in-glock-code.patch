@@ -1,0 +1,73 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Thu, 10 Dec 2009 15:44:31 -0500
+Subject: [gfs2] Fix potential race in glock code
+Message-id: <1260459871.14393.68.camel@localhost.localdomain>
+Patchwork-id: 21845
+O-Subject: [RHEL 6] GFS2: Fix potential race in glock code (bz #546279)
+Bugzilla: 546279
+RH-Acked-by: Benjamin Marzinski <bmarzins@redhat.com>
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+The following patch is in upstream (and RHEL5) and just missed the
+2.6.32 deadline, so it needs to be back ported into RHEL6. It fixes
+bz #546279.
+
+I'm about to send a number of follow up patches, the application
+order of the patches should be:
+
+1. This patch
+2. The GFS2 ACL/xattr patch series
+3. The GFS2 quota patch series
+4. Anything else
+
+This matches the patch ordering in upstream.
+
+Steve.
+
+>From 7e71c55ee73988d0cb61045660b899eaac23bf8f Mon Sep 17 00:00:00 2001
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Tue, 22 Sep 2009 10:56:16 +0100
+Subject: GFS2: Fix potential race in glock code
+
+We need to be careful of the ordering between clearing the
+GLF_LOCK bit and scheduling the workqueue.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/glock.c b/fs/gfs2/glock.c
+index 8b674b1..a3f90ad 100644
+--- a/fs/gfs2/glock.c
++++ b/fs/gfs2/glock.c
+@@ -672,12 +672,17 @@ out:
+ 	return;
+ 
+ out_sched:
++	clear_bit(GLF_LOCK, &gl->gl_flags);
++	smp_mb__after_clear_bit();
+ 	gfs2_glock_hold(gl);
+ 	if (queue_delayed_work(glock_workqueue, &gl->gl_work, 0) == 0)
+ 		gfs2_glock_put_nolock(gl);
++	return;
++
+ out_unlock:
+ 	clear_bit(GLF_LOCK, &gl->gl_flags);
+-	goto out;
++	smp_mb__after_clear_bit();
++	return;
+ }
+ 
+ static void delete_work_func(struct work_struct *work)
+@@ -1375,10 +1380,11 @@ static int gfs2_shrink_glock_memory(int nr, gfp_t gfp_mask)
+ 				handle_callback(gl, LM_ST_UNLOCKED, 0);
+ 				nr--;
+ 			}
++			clear_bit(GLF_LOCK, &gl->gl_flags);
++			smp_mb__after_clear_bit();
+ 			if (queue_delayed_work(glock_workqueue, &gl->gl_work, 0) == 0)
+ 				gfs2_glock_put_nolock(gl);
+ 			spin_unlock(&gl->gl_spin);
+-			clear_bit(GLF_LOCK, &gl->gl_flags);
+ 			spin_lock(&lru_lock);
+ 			continue;
+ 		}

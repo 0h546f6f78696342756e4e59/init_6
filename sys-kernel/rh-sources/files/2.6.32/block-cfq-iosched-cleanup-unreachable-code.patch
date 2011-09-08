@@ -1,0 +1,53 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:54 -0500
+Subject: [block] cfq-iosched: cleanup unreachable code
+Message-id: <1260298712-12756-22-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21764
+O-Subject: [RHEL6 PATCH 21/59] cfq-iosched: cleanup unreachable code
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit c16632bab1a17e357cec66920ceb3f0630009360
+Author: Corrado Zoccolo <czoccolo@gmail.com>
+Date:   Thu Nov 26 09:41:21 2009 +0100
+
+    cfq-iosched: cleanup unreachable code
+
+    cfq_should_idle returns false for no-idle queues that are not the last,
+    so the control flow will never reach the removed code in a state that
+    satisfies the if condition.
+    The unreachable code was added to emulate previous cfq behaviour for
+    non-NCQ rotational devices. My tests show that even without it, the
+    performances and fairness are comparable with previous cfq, thanks to
+    the fact that all seeky queues are grouped together, and that we idle at
+    the end of the tree.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 2b7b3da..a20a70e 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -1268,19 +1268,6 @@ static void cfq_arm_slice_timer(struct cfq_data *cfqd)
+ 	cfq_mark_cfqq_wait_request(cfqq);
+ 
+ 	sl = cfqd->cfq_slice_idle;
+-	/* are we servicing noidle tree, and there are more queues?
+-	 * non-rotational or NCQ: no idle
+-	 * non-NCQ rotational : very small idle, to allow
+-	 *     fair distribution of slice time for a process doing back-to-back
+-	 *     seeks.
+-	 */
+-	if (cfqd->serving_type == SYNC_NOIDLE_WORKLOAD &&
+-	    service_tree_for(cfqd->serving_prio, SYNC_NOIDLE_WORKLOAD, cfqd)
+-		->count > 0) {
+-		if (blk_queue_nonrot(cfqd->queue) || cfqd->hw_tag)
+-			return;
+-		sl = min(sl, msecs_to_jiffies(CFQ_MIN_TT));
+-	}
+ 
+ 	mod_timer(&cfqd->idle_slice_timer, jiffies + sl);
+ 	cfq_log_cfqq(cfqd, cfqq, "arm_idle: %lu", sl);

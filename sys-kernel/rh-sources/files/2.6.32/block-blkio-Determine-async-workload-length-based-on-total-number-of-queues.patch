@@ -1,0 +1,98 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:19 -0500
+Subject: [block] blkio: Determine async workload length based on total number of queues
+Message-id: <1260298712-12756-47-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21783
+O-Subject: [RHEL6 PATCH 46/59] blkio: Determine async workload length based on
+	total number of queues
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit f26bd1f0a3a31bc5e16d285f5e1b00a56abf6238
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Thu Dec 3 12:59:54 2009 -0500
+
+    blkio: Determine async workload length based on total number of queues
+
+    o Async queues are not per group. Instead these are system wide and maintained
+      in root group. Hence their workload slice length should be calculated
+      based on total number of queues in the system and not just queues in the
+      root group.
+
+    o As root group's default weight is 1000, make sure to charge async queue
+      more in terms of vtime so that it does not get more time on disk because
+      root group has higher weight.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index e15f8ff..d9da953 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -407,6 +407,13 @@ static inline int cfq_group_busy_queues_wl(enum wl_prio_t wl,
+ 		+ cfqg->service_trees[wl][SYNC_WORKLOAD].count;
+ }
+ 
++static inline int cfqg_busy_async_queues(struct cfq_data *cfqd,
++					struct cfq_group *cfqg)
++{
++	return cfqg->service_trees[RT_WORKLOAD][ASYNC_WORKLOAD].count
++		+ cfqg->service_trees[BE_WORKLOAD][ASYNC_WORKLOAD].count;
++}
++
+ static void cfq_dispatch_insert(struct request_queue *, struct request *);
+ static struct cfq_queue *cfq_get_queue(struct cfq_data *, bool,
+ 				       struct io_context *, gfp_t);
+@@ -894,13 +901,19 @@ static void cfq_group_served(struct cfq_data *cfqd, struct cfq_group *cfqg,
+ 				struct cfq_queue *cfqq)
+ {
+ 	struct cfq_rb_root *st = &cfqd->grp_service_tree;
+-	unsigned int used_sl;
++	unsigned int used_sl, charge_sl;
++	int nr_sync = cfqg->nr_cfqq - cfqg_busy_async_queues(cfqd, cfqg)
++			- cfqg->service_tree_idle.count;
++
++	BUG_ON(nr_sync < 0);
++	used_sl = charge_sl = cfq_cfqq_slice_usage(cfqq);
+ 
+-	used_sl = cfq_cfqq_slice_usage(cfqq);
++	if (!cfq_cfqq_sync(cfqq) && !nr_sync)
++		charge_sl = cfqq->allocated_slice;
+ 
+ 	/* Can't update vdisktime while group is on service tree */
+ 	cfq_rb_erase(&cfqg->rb_node, st);
+-	cfqg->vdisktime += cfq_scale_slice(used_sl, cfqg);
++	cfqg->vdisktime += cfq_scale_slice(charge_sl, cfqg);
+ 	__cfq_group_service_tree_add(st, cfqg);
+ 
+ 	/* This group is being expired. Save the context */
+@@ -2015,11 +2028,24 @@ static void choose_service_tree(struct cfq_data *cfqd, struct cfq_group *cfqg)
+ 		max_t(unsigned, cfqg->busy_queues_avg[cfqd->serving_prio],
+ 		      cfq_group_busy_queues_wl(cfqd->serving_prio, cfqd, cfqg));
+ 
+-	if (cfqd->serving_type == ASYNC_WORKLOAD)
++	if (cfqd->serving_type == ASYNC_WORKLOAD) {
++		unsigned int tmp;
++
++		/*
++		 * Async queues are currently system wide. Just taking
++		 * proportion of queues with-in same group will lead to higher
++		 * async ratio system wide as generally root group is going
++		 * to have higher weight. A more accurate thing would be to
++		 * calculate system wide asnc/sync ratio.
++		 */
++		tmp = cfq_target_latency * cfqg_busy_async_queues(cfqd, cfqg);
++		tmp = tmp/cfqd->busy_queues;
++		slice = min_t(unsigned, slice, tmp);
++
+ 		/* async workload slice is scaled down according to
+ 		 * the sync/async slice ratio. */
+ 		slice = slice * cfqd->cfq_slice[0] / cfqd->cfq_slice[1];
+-	else
++	} else
+ 		/* sync workload slice is at least 2 * cfq_slice_idle */
+ 		slice = max(slice, 2 * cfqd->cfq_slice_idle);
+ 

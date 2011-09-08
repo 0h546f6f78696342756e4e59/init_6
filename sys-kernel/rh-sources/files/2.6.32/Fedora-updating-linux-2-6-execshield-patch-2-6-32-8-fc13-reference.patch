@@ -1,0 +1,18 @@
+From: Aristeu Rozanski <arozansk@redhat.com>
+Date: Thu, 10 Dec 2009 14:38:04 -0500
+Subject: [Fedora] updating linux-2.6-execshield.patch (2.6.32-8.fc13 reference)
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/arch/x86/kernel/traps.c b/arch/x86/kernel/traps.c
+index 92ae538..373db1d 100644
+--- a/arch/x86/kernel/traps.c
++++ b/arch/x86/kernel/traps.c
+@@ -1003,7 +1003,7 @@ dotraplinkage void do_iret_error(struct pt_regs *regs, long error_code)
+ 			info.si_errno = 0;
+ 			info.si_code = ILL_BADSTK;
+ 			info.si_addr = 0;
+-			do_trap(32, SIGSEGV, "iret exception", 0, error_code, &info);
++			do_trap(32, SIGSEGV, "iret exception", regs, error_code, &info);
+ 	}
+ }
+ #endif

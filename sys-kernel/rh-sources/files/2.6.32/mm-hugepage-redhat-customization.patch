@@ -1,0 +1,104 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:33 -0500
+Subject: [mm] hugepage redhat customization
+Message-id: <20100201152041.581635736@redhat.com>
+Patchwork-id: 23038
+O-Subject: [RHEL6 36/37] redhat customization
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Only allow transparent hugepage inside MADV_HUGEPAGE for KVM. Change sysfs
+directory to avoid possible API kernel clashes with future mainline. Avoid
+inlining get_page for kabi.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+index 0c75ad2..5d06baa 100644
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -325,21 +325,6 @@ static inline int page_count(struct page *page)
+ 	return atomic_read(&compound_head(page)->_count);
+ }
+ 
+-static inline void get_page(struct page *page)
+-{
+-	VM_BUG_ON(atomic_read(&page->_count) < !PageTail(page));
+-	atomic_inc(&page->_count);
+-	if (unlikely(PageTail(page))) {
+-		/*
+-		 * This is safe only because
+-		 * __split_huge_page_refcount can't run under
+-		 * get_page().
+-		 */
+-		VM_BUG_ON(atomic_read(&page->first_page->_count) <= 0);
+-		atomic_inc(&page->first_page->_count);
+-	}
+-}
+-
+ static inline struct page *virt_to_head_page(const void *x)
+ {
+ 	struct page *page = virt_to_page(x);
+@@ -355,6 +340,7 @@ static inline void init_page_count(struct page *page)
+ 	atomic_set(&page->_count, 1);
+ }
+ 
++void get_page(struct page *page);
+ void put_page(struct page *page);
+ void put_pages_list(struct list_head *pages);
+ 
+diff --git a/mm/huge_memory.c b/mm/huge_memory.c
+index efe4a6a..b8c49e3 100644
+--- a/mm/huge_memory.c
++++ b/mm/huge_memory.c
+@@ -20,8 +20,8 @@
+ #include "internal.h"
+ 
+ unsigned long transparent_hugepage_flags __read_mostly =
+-	(1<<TRANSPARENT_HUGEPAGE_FLAG)|
+-	(1<<TRANSPARENT_HUGEPAGE_KHUGEPAGED_FLAG);
++	(1<<TRANSPARENT_HUGEPAGE_REQ_MADV_FLAG)|
++	(1<<TRANSPARENT_HUGEPAGE_KHUGEPAGED_REQ_MADV_FLAG);
+ 
+ /* default scan 8*512 pte (or vmas) every 30 second */
+ static unsigned int khugepaged_pages_to_scan __read_mostly = HPAGE_PMD_NR*8;
+@@ -407,7 +407,8 @@ static int __init hugepage_init(void)
+ 	static struct kobject *hugepage_kobj;
+ 
+ 	err = -ENOMEM;
+-	hugepage_kobj = kobject_create_and_add("transparent_hugepage", mm_kobj);
++	hugepage_kobj = kobject_create_and_add("redhat_transparent_hugepage",
++					       mm_kobj);
+ 	if (unlikely(!hugepage_kobj)) {
+ 		printk(KERN_ERR "hugepage: failed kobject create\n");
+ 		goto out;
+diff --git a/mm/swap.c b/mm/swap.c
+index 2d4ad66..0d66798 100644
+--- a/mm/swap.c
++++ b/mm/swap.c
+@@ -39,6 +39,22 @@ int page_cluster;
+ static DEFINE_PER_CPU(struct pagevec[NR_LRU_LISTS], lru_add_pvecs);
+ static DEFINE_PER_CPU(struct pagevec, lru_rotate_pvecs);
+ 
++void get_page(struct page *page)
++{
++	VM_BUG_ON(atomic_read(&page->_count) < !PageTail(page));
++	atomic_inc(&page->_count);
++	if (unlikely(PageTail(page))) {
++		/*
++		 * This is safe only because
++		 * __split_huge_page_refcount can't run under
++		 * get_page().
++		 */
++		VM_BUG_ON(atomic_read(&page->first_page->_count) <= 0);
++		atomic_inc(&page->first_page->_count);
++	}
++}
++EXPORT_SYMBOL(get_page);
++
+ /*
+  * This path almost never happens for VM activity - pages are normally
+  * freed via pagevecs.  But it gets used by networking.

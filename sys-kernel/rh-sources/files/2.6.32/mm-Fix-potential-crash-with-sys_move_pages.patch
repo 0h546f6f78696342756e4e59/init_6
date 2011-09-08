@@ -1,0 +1,48 @@
+From: Danny Feng <dfeng@redhat.com>
+Date: Mon, 1 Mar 2010 07:48:26 -0500
+Subject: [mm] Fix potential crash with sys_move_pages
+Message-id: <20100301075002.21102.97139.sendpatchset@danny>
+Patchwork-id: 23455
+O-Subject: [PATCH RHEL6.0 bz562591] CVE-2010-0415 Fix potential crash with
+	sys_move_pages
+Bugzilla: 562591
+CVE: CVE-2010-0415
+RH-Acked-by: David S. Miller <davem@redhat.com>
+
+backport of:
+
+commit 6f5a55f1a6c5abee15a0e878e5c74d9f1569b8b0
+Author: Linus Torvalds <torvalds@linux-foundation.org>
+Date:   Fri Feb 5 16:16:50 2010 -0800
+
+    Fix potential crash with sys_move_pages
+
+    We incorrectly depended on the 'node_state/node_isset()' functions
+    testing the node range, rather than checking it explicitly.  That's not
+    reliable, even if it might often happen to work.  So do the proper
+    explicit test.
+
+    Reported-by: Marcus Meissner <meissner@suse.de>
+    Acked-and-tested-by: Brice Goglin <Brice.Goglin@inria.fr>
+    Acked-by: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+    Cc: stable@kernel.org
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+resolves 562591
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/migrate.c b/mm/migrate.c
+index c777f6b..9e3c452 100644
+--- a/mm/migrate.c
++++ b/mm/migrate.c
+@@ -917,6 +917,9 @@ static int do_pages_move(struct mm_struct *mm, struct task_struct *task,
+ 				goto out_pm;
+ 
+ 			err = -ENODEV;
++			if (node < 0 || node >= MAX_NUMNODES)
++				goto out_pm;
++
+ 			if (!node_state(node, N_HIGH_MEMORY))
+ 				goto out_pm;
+ 

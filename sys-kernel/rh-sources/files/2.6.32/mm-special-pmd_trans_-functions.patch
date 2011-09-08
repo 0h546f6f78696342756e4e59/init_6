@@ -1,0 +1,84 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:09 -0500
+Subject: [mm] special pmd_trans_* functions
+Message-id: <20100201152037.832064880@redhat.com>
+Patchwork-id: 23028
+O-Subject: [RHEL6 12/37] special pmd_trans_* functions
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+These returns 0 at compile time when the config option is disabled, to allow
+gcc to eliminate the transparent hugepage function calls at compile time
+without additional #ifdefs (only the export of those functions have to be
+visible to gcc but they won't be required at link time and huge_memory.o can be
+not built at all).
+
+_PAGE_BIT_UNUSED1 is never used for pmd, only on pte.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/pgtable_64.h b/arch/x86/include/asm/pgtable_64.h
+index 9319631..afb2e34 100644
+--- a/arch/x86/include/asm/pgtable_64.h
++++ b/arch/x86/include/asm/pgtable_64.h
+@@ -175,6 +175,19 @@ extern void cleanup_highmap(void);
+ #define	kc_offset_to_vaddr(o) ((o) | ~__VIRTUAL_MASK)
+ 
+ #define __HAVE_ARCH_PTE_SAME
++
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++static inline int pmd_trans_splitting(pmd_t pmd)
++{
++	return pmd_val(pmd) & _PAGE_SPLITTING;
++}
++
++static inline int pmd_trans_huge(pmd_t pmd)
++{
++	return pmd_val(pmd) & _PAGE_PSE;
++}
++#endif /* CONFIG_TRANSPARENT_HUGEPAGE */
++
+ #endif /* !__ASSEMBLY__ */
+ 
+ #endif /* _ASM_X86_PGTABLE_64_H */
+diff --git a/arch/x86/include/asm/pgtable_types.h b/arch/x86/include/asm/pgtable_types.h
+index 7b9e0ea..105b454 100644
+--- a/arch/x86/include/asm/pgtable_types.h
++++ b/arch/x86/include/asm/pgtable_types.h
+@@ -23,6 +23,7 @@
+ #define _PAGE_BIT_SPECIAL	_PAGE_BIT_UNUSED1
+ #define _PAGE_BIT_CPA_TEST	_PAGE_BIT_UNUSED1
+ #define _PAGE_BIT_SOFTDIRTY	_PAGE_BIT_HIDDEN
++#define _PAGE_BIT_SPLITTING	_PAGE_BIT_UNUSED1 /* only valid on a PSE pmd */
+ #define _PAGE_BIT_NX           63       /* No execute: only valid after cpuid check */
+ 
+ /* If _PAGE_BIT_PRESENT is clear, we use these: */
+@@ -47,6 +48,7 @@
+ #define _PAGE_SPECIAL	(_AT(pteval_t, 1) << _PAGE_BIT_SPECIAL)
+ #define _PAGE_CPA_TEST	(_AT(pteval_t, 1) << _PAGE_BIT_CPA_TEST)
+ #define _PAGE_SOFTDIRTY	(_AT(pteval_t, 1) << _PAGE_BIT_SOFTDIRTY)
++#define _PAGE_SPLITTING	(_AT(pteval_t, 1) << _PAGE_BIT_SPLITTING)
+ #define __HAVE_ARCH_PTE_SPECIAL
+ 
+ #ifdef CONFIG_KMEMCHECK
+diff --git a/include/asm-generic/pgtable.h b/include/asm-generic/pgtable.h
+index e2bd73e..ec2fed3 100644
+--- a/include/asm-generic/pgtable.h
++++ b/include/asm-generic/pgtable.h
+@@ -344,6 +344,11 @@ extern void untrack_pfn_vma(struct vm_area_struct *vma, unsigned long pfn,
+ 				unsigned long size);
+ #endif
+ 
++#ifndef CONFIG_TRANSPARENT_HUGEPAGE
++#define pmd_trans_huge(pmd) 0
++#define pmd_trans_splitting(pmd) ({ BUG(); 0; })
++#endif
++
+ #endif /* !__ASSEMBLY__ */
+ 
+ #endif /* _ASM_GENERIC_PGTABLE_H */

@@ -1,0 +1,33 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Thu, 18 Feb 2010 10:27:42 -0500
+Subject: [kvm] Add MAINTAINERS entry for virtio_console
+Message-id: <ce17dd3e377e8b8d9260393b61bedf3f65d89c56.1266488420.git.amit.shah@redhat.com>
+Patchwork-id: 23344
+O-Subject: [PATCH 10/10] Add MAINTAINERS entry for virtio_console
+Bugzilla: 566391
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+I'm taking ownership of the virtio_console module; but I'll continue
+feeding patches via Rusty.
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 20017ed..a9d25c6 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -2336,6 +2336,12 @@ L:	linuxppc-dev@ozlabs.org
+ S:	Odd Fixes
+ F:	drivers/char/hvc_*
+ 
++VIRTIO CONSOLE DRIVER
++M:	Amit Shah <amit.shah@redhat.com>
++L:	virtualization@lists.linux-foundation.org
++S:	Maintained
++F:	drivers/char/virtio_console.c
++
+ GSPCA FINEPIX SUBDRIVER
+ M:	Frank Zago <frank@zago.net>
+ L:	linux-media@vger.kernel.org

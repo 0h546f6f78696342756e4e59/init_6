@@ -1,0 +1,28 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:36 -0500
+Subject: [Fedora] [pci] sets PCIE ASPM default policy to POWERSAVE
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6-defaults-aspm.patch
+
+This patch makes the default ASPM policy "POWERSAVE" by default instead of
+BIOS default setting.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/pci/pcie/aspm.c b/drivers/pci/pcie/aspm.c
+index 5b7056c..413b4ea 100644
+--- a/drivers/pci/pcie/aspm.c
++++ b/drivers/pci/pcie/aspm.c
+@@ -75,7 +75,7 @@ static LIST_HEAD(link_list);
+ #define POLICY_DEFAULT 0	/* BIOS default setting */
+ #define POLICY_PERFORMANCE 1	/* high performance */
+ #define POLICY_POWERSAVE 2	/* high power saving */
+-static int aspm_policy;
++static int aspm_policy = POLICY_POWERSAVE;
+ static const char *policy_str[] = {
+ 	[POLICY_DEFAULT] = "default",
+ 	[POLICY_PERFORMANCE] = "performance",

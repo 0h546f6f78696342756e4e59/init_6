@@ -1,0 +1,203 @@
+From: Eric Paris <eparis@redhat.com>
+Date: Thu, 11 Feb 2010 00:44:37 -0500
+Subject: [selinux] print the module name when SELinux denies a userspace upcall
+Message-id: <1265849077-21211-1-git-send-email-eparis@redhat.com>
+Patchwork-id: 23226
+O-Subject: [RHEL6 PATCH] SELinux: print the module name when SELinux denies a
+	userspace upcall
+Bugzilla: 563731
+RH-Acked-by: James Morris <jmorris@redhat.com>
+
+BZ 563731
+
+This is an upstream backport of dd8dbf2e6880e30c00b18600c962d0cb5a03c555
+
+The main issue is that when users disable IPv6 using the modprobe blacklist
+many programs will do operations causing the kernel to upcall to userspace
+in an attempt to load the IPv6 module.  This patch simply adds the module
+name to the AVC denial so SELinux userspace can filter these denials.
+
+    security: report the module name to security_module_request
+
+    For SELinux to do better filtering in userspace we send the name of the
+    module along with the AVC denial when a program is denied module_request.
+
+    Example output:
+
+    type=SYSCALL msg=audit(11/03/2009 10:59:43.510:9) : arch=x86_64 syscall=write success=yes exit=2 a0=3 a1=7fc28c0d56c0 a2=2 a3=7fffca0d7440 items=0 ppid=1
+    type=AVC msg=audit(11/03/2009 10:59:43.510:9) : avc:  denied  { module_request } for  pid=1729 comm=rpc.nfsd kmod="net-pf-10" scontext=system_u:system_r:
+
+    Signed-off-by: Eric Paris <eparis@redhat.com>
+    Signed-off-by: James Morris <jmorris@namei.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/lsm_audit.h b/include/linux/lsm_audit.h
+index 190c378..f78f83d 100644
+--- a/include/linux/lsm_audit.h
++++ b/include/linux/lsm_audit.h
+@@ -26,14 +26,15 @@
+ 
+ /* Auxiliary data to use in generating the audit record. */
+ struct common_audit_data {
+-	char    type;
+-#define LSM_AUDIT_DATA_FS      1
+-#define LSM_AUDIT_DATA_NET     2
+-#define LSM_AUDIT_DATA_CAP     3
+-#define LSM_AUDIT_DATA_IPC     4
+-#define LSM_AUDIT_DATA_TASK    5
+-#define LSM_AUDIT_DATA_KEY     6
+-#define LSM_AUDIT_NO_AUDIT     7
++	char type;
++#define LSM_AUDIT_DATA_FS	1
++#define LSM_AUDIT_DATA_NET	2
++#define LSM_AUDIT_DATA_CAP	3
++#define LSM_AUDIT_DATA_IPC	4
++#define LSM_AUDIT_DATA_TASK	5
++#define LSM_AUDIT_DATA_KEY	6
++#define LSM_AUDIT_NO_AUDIT	7
++#define LSM_AUDIT_DATA_KMOD	8
+ 	struct task_struct *tsk;
+ 	union 	{
+ 		struct {
+@@ -66,6 +67,7 @@ struct common_audit_data {
+ 			char *key_desc;
+ 		} key_struct;
+ #endif
++		char *kmod_name;
+ 	} u;
+ 	/* this union contains LSM specific data */
+ 	union {
+diff --git a/include/linux/security.h b/include/linux/security.h
+index 4482183..f0a205a 100644
+--- a/include/linux/security.h
++++ b/include/linux/security.h
+@@ -697,6 +697,7 @@ static inline void security_free_mnt_opts(struct security_mnt_opts *opts)
+  * @kernel_module_request:
+  *	Ability to trigger the kernel to automatically upcall to userspace for
+  *	userspace to load a kernel module with the given name.
++ *	@kmod_name name of the module requested by the kernel
+  *	Return 0 if successful.
+  * @task_setuid:
+  *	Check permission before setting one or more of the user identity
+@@ -1564,7 +1565,7 @@ struct security_operations {
+ 	void (*cred_transfer)(struct cred *new, const struct cred *old);
+ 	int (*kernel_act_as)(struct cred *new, u32 secid);
+ 	int (*kernel_create_files_as)(struct cred *new, struct inode *inode);
+-	int (*kernel_module_request)(void);
++	int (*kernel_module_request)(char *kmod_name);
+ 	int (*task_setuid) (uid_t id0, uid_t id1, uid_t id2, int flags);
+ 	int (*task_fix_setuid) (struct cred *new, const struct cred *old,
+ 				int flags);
+@@ -1830,7 +1831,7 @@ void security_commit_creds(struct cred *new, const struct cred *old);
+ void security_transfer_creds(struct cred *new, const struct cred *old);
+ int security_kernel_act_as(struct cred *new, u32 secid);
+ int security_kernel_create_files_as(struct cred *new, struct inode *inode);
+-int security_kernel_module_request(void);
++int security_kernel_module_request(char *kmod_name);
+ int security_task_setuid(uid_t id0, uid_t id1, uid_t id2, int flags);
+ int security_task_fix_setuid(struct cred *new, const struct cred *old,
+ 			     int flags);
+@@ -2396,7 +2397,7 @@ static inline int security_kernel_create_files_as(struct cred *cred,
+ 	return 0;
+ }
+ 
+-static inline int security_kernel_module_request(void)
++static inline int security_kernel_module_request(char *kmod_name)
+ {
+ 	return 0;
+ }
+diff --git a/kernel/kmod.c b/kernel/kmod.c
+index 9fcb53a..25b1031 100644
+--- a/kernel/kmod.c
++++ b/kernel/kmod.c
+@@ -80,16 +80,16 @@ int __request_module(bool wait, const char *fmt, ...)
+ #define MAX_KMOD_CONCURRENT 50	/* Completely arbitrary value - KAO */
+ 	static int kmod_loop_msg;
+ 
+-	ret = security_kernel_module_request();
+-	if (ret)
+-		return ret;
+-
+ 	va_start(args, fmt);
+ 	ret = vsnprintf(module_name, MODULE_NAME_LEN, fmt, args);
+ 	va_end(args);
+ 	if (ret >= MODULE_NAME_LEN)
+ 		return -ENAMETOOLONG;
+ 
++	ret = security_kernel_module_request(module_name);
++	if (ret)
++		return ret;
++
+ 	/* If modprobe needs a service that is in a module, we get a recursive
+ 	 * loop.  Limit the number of running kmod threads to max_threads/2 or
+ 	 * MAX_KMOD_CONCURRENT, whichever is the smaller.  A cleaner method
+diff --git a/security/capability.c b/security/capability.c
+index 5882ec0..fdddf39 100644
+--- a/security/capability.c
++++ b/security/capability.c
+@@ -405,7 +405,7 @@ static int cap_kernel_create_files_as(struct cred *new, struct inode *inode)
+ 	return 0;
+ }
+ 
+-static int cap_kernel_module_request(void)
++static int cap_kernel_module_request(char *kmod_name)
+ {
+ 	return 0;
+ }
+diff --git a/security/lsm_audit.c b/security/lsm_audit.c
+index 3bb90b6..51bd0fd 100644
+--- a/security/lsm_audit.c
++++ b/security/lsm_audit.c
+@@ -354,6 +354,10 @@ static void dump_common_audit_data(struct audit_buffer *ab,
+ 		}
+ 		break;
+ #endif
++	case LSM_AUDIT_DATA_KMOD:
++		audit_log_format(ab, " kmod=");
++		audit_log_untrustedstring(ab, a->u.kmod_name);
++		break;
+ 	} /* switch (a->type) */
+ }
+ 
+diff --git a/security/security.c b/security/security.c
+index 4b23d83..b7711f1 100644
+--- a/security/security.c
++++ b/security/security.c
+@@ -719,9 +719,9 @@ int security_kernel_create_files_as(struct cred *new, struct inode *inode)
+ 	return security_ops->kernel_create_files_as(new, inode);
+ }
+ 
+-int security_kernel_module_request(void)
++int security_kernel_module_request(char *kmod_name)
+ {
+-	return security_ops->kernel_module_request();
++	return security_ops->kernel_module_request(kmod_name);
+ }
+ 
+ int security_task_setuid(uid_t id0, uid_t id1, uid_t id2, int flags)
+diff --git a/security/selinux/hooks.c b/security/selinux/hooks.c
+index dac6c88..0eac7de 100644
+--- a/security/selinux/hooks.c
++++ b/security/selinux/hooks.c
+@@ -3339,9 +3339,18 @@ static int selinux_kernel_create_files_as(struct cred *new, struct inode *inode)
+ 	return 0;
+ }
+ 
+-static int selinux_kernel_module_request(void)
++static int selinux_kernel_module_request(char *kmod_name)
+ {
+-	return task_has_system(current, SYSTEM__MODULE_REQUEST);
++	u32 sid;
++	struct common_audit_data ad;
++
++	sid = task_sid(current);
++
++	COMMON_AUDIT_DATA_INIT(&ad, KMOD);
++	ad.u.kmod_name = kmod_name;
++
++	return avc_has_perm(sid, SECINITSID_KERNEL, SECCLASS_SYSTEM,
++			    SYSTEM__MODULE_REQUEST, &ad);
+ }
+ 
+ static int selinux_task_setpgid(struct task_struct *p, pid_t pgid)

@@ -1,0 +1,59 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:33:58 -0500
+Subject: [kvm] SVM: Notify nested hypervisor of lost event injections
+Message-id: <20100112214154.803349164@amt.cnet>
+Patchwork-id: 22475
+O-Subject: [RHEL 6 KVM 09/20] KVM: SVM: Notify nested hypervisor of lost event
+	injections
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit 8d23c4662427507f432c96ac4fa3b76f0a8360cd
+Author: Alexander Graf <agraf@suse.de>
+Date:   Fri Oct 9 16:08:25 2009 +0200
+
+KVM: SVM: Notify nested hypervisor of lost event injections
+
+If event_inj is valid on a #vmexit the host CPU would write
+the contents to exit_int_info, so the hypervisor knows that
+the event wasn't injected.
+
+We don't do this in nested SVM by now which is a bug and
+fixed by this patch.
+
+Signed-off-by: Alexander Graf <agraf@suse.de>
+Signed-off-by: Joerg Roedel <joerg.roedel@amd.com>
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/svm.c b/arch/x86/kvm/svm.c
+index e310025..660c64b 100644
+--- a/arch/x86/kvm/svm.c
++++ b/arch/x86/kvm/svm.c
+@@ -1632,6 +1632,22 @@ static int nested_svm_vmexit(struct vcpu_svm *svm)
+ 	nested_vmcb->control.exit_info_2       = vmcb->control.exit_info_2;
+ 	nested_vmcb->control.exit_int_info     = vmcb->control.exit_int_info;
+ 	nested_vmcb->control.exit_int_info_err = vmcb->control.exit_int_info_err;
++
++	/*
++	 * If we emulate a VMRUN/#VMEXIT in the same host #vmexit cycle we have
++	 * to make sure that we do not lose injected events. So check event_inj
++	 * here and copy it to exit_int_info if it is valid.
++	 * Exit_int_info and event_inj can't be both valid because the case
++	 * below only happens on a VMRUN instruction intercept which has
++	 * no valid exit_int_info set.
++	 */
++	if (vmcb->control.event_inj & SVM_EVTINJ_VALID) {
++		struct vmcb_control_area *nc = &nested_vmcb->control;
++
++		nc->exit_int_info     = vmcb->control.event_inj;
++		nc->exit_int_info_err = vmcb->control.event_inj_err;
++	}
++
+ 	nested_vmcb->control.tlb_ctl           = 0;
+ 	nested_vmcb->control.event_inj         = 0;
+ 	nested_vmcb->control.event_inj_err     = 0;

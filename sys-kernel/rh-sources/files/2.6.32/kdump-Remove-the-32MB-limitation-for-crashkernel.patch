@@ -1,0 +1,121 @@
+From: Steve Best <sbest@redhat.com>
+Date: Sat, 19 Dec 2009 21:47:26 -0500
+Subject: [kdump] Remove the 32MB limitation for crashkernel
+Message-id: <20091219214119.3199.65667.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 22220
+O-Subject: [PATCH RHEL6.0 BZ529270] Remove the 32MB limitation for crashkernel
+Bugzilla: 529270
+RH-Acked-by: Neil Horman <nhorman@redhat.com>
+
+RHBZ#:
+======
+https://bugzilla.redhat.com/show_bug.cgi?id=529270
+
+Description:
+============
+Remove the 32MB limitation for crashkernel base
+
+If the kernel is booted with crashkernel=auto parameter, code tries to
+allocate memory for kdump kernel at 32MB (KDUMP_KERNELBASE). But if the
+production kernel size is >= 32MB, reservation for kdump kernel will
+fail. This patch addresses this issue by returning 0 as the default
+crash base for relocatable kernels and if the crash base is 0, try
+allocate the kernel memory any where within the RMO region.
+
+Signed-off-by: M. Mohan Kumar <mohan@in.ibm.com>
+
+RHEL Version Found:
+===================
+6.0
+
+kABI Status:
+============
+No symbols were harmed.
+
+Brew:
+=====
+Built on all platforms.
+https://brewweb.devel.redhat.com/taskinfo?taskID=2161183
+
+Upstream Status:
+================
+upstream patch discussion here
+http://patchwork.ozlabs.org/patch/39314/
+
+Test Status:
+============
+Successfully tested-by-me.
+
+===============================================================
+Steve Best
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/powerpc/kernel/machine_kexec.c b/arch/powerpc/kernel/machine_kexec.c
+index baf1af0..cc37785 100644
+--- a/arch/powerpc/kernel/machine_kexec.c
++++ b/arch/powerpc/kernel/machine_kexec.c
+@@ -64,7 +64,11 @@ void machine_kexec(struct kimage *image)
+ #ifdef CONFIG_KEXEC_AUTO_RESERVE
+ unsigned long long __init arch_default_crash_base(void)
+ {
++#ifndef CONFIG_RELOCATABLE
+ 	return KDUMP_KERNELBASE;
++#else
++	return 0;
++#endif
+ }
+ 
+ unsigned long long __init arch_default_crash_size(unsigned long long total_size)
+@@ -118,32 +122,41 @@ void __init reserve_crashkernel(void)
+ 
+ 	crashk_res.start = KDUMP_KERNELBASE;
+ #else
+-	if (!crashk_res.start) {
+-		/*
+-		 * unspecified address, choose a region of specified size
+-		 * can overlap with initrd (ignoring corruption when retained)
+-		 * ppc64 requires kernel and some stacks to be in first segemnt
+-		 */
+-		crashk_res.start = KDUMP_KERNELBASE;
+-	}
+-
+ 	crash_base = PAGE_ALIGN(crashk_res.start);
+ 	if (crash_base != crashk_res.start) {
+ 		printk("Crash kernel base must be aligned to 0x%lx\n",
+ 				PAGE_SIZE);
+ 		crashk_res.start = crash_base;
+ 	}
+-
+ #endif
+ 	crash_size = PAGE_ALIGN(crash_size);
+ 	crashk_res.end = crashk_res.start + crash_size - 1;
+ 
+ 	/* The crash region must not overlap the current kernel */
+ 	if (overlaps_crashkernel(__pa(_stext), _end - _stext)) {
++#ifdef CONFIG_RELOCATABLE
++		do {
++			/* Align kdump kernel to 16MB (size of large page) */
++			crashk_res.start = ALIGN(crashk_res.start +
++						(16 * 1024 * 1024), 0x1000000);
++			if (crashk_res.start + (_end - _stext) > lmb.rmo_size) {
++				printk(KERN_WARNING
++					"Not enough memory for crash kernel\n");
++				crashk_res.start = crashk_res.end = 0;
++				return;
++			}
++		} while (overlaps_crashkernel(__pa(_stext), _end - _stext));
++
++		crashk_res.end = crashk_res.start + crash_size - 1;
++		printk(KERN_INFO
++			"crash kernel memory overlaps with kernel memory\n"
++			"Moving it to %ldMB\n", (unsigned long)(crashk_res.start >> 20));
++#else
+ 		printk(KERN_WARNING
+ 			"Crash kernel can not overlap current kernel\n");
+ 		crashk_res.start = crashk_res.end = 0;
+ 		return;
++#endif
+ 	}
+ 
+ 	/* Crash kernel trumps memory limit */

@@ -1,0 +1,36 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 18 Dec 2009 20:36:30 -0500
+Subject: [block] cfq: Remove wait_request flag when idle time is being deleted
+Message-id: <1261168595-15386-7-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 22174
+O-Subject: [RHEL6 PATCH 06/11] cfq: Remove wait_request flag when idle time is
+	being deleted
+Bugzilla: 548796
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+The commit id is from the block tree.  fixes bug 548796
+
+commit 554554f60ad619e1efab01897208bc320b81d9da
+Author: Gui Jianfeng <guijianfeng@cn.fujitsu.com>
+Date:   Thu Dec 10 09:38:39 2009 +0100
+
+    cfq: Remove wait_request flag when idle time is being deleted
+
+    Remove wait_request flag when idle time is being deleted, otherwise
+    it'll hit this path every time when a request is enqueued.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index b947710..eba740b 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -3201,6 +3201,7 @@ cfq_rq_enqueued(struct cfq_data *cfqd, struct cfq_queue *cfqq,
+ 			if (blk_rq_bytes(rq) > PAGE_CACHE_SIZE ||
+ 			    cfqd->busy_queues > 1) {
+ 				del_timer(&cfqd->idle_slice_timer);
++				cfq_clear_cfqq_wait_request(cfqq);
+ 				__blk_run_queue(cfqd->queue);
+ 			} else
+ 				cfq_mark_cfqq_must_dispatch(cfqq);

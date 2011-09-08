@@ -1,0 +1,89 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:16:59 -0500
+Subject: [mm] add a compound_lock
+Message-id: <20100201152036.209155500@redhat.com>
+Patchwork-id: 23025
+O-Subject: [RHEL6 02/37] compound_lock
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Add a new compound_lock() needed to serialize put_page against
+__split_huge_page_refcount().
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+index 320ca67..25d48bd 100644
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -12,6 +12,7 @@
+ #include <linux/prio_tree.h>
+ #include <linux/debug_locks.h>
+ #include <linux/mm_types.h>
++#include <linux/bit_spinlock.h>
+ 
+ struct mempolicy;
+ struct anon_vma;
+@@ -294,6 +295,20 @@ static inline int is_vmalloc_or_module_addr(const void *x)
+ }
+ #endif
+ 
++static inline void compound_lock(struct page *page)
++{
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++	bit_spin_lock(PG_compound_lock, &page->flags);
++#endif
++}
++
++static inline void compound_unlock(struct page *page)
++{
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++	bit_spin_unlock(PG_compound_lock, &page->flags);
++#endif
++}
++
+ static inline struct page *compound_head(struct page *page)
+ {
+ 	if (unlikely(PageTail(page)))
+diff --git a/include/linux/page-flags.h b/include/linux/page-flags.h
+index feee2ba..36371f1 100644
+--- a/include/linux/page-flags.h
++++ b/include/linux/page-flags.h
+@@ -108,6 +108,9 @@ enum pageflags {
+ #ifdef CONFIG_MEMORY_FAILURE
+ 	PG_hwpoison,		/* hardware poisoned page. Don't touch */
+ #endif
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++	PG_compound_lock,
++#endif
+ 	__NR_PAGEFLAGS,
+ 
+ 	/* Filesystems */
+@@ -399,6 +402,12 @@ static inline void __ClearPageTail(struct page *page)
+ #define __PG_MLOCKED		0
+ #endif
+ 
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++#define __PG_COMPOUND_LOCK		(1 << PG_compound_lock)
++#else
++#define __PG_COMPOUND_LOCK		0
++#endif
++
+ /*
+  * Flags checked when a page is freed.  Pages being freed should not have
+  * these flags set.  It they are, there is a problem.
+@@ -408,7 +417,8 @@ static inline void __ClearPageTail(struct page *page)
+ 	 1 << PG_private | 1 << PG_private_2 | \
+ 	 1 << PG_buddy	 | 1 << PG_writeback | 1 << PG_reserved | \
+ 	 1 << PG_slab	 | 1 << PG_swapcache | 1 << PG_active | \
+-	 1 << PG_unevictable | __PG_MLOCKED | __PG_HWPOISON)
++	 1 << PG_unevictable | __PG_MLOCKED | __PG_HWPOISON | \
++	 __PG_COMPOUND_LOCK)
+ 
+ /*
+  * Flags checked when a page is prepped for return by the page allocator.

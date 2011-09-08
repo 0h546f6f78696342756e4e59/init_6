@@ -1,0 +1,394 @@
+From: Neil Horman <nhorman@redhat.com>
+Date: Thu, 12 Nov 2009 18:10:37 -0500
+Subject: [procfs] add ability to modify proc file limits from outside a processes own context
+Message-id: <20091112181037.GB7899@shamino.rdu.redhat.com>
+Patchwork-id: 21371
+O-Subject: [RHEL 6 PATCH] proc: add ability to modify proc file limits from
+	outside a processes own context (bz 461946)
+Bugzilla: 461946
+
+Hey all-
+	This is a backport of the following linux-next commits:
+5bcbae4eb046d179300495f728fe76bdf7678195
+020d8f0554d6e5159009167532bb70f409c9f571
+c07bb5092144a60f530edd53574e8826f37aa69e
+ba9ba971a9241250646091935d77d2f31b7c15af
+4a4a4e5f51d866284db401ea4d8ba5f0c91cc1eb
+bab65b1e6c0fd797a1ecdb32911faa82947effd0
+c1b9b7eaf7386a7f142d59a2bb433ac8217b0ad1
+
+It allows us to write to /proc/pid/limits so that rlimit values might be changed
+on a process from outside that processes context.
+
+Tested by myself with good results, satisfies bz 461946
+
+Neil
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/proc/base.c b/fs/proc/base.c
+index af643b5..b894170 100644
+--- a/fs/proc/base.c
++++ b/fs/proc/base.c
+@@ -128,6 +128,8 @@ struct pid_entry {
+ 		NULL, &proc_single_file_operations,	\
+ 		{ .proc_show = show } )
+ 
++static ssize_t proc_info_read(struct file * file, char __user * buf,
++			  size_t count, loff_t *ppos);
+ /*
+  * Count the number of hardlinks for the pid_entry table, excluding the .
+  * and .. links.
+@@ -521,6 +523,74 @@ static int proc_pid_limits(struct task_struct *task, char *buffer)
+ 	return count;
+ }
+ 
++static ssize_t limits_write(struct file *file, const char __user *buf,
++		size_t count, loff_t *ppos)
++{
++	struct task_struct *task = get_proc_task(file->f_path.dentry->d_inode);
++	char str[32 + 1 + 16 + 1 + 16 + 1], *delim, *next;
++	struct rlimit new_rlimit;
++	unsigned int i;
++	int ret;
++
++	if (!task) {
++		count = -ESRCH;
++		goto out;
++	}
++	if (copy_from_user(str, buf, min(count, sizeof(str) - 1))) {
++		count = -EFAULT;
++		goto put_task;
++	}
++
++	str[min(count, sizeof(str) - 1)] = 0;
++
++	delim = strchr(str, '=');
++	if (!delim) {
++		count = -EINVAL;
++		goto put_task;
++	}
++	*delim++ = 0; /* for easy 'str' usage */
++	new_rlimit.rlim_cur = simple_strtoul(delim, &next, 0);
++	if (*next != ':') {
++		if (strncmp(delim, "unlimited:", 10)) {
++			count = -EINVAL;
++			goto put_task;
++		}
++		new_rlimit.rlim_cur = RLIM_INFINITY;
++		next = delim + 9; /* move to ':' */
++	}
++	delim = next + 1;
++	new_rlimit.rlim_max = simple_strtoul(delim, &next, 0);
++	if (*next != 0) {
++		if (strcmp(delim, "unlimited")) {
++			count = -EINVAL;
++			goto put_task;
++		}
++		new_rlimit.rlim_max = RLIM_INFINITY;
++	}
++
++	for (i = 0; i < RLIM_NLIMITS; i++)
++		if (!strcmp(str, lnames[i].name))
++			break;
++	if (i >= RLIM_NLIMITS) {
++		count = -EINVAL;
++		goto put_task;
++	}
++
++	ret = setrlimit(task, i, &new_rlimit);
++	if (ret)
++		count = ret;
++
++put_task:
++	put_task_struct(task);
++out:
++	return count;
++}
++
++static const struct file_operations proc_pid_limits_operations = {
++	.read		= proc_info_read,
++	.write		= limits_write,
++};
++
+ #ifdef CONFIG_HAVE_ARCH_TRACEHOOK
+ static int proc_pid_syscall(struct task_struct *task, char *buffer)
+ {
+@@ -2500,7 +2570,9 @@ static const struct pid_entry tgid_base_stuff[] = {
+ 	INF("auxv",       S_IRUSR, proc_pid_auxv),
+ 	ONE("status",     S_IRUGO, proc_pid_status),
+ 	ONE("personality", S_IRUSR, proc_pid_personality),
+-	INF("limits",	  S_IRUSR, proc_pid_limits),
++	NOD("limits",	  S_IFREG|S_IRUSR|S_IWUSR, NULL,
++			&proc_pid_limits_operations,
++			{ .proc_read = proc_pid_limits }),
+ #ifdef CONFIG_SCHED_DEBUG
+ 	REG("sched",      S_IRUGO|S_IWUSR, proc_pid_sched_operations),
+ #endif
+@@ -2834,7 +2906,9 @@ static const struct pid_entry tid_base_stuff[] = {
+ 	INF("auxv",      S_IRUSR, proc_pid_auxv),
+ 	ONE("status",    S_IRUGO, proc_pid_status),
+ 	ONE("personality", S_IRUSR, proc_pid_personality),
+-	INF("limits",	 S_IRUSR, proc_pid_limits),
++	NOD("limits",	  S_IFREG|S_IRUSR|S_IWUSR, NULL,
++			&proc_pid_limits_operations,
++			{ .proc_read = proc_pid_limits }),
+ #ifdef CONFIG_SCHED_DEBUG
+ 	REG("sched",     S_IRUGO|S_IWUSR, proc_pid_sched_operations),
+ #endif
+diff --git a/include/linux/posix-timers.h b/include/linux/posix-timers.h
+index 4f71bf4..3e23844 100644
+--- a/include/linux/posix-timers.h
++++ b/include/linux/posix-timers.h
+@@ -117,6 +117,6 @@ void set_process_cpu_timer(struct task_struct *task, unsigned int clock_idx,
+ 
+ long clock_nanosleep_restart(struct restart_block *restart_block);
+ 
+-void update_rlimit_cpu(unsigned long rlim_new);
++void update_rlimit_cpu(struct task_struct *task, unsigned long rlim_new);
+ 
+ #endif
+diff --git a/include/linux/resource.h b/include/linux/resource.h
+index 68c2549..759384c 100644
+--- a/include/linux/resource.h
++++ b/include/linux/resource.h
+@@ -74,5 +74,7 @@ struct rlimit {
+ #include <asm/resource.h>
+ 
+ int getrusage(struct task_struct *p, int who, struct rusage __user *ru);
++int setrlimit(struct task_struct *tsk, unsigned int resource,
++		struct rlimit *new_rlim);
+ 
+ #endif
+diff --git a/include/linux/security.h b/include/linux/security.h
+index 239e40d..193b3d9 100644
+--- a/include/linux/security.h
++++ b/include/linux/security.h
+@@ -1570,7 +1570,8 @@ struct security_operations {
+ 	int (*task_setnice) (struct task_struct *p, int nice);
+ 	int (*task_setioprio) (struct task_struct *p, int ioprio);
+ 	int (*task_getioprio) (struct task_struct *p);
+-	int (*task_setrlimit) (unsigned int resource, struct rlimit *new_rlim);
++	int (*task_setrlimit) (struct task_struct *p, unsigned int resource,
++			struct rlimit *new_rlim);
+ 	int (*task_setscheduler) (struct task_struct *p, int policy,
+ 				  struct sched_param *lp);
+ 	int (*task_getscheduler) (struct task_struct *p);
+@@ -1835,7 +1836,8 @@ int security_task_setgroups(struct group_info *group_info);
+ int security_task_setnice(struct task_struct *p, int nice);
+ int security_task_setioprio(struct task_struct *p, int ioprio);
+ int security_task_getioprio(struct task_struct *p);
+-int security_task_setrlimit(unsigned int resource, struct rlimit *new_rlim);
++int security_task_setrlimit(struct task_struct *p, unsigned int resource,
++		struct rlimit *new_rlim);
+ int security_task_setscheduler(struct task_struct *p,
+ 				int policy, struct sched_param *lp);
+ int security_task_getscheduler(struct task_struct *p);
+@@ -2451,7 +2453,8 @@ static inline int security_task_getioprio(struct task_struct *p)
+ 	return 0;
+ }
+ 
+-static inline int security_task_setrlimit(unsigned int resource,
++static inline int security_task_setrlimit(struct task_struct *p,
++					  unsigned int resource,
+ 					  struct rlimit *new_rlim)
+ {
+ 	return 0;
+diff --git a/kernel/posix-cpu-timers.c b/kernel/posix-cpu-timers.c
+index 5c9dc22..102c345 100644
+--- a/kernel/posix-cpu-timers.c
++++ b/kernel/posix-cpu-timers.c
+@@ -13,16 +13,16 @@
+ /*
+  * Called after updating RLIMIT_CPU to set timer expiration if necessary.
+  */
+-void update_rlimit_cpu(unsigned long rlim_new)
++void update_rlimit_cpu(struct task_struct *task, unsigned long rlim_new)
+ {
+ 	cputime_t cputime = secs_to_cputime(rlim_new);
+-	struct signal_struct *const sig = current->signal;
++	struct signal_struct *const sig = task->signal;
+ 
+ 	if (cputime_eq(sig->it[CPUCLOCK_PROF].expires, cputime_zero) ||
+ 	    cputime_gt(sig->it[CPUCLOCK_PROF].expires, cputime)) {
+-		spin_lock_irq(&current->sighand->siglock);
+-		set_process_cpu_timer(current, CPUCLOCK_PROF, &cputime, NULL);
+-		spin_unlock_irq(&current->sighand->siglock);
++		spin_lock_irq(&task->sighand->siglock);
++		set_process_cpu_timer(task, CPUCLOCK_PROF, &cputime, NULL);
++		spin_unlock_irq(&task->sighand->siglock);
+ 	}
+ }
+ 
+diff --git a/kernel/sys.c b/kernel/sys.c
+index ce17760..605ab9c 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -1238,43 +1238,52 @@ SYSCALL_DEFINE2(old_getrlimit, unsigned int, resource,
+ 
+ #endif
+ 
+-SYSCALL_DEFINE2(setrlimit, unsigned int, resource, struct rlimit __user *, rlim)
++/* make sure you are allowed to change @tsk limits before calling this */
++int setrlimit(struct task_struct *tsk, unsigned int resource,
++		struct rlimit *new_rlim)
+ {
+-	struct rlimit new_rlim, *old_rlim;
++	struct rlimit *old_rlim;
+ 	int retval;
+ 
+-	if (resource >= RLIM_NLIMITS)
++	if (new_rlim->rlim_cur > new_rlim->rlim_max)
+ 		return -EINVAL;
+-	if (copy_from_user(&new_rlim, rlim, sizeof(*rlim)))
+-		return -EFAULT;
+-	if (new_rlim.rlim_cur > new_rlim.rlim_max)
+-		return -EINVAL;
+-	old_rlim = current->signal->rlim + resource;
+-	if ((new_rlim.rlim_max > old_rlim->rlim_max) &&
+-	    !capable(CAP_SYS_RESOURCE))
+-		return -EPERM;
+-	if (resource == RLIMIT_NOFILE && new_rlim.rlim_max > sysctl_nr_open)
++	if (resource == RLIMIT_NOFILE && new_rlim->rlim_max > sysctl_nr_open)
+ 		return -EPERM;
+ 
+-	retval = security_task_setrlimit(resource, &new_rlim);
++	/* optimization: 'current' doesn't need locking, e.g. setrlimit */
++	if (tsk != current) {
++		/* protect tsk->signal and tsk->sighand from disappearing */
++		read_lock(&tasklist_lock);
++		if (!tsk->sighand) {
++			retval = -ESRCH;
++			goto out;
++		}
++	}
++
++	retval = security_task_setrlimit(tsk, resource, new_rlim);
+ 	if (retval)
+-		return retval;
++		goto out;
+ 
+-	if (resource == RLIMIT_CPU && new_rlim.rlim_cur == 0) {
++	if (resource == RLIMIT_CPU && new_rlim->rlim_cur == 0) {
+ 		/*
+ 		 * The caller is asking for an immediate RLIMIT_CPU
+ 		 * expiry.  But we use the zero value to mean "it was
+ 		 * never set".  So let's cheat and make it one second
+ 		 * instead
+ 		 */
+-		new_rlim.rlim_cur = 1;
++		new_rlim->rlim_cur = 1;
+ 	}
+ 
+-	task_lock(current->group_leader);
+-	*old_rlim = new_rlim;
+-	task_unlock(current->group_leader);
++	old_rlim = tsk->signal->rlim + resource;
++	task_lock(tsk->group_leader);
++	if ((new_rlim->rlim_max <= old_rlim->rlim_max) ||
++				capable(CAP_SYS_RESOURCE))
++		*old_rlim = *new_rlim;
++	else
++		retval = -EPERM;
++	task_unlock(tsk->group_leader);
+ 
+-	if (resource != RLIMIT_CPU)
++	if (retval || resource != RLIMIT_CPU)
+ 		goto out;
+ 
+ 	/*
+@@ -1283,12 +1292,25 @@ SYSCALL_DEFINE2(setrlimit, unsigned int, resource, struct rlimit __user *, rlim)
+ 	 * very long-standing error, and fixing it now risks breakage of
+ 	 * applications, so we live with it
+ 	 */
+-	if (new_rlim.rlim_cur == RLIM_INFINITY)
++	if (new_rlim->rlim_cur == RLIM_INFINITY)
+ 		goto out;
+ 
+-	update_rlimit_cpu(new_rlim.rlim_cur);
++	update_rlimit_cpu(tsk, new_rlim->rlim_cur);
+ out:
+-	return 0;
++	if (tsk != current)
++		read_unlock(&tasklist_lock);
++	return retval;
++}
++
++SYSCALL_DEFINE2(setrlimit, unsigned int, resource, struct rlimit __user *, rlim)
++{
++	struct rlimit new_rlim;
++
++	if (resource >= RLIM_NLIMITS)
++		return -EINVAL;
++	if (copy_from_user(&new_rlim, rlim, sizeof(*rlim)))
++		return -EFAULT;
++	return setrlimit(current, resource, &new_rlim);
+ }
+ 
+ /*
+diff --git a/security/capability.c b/security/capability.c
+index fce07a7..5882ec0 100644
+--- a/security/capability.c
++++ b/security/capability.c
+@@ -450,7 +450,8 @@ static int cap_task_getioprio(struct task_struct *p)
+ 	return 0;
+ }
+ 
+-static int cap_task_setrlimit(unsigned int resource, struct rlimit *new_rlim)
++static int cap_task_setrlimit(struct task_struct *p, unsigned int resource,
++		struct rlimit *new_rlim)
+ {
+ 	return 0;
+ }
+diff --git a/security/security.c b/security/security.c
+index c4c6732..4b23d83 100644
+--- a/security/security.c
++++ b/security/security.c
+@@ -781,9 +781,10 @@ int security_task_getioprio(struct task_struct *p)
+ 	return security_ops->task_getioprio(p);
+ }
+ 
+-int security_task_setrlimit(unsigned int resource, struct rlimit *new_rlim)
++int security_task_setrlimit(struct task_struct *p, unsigned int resource,
++		struct rlimit *new_rlim)
+ {
+-	return security_ops->task_setrlimit(resource, new_rlim);
++	return security_ops->task_setrlimit(p, resource, new_rlim);
+ }
+ 
+ int security_task_setscheduler(struct task_struct *p,
+diff --git a/security/selinux/hooks.c b/security/selinux/hooks.c
+index bb230d5..dac6c88 100644
+--- a/security/selinux/hooks.c
++++ b/security/selinux/hooks.c
+@@ -2366,7 +2366,8 @@ static void selinux_bprm_committing_creds(struct linux_binprm *bprm)
+ 			initrlim = init_task.signal->rlim + i;
+ 			rlim->rlim_cur = min(rlim->rlim_max, initrlim->rlim_cur);
+ 		}
+-		update_rlimit_cpu(rlim->rlim_cur);
++		update_rlimit_cpu(current,
++				current->signal->rlim[RLIMIT_CPU].rlim_cur);
+ 	}
+ }
+ 
+@@ -3390,16 +3391,17 @@ static int selinux_task_getioprio(struct task_struct *p)
+ 	return current_has_perm(p, PROCESS__GETSCHED);
+ }
+ 
+-static int selinux_task_setrlimit(unsigned int resource, struct rlimit *new_rlim)
++static int selinux_task_setrlimit(struct task_struct *p, unsigned int resource,
++		struct rlimit *new_rlim)
+ {
+-	struct rlimit *old_rlim = current->signal->rlim + resource;
++	struct rlimit *old_rlim = p->signal->rlim + resource;
+ 
+ 	/* Control the ability to change the hard limit (whether
+ 	   lowering or raising it), so that the hard limit can
+ 	   later be used as a safe reset point for the soft limit
+ 	   upon context transitions.  See selinux_bprm_committing_creds. */
+ 	if (old_rlim->rlim_max != new_rlim->rlim_max)
+-		return current_has_perm(current, PROCESS__SETRLIMIT);
++		return current_has_perm(p, PROCESS__SETRLIMIT);
+ 
+ 	return 0;
+ }

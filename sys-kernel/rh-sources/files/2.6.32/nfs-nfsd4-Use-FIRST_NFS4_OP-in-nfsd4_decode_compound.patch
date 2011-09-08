@@ -1,0 +1,37 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Tue, 2 Feb 2010 12:10:32 -0500
+Subject: [nfs] nfsd4: Use FIRST_NFS4_OP in nfsd4_decode_compound()
+Message-id: <4B681638.6020803@RedHat.com>
+Patchwork-id: 23089
+O-Subject: [RHEL6] [PATCH 2/10] nfsd4: Use FIRST_NFS4_OP in
+	nfsd4_decode_compound()
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit de3cab793c6a5c8505d66bee111edcc7098380ba
+Author: Ricardo Labiaga <Ricardo.Labiaga@netapp.com>
+Date:   Fri Dec 11 20:03:27 2009 -0800
+
+    nfsd4: Use FIRST_NFS4_OP in nfsd4_decode_compound()
+
+    Since we're checking for LAST_NFS4_OP, use FIRST_NFS4_OP to be consistent.
+
+    Signed-off-by: Ricardo Labiaga <Ricardo.Labiaga@netapp.com>
+    Signed-off-by: J. Bruce Fields <bfields@citi.umich.edu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfsd/nfs4xdr.c b/fs/nfsd/nfs4xdr.c
+index 4f14f0c..c458fb1 100644
+--- a/fs/nfsd/nfs4xdr.c
++++ b/fs/nfsd/nfs4xdr.c
+@@ -1434,7 +1434,7 @@ nfsd4_decode_compound(struct nfsd4_compoundargs *argp)
+ 		}
+ 		op->opnum = ntohl(*argp->p++);
+ 
+-		if (op->opnum >= OP_ACCESS && op->opnum <= LAST_NFS4_OP)
++		if (op->opnum >= FIRST_NFS4_OP && op->opnum <= LAST_NFS4_OP)
+ 			op->status = ops->decoders[op->opnum](argp, &op->u);
+ 		else {
+ 			op->opnum = OP_ILLEGAL;

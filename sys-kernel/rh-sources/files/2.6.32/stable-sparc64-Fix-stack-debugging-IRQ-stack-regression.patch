@@ -1,0 +1,46 @@
+From: David S. Miller <davem@davemloft.net>
+Date: Wed, 9 Dec 2009 01:43:45 -0800
+Subject: [stable] sparc64: Fix stack debugging IRQ stack regression.
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+[ Upstream commit 166e553a575f09485f6d0df8a1ef3c5991f7d953 ]
+
+Commit 4f70f7a91bffdcc39f088748dc678953eb9a3fbd
+(sparc64: Implement IRQ stacks.) has two bugs.
+
+First, the softirq range check forgets to subtract STACK_BIAS
+before comparing with %sp.  Next, on failure the wrong label
+is jumped to, resulting in a bogus stack being loaded.
+
+Reported-by: Igor Kovalenko <igor.v.kovalenko@gmail.com>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/arch/sparc/lib/mcount.S b/arch/sparc/lib/mcount.S
+index 7ce9c65..24b8b12 100644
+--- a/arch/sparc/lib/mcount.S
++++ b/arch/sparc/lib/mcount.S
+@@ -64,8 +64,9 @@ mcount:
+ 2:	 sethi		%hi(softirq_stack), %g3
+ 	or		%g3, %lo(softirq_stack), %g3
+ 	ldx		[%g3 + %g1], %g7
++	sub		%g7, STACK_BIAS, %g7
+ 	cmp		%sp, %g7
+-	bleu,pt		%xcc, 2f
++	bleu,pt		%xcc, 3f
+ 	 sethi		%hi(THREAD_SIZE), %g3
+ 	add		%g7, %g3, %g7
+ 	cmp		%sp, %g7
+@@ -75,7 +76,7 @@ mcount:
+ 	 * again, we are already trying to output the stack overflow
+ 	 * message.
+ 	 */
+-	sethi		%hi(ovstack), %g7		! cant move to panic stack fast enough
++3:	sethi		%hi(ovstack), %g7		! cant move to panic stack fast enough
+ 	 or		%g7, %lo(ovstack), %g7
+ 	add		%g7, OVSTACKSIZE, %g3
+ 	sub		%g3, STACK_BIAS + 192, %g3

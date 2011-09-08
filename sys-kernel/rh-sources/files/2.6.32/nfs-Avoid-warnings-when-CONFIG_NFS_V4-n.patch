@@ -1,0 +1,44 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 20:47:59 -0500
+Subject: [nfs] Avoid warnings when CONFIG_NFS_V4=n
+Message-id: <4B673DFF.8030206@RedHat.com>
+Patchwork-id: 23064
+O-Subject: [RHEL6] [PATCH 4/8] NFS: Avoid warnings when CONFIG_NFS_V4=n
+Bugzilla: 560784
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit b0706ca415b188ed58788420de4d5c9972b2afb2
+Author: David Howells <dhowells@redhat.com>
+Date:   Tue Jan 26 15:42:11 2010 -0500
+
+    NFS: Avoid warnings when CONFIG_NFS_V4=n
+
+    Avoid the following warnings when CONFIG_NFS_V4=n:
+
+    	fs/nfs/sysctl.c:19: warning: unused variable `nfs_set_port_max'
+    	fs/nfs/sysctl.c:18: warning: unused variable `nfs_set_port_min'
+
+    by making those variables contingent on NFSv4 being configured.
+
+    Signed-off-by: David Howells <dhowells@redhat.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+    Reviewed-by: Chuck Lever <chuck.lever@oracle.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/sysctl.c b/fs/nfs/sysctl.c
+index b62481d..8868a7d 100644
+--- a/fs/nfs/sysctl.c
++++ b/fs/nfs/sysctl.c
+@@ -15,8 +15,10 @@
+ 
+ #include "callback.h"
+ 
++#ifdef CONFIG_NFS_V4
+ static const int nfs_set_port_min = 0;
+ static const int nfs_set_port_max = 65535;
++#endif
+ static struct ctl_table_header *nfs_callback_sysctl_table;
+ 
+ static ctl_table nfs_cb_sysctls[] = {

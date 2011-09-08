@@ -1,0 +1,39 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Wed, 27 Jan 2010 21:13:09 -0500
+Subject: [kvm] MMU: bail out pagewalk on kvm_read_guest error
+Message-id: <20100127211710.571150586@amt.cnet>
+Patchwork-id: 22969
+O-Subject: [RHEL 6 KVM 3/9] KVM: MMU: bail out pagewalk on kvm_read_guest error
+Bugzilla: 559343
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+commit d6d161b463c433acf74434525d8ece6932cf251c
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Thu Jan 14 17:41:27 2010 -0200
+
+KVM: MMU: bail out pagewalk on kvm_read_guest error
+
+Exit the guest pagetable walk loop if reading gpte failed. Otherwise its
+possible to enter an endless loop processing the previous present pte.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 559343
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/paging_tmpl.h b/arch/x86/kvm/paging_tmpl.h
+index 85e12cd..5fa3325 100644
+--- a/arch/x86/kvm/paging_tmpl.h
++++ b/arch/x86/kvm/paging_tmpl.h
+@@ -150,7 +150,9 @@ walk:
+ 		walker->table_gfn[walker->level - 1] = table_gfn;
+ 		walker->pte_gpa[walker->level - 1] = pte_gpa;
+ 
+-		kvm_read_guest(vcpu->kvm, pte_gpa, &pte, sizeof(pte));
++		if (kvm_read_guest(vcpu->kvm, pte_gpa, &pte, sizeof(pte)))
++			goto not_present;
++
+ 		trace_kvm_mmu_paging_element(pte, walker->level);
+ 
+ 		if (!is_present_gpte(pte))

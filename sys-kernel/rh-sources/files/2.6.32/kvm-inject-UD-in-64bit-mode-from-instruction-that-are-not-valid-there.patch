@@ -1,0 +1,47 @@
+From: Gleb Natapov <gleb@redhat.com>
+Date: Mon, 22 Feb 2010 13:59:59 -0500
+Subject: [kvm] inject #UD in 64bit mode from instruction that are not valid there
+Message-id: <1266847206-28077-14-git-send-email-gleb@redhat.com>
+Patchwork-id: 23381
+O-Subject: [PATCH 13/20] KVM: inject #UD in 64bit mode from instruction that are
+	not valid there
+Bugzilla: 560903 560904 563466
+CVE: CVE-2010-0298 CVE-2010-0306 CVE-2010-0419
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+Some instruction are obsolete in a long mode. Inject #UD.
+
+Signed-off-by: Gleb Natapov <gleb@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index f67df6e..4238225 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -1013,11 +1013,6 @@ done_prefixes:
+ 		}
+ 	}
+ 
+-	if (mode == X86EMUL_MODE_PROT64 && (c->d & No64)) {
+-		kvm_report_emulation_failure(ctxt->vcpu, "invalid x86/64 instruction");
+-		return -1;
+-	}
+-
+ 	if (c->d & Group) {
+ 		group = c->d & GroupMask;
+ 		c->modrm = insn_fetch(u8, 1, c->eip);
+@@ -1789,6 +1784,11 @@ x86_emulate_insn(struct x86_emulate_ctxt *ctxt, struct x86_emulate_ops *ops)
+ 	memcpy(c->regs, ctxt->vcpu->arch.regs, sizeof c->regs);
+ 	saved_eip = c->eip;
+ 
++	if (ctxt->mode == X86EMUL_MODE_PROT64 && (c->d & No64)) {
++		kvm_queue_exception(ctxt->vcpu, UD_VECTOR);
++		goto done;
++	}
++
+ 	/* LOCK prefix is allowed only with some instructions */
+ 	if (c->lock_prefix && !(c->d & Lock)) {
+ 		kvm_queue_exception(ctxt->vcpu, UD_VECTOR);

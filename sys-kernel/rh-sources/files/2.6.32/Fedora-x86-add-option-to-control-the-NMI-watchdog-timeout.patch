@@ -1,0 +1,44 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:34 -0500
+Subject: [Fedora] [x86] add option to control the NMI watchdog timeout
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+This patch adds a config option to control the NMI watchdog timeout.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/apic/nmi.c b/arch/x86/kernel/apic/nmi.c
+index 7ff61d6..d5b671d 100644
+--- a/arch/x86/kernel/apic/nmi.c
++++ b/arch/x86/kernel/apic/nmi.c
+@@ -438,7 +438,7 @@ nmi_watchdog_tick(struct pt_regs *regs, unsigned reason)
+ 		 * wait a few IRQs (5 seconds) before doing the oops ...
+ 		 */
+ 		local_inc(&__get_cpu_var(alert_counter));
+-		if (local_read(&__get_cpu_var(alert_counter)) == 5 * nmi_hz)
++		if (local_read(&__get_cpu_var(alert_counter)) == CONFIG_DEBUG_NMI_TIMEOUT * nmi_hz)
+ 			/*
+ 			 * die_nmi will return ONLY if NOTIFY_STOP happens..
+ 			 */
+diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
+index 234ceb1..4146b07 100644
+--- a/lib/Kconfig.debug
++++ b/lib/Kconfig.debug
+@@ -253,6 +253,14 @@ config SCHEDSTATS
+ 	  application, you can say N to avoid the very slight overhead
+ 	  this adds.
+ 
++config DEBUG_NMI_TIMEOUT
++	int "Number of seconds before NMI timeout"
++	depends on X86
++	default 5
++	help
++	  This value is the number of seconds the NMI watchdog will tick
++	  before it decides the machine has hung.
++
+ config TIMER_STATS
+ 	bool "Collect kernel timers statistics"
+ 	depends on DEBUG_KERNEL && PROC_FS

@@ -1,0 +1,31 @@
+From: hiro muneda <tmuneda@redhat.com>
+Date: Tue, 5 Jan 2010 18:03:27 -0500
+Subject: [x86] mce: fix confusion between bank attributes and mce attributes
+Message-id: <20100105180327.26036.99216.sendpatchset@flat.lab.bos.redhat.com>
+Patchwork-id: 22319
+O-Subject: [RHEL6.0 PATCH 4/4] x86,
+	mce: fix confusion between bank attributes and mce attributes
+Bugzilla: 476606
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+x86,mce: fix confusion between bank attributes and mce attributes
+
+Commit cebe182033f156b430952370fb0f9dbe6e89b081 had an unnecessary,
+wrong change: &mce_banks[i].attr is equivalent to the former
+bank_attrs[i], not to mce_attrs[i].
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/cpu/mcheck/mce.c b/arch/x86/kernel/cpu/mcheck/mce.c
+index 0f16a2b..8fafddc 100644
+--- a/arch/x86/kernel/cpu/mcheck/mce.c
++++ b/arch/x86/kernel/cpu/mcheck/mce.c
+@@ -1905,7 +1905,7 @@ error2:
+ 		sysdev_remove_file(&per_cpu(mce_dev, cpu), &mce_banks[j].attr);
+ error:
+ 	while (--i >= 0)
+-		sysdev_remove_file(&per_cpu(mce_dev, cpu), &mce_banks[i].attr);
++		sysdev_remove_file(&per_cpu(mce_dev, cpu), mce_attrs[i]);
+ 
+ 	sysdev_unregister(&per_cpu(mce_dev, cpu));
+ 

@@ -1,0 +1,26 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Wed, 27 Jan 2010 05:12:29 -0500
+Subject: [virtio] console: show error message if hvc_alloc fails for console ports
+Message-id: <1264569149-20151-33-git-send-email-amit.shah@redhat.com>
+Patchwork-id: 22947
+O-Subject: [RHEL6 PATCH 32/32] virtio: console: show error message if hvc_alloc
+	fails for console ports
+Bugzilla: 543824
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/virtio_console.c b/drivers/char/virtio_console.c
+index f337f9f..b923b5c 100644
+--- a/drivers/char/virtio_console.c
++++ b/drivers/char/virtio_console.c
+@@ -768,6 +768,8 @@ int init_port_console(struct port *port)
+ 	port->cons.hvc = hvc_alloc(port->cons.vtermno, 0, &hv_ops, PAGE_SIZE);
+ 	if (IS_ERR(port->cons.hvc)) {
+ 		ret = PTR_ERR(port->cons.hvc);
++		dev_err(port->dev,
++			"error %d allocating hvc for port\n", ret);
+ 		port->cons.hvc = NULL;
+ 		return ret;
+ 	}

@@ -1,0 +1,75 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Thu, 10 Dec 2009 17:31:43 -0500
+Subject: [gfs2] Add get_xquota support
+Message-id: <1260466307-12654-10-git-send-email-swhiteho@redhat.com>
+Patchwork-id: 21860
+O-Subject: [RHEL6] [09/13] GFS2: Add get_xquota support
+Bugzilla: 298561
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+This adds support for viewing the current GFS2 quota settings
+via the XFS quota API. The setting of quotas will be addressed
+in a later patch. Fields which are not supported here are left
+set to zero.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Reviewed-by: Bob Peterson <rpeterso@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/quota.c b/fs/gfs2/quota.c
+index 33e369f..6c5d6aa 100644
+--- a/fs/gfs2/quota.c
++++ b/fs/gfs2/quota.c
+@@ -1367,8 +1367,51 @@ static int gfs2_quota_get_xstate(struct super_block *sb,
+ 	return 0;
+ }
+ 
++static int gfs2_xquota_get(struct super_block *sb, int type, qid_t id,
++			   struct fs_disk_quota *fdq)
++{
++	struct gfs2_sbd *sdp = sb->s_fs_info;
++	struct gfs2_quota_lvb *qlvb;
++	struct gfs2_quota_data *qd;
++	struct gfs2_holder q_gh;
++	int error;
++
++	memset(fdq, 0, sizeof(struct fs_disk_quota));
++
++	if (sdp->sd_args.ar_quota == GFS2_QUOTA_OFF)
++		return -ESRCH; /* Crazy XFS error code */
++
++	if (type == USRQUOTA)
++		type = QUOTA_USER;
++	else if (type == GRPQUOTA)
++		type = QUOTA_GROUP;
++	else
++		return -EINVAL;
++
++	error = qd_get(sdp, type, id, &qd);
++	if (error)
++		return error;
++	error = do_glock(qd, FORCE, &q_gh);
++	if (error)
++		goto out;
++
++	qlvb = (struct gfs2_quota_lvb *)qd->qd_gl->gl_lvb;
++	fdq->d_version = FS_DQUOT_VERSION;
++	fdq->d_flags = (type == QUOTA_USER) ? XFS_USER_QUOTA : XFS_GROUP_QUOTA;
++	fdq->d_id = id;
++	fdq->d_blk_hardlimit = be64_to_cpu(qlvb->qb_limit);
++	fdq->d_blk_softlimit = be64_to_cpu(qlvb->qb_warn);
++	fdq->d_bcount = be64_to_cpu(qlvb->qb_value);
++
++	gfs2_glock_dq_uninit(&q_gh);
++out:
++	qd_put(qd);
++	return error;
++}
++
+ const struct quotactl_ops gfs2_quotactl_ops = {
+ 	.quota_sync     = gfs2_quota_sync,
+ 	.get_xstate     = gfs2_quota_get_xstate,
++	.get_xquota	= gfs2_xquota_get,
+ };
+ 

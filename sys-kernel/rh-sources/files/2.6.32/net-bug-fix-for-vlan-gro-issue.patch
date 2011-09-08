@@ -1,0 +1,52 @@
+From: Andy Gospodarek <gospo@redhat.com>
+Date: Wed, 3 Mar 2010 21:16:00 -0500
+Subject: [net] bug fix for vlan + gro issue
+Message-id: <20100303211559.GR24578@gospo.rdu.redhat.com>
+Patchwork-id: 23476
+O-Subject: [PATCH RHEL6.0] net: bug fix for vlan + gro issue
+Bugzilla: 569922
+RH-Acked-by: John Feeney <jfeeney@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Stefan Assmann <sassmann@redhat.com>
+RH-Acked-by: Amerigo Wang <amwang@redhat.com>
+RH-Acked-by: Neil Horman <nhorman@redhat.com>
+RH-Acked-by: David S. Miller <davem@redhat.com>
+
+Emulex noticed that we did not have this patch.  It resolved some issues
+when using VLANs and GRO and thought it would be a good idea.  I tend to
+agree:
+
+	commit c4d49794ff2838038fd9756eae39c39a5a685833
+	Author: Ajit Khaparde <ajitkhaparde@gmail.com>
+	Date:   Tue Feb 16 20:25:43 2010 +0000
+
+	    net: bug fix for vlan + gro issue
+
+	    Traffic (tcp) doesnot start on a vlan interface when gro is enabled.
+	    Even the tcp handshake was not taking place.
+	    This is because, the eth_type_trans call before the netif_receive_skb
+	    in napi_gro_finish() resets the skb->dev to napi->dev from the previously
+	    set vlan netdev interface. This causes the ip_route_input to drop the
+	    incoming packet considering it as a packet coming from a martian source.
+
+	    I could repro this on 2.6.32.7 (stable) and 2.6.33-rc7.
+	    With this fix, the traffic starts and the test runs fine on both vlan
+	    and non-vlan interfaces.
+
+This will resolve the request in RHBZ 569922.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/net/core/dev.c b/net/core/dev.c
+index 584046e..74d0cce 100644
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -2630,7 +2630,7 @@ int napi_frags_finish(struct napi_struct *napi, struct sk_buff *skb, int ret)
+ 	switch (ret) {
+ 	case GRO_NORMAL:
+ 	case GRO_HELD:
+-		skb->protocol = eth_type_trans(skb, napi->dev);
++		skb->protocol = eth_type_trans(skb, skb->dev);
+ 
+ 		if (ret == GRO_NORMAL)
+ 			return netif_receive_skb(skb);

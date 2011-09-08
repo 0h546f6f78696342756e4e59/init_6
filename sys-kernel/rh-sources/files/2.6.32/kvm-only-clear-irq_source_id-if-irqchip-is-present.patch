@@ -1,0 +1,48 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:34:08 -0500
+Subject: [kvm] only clear irq_source_id if irqchip is present
+Message-id: <20100112214157.094230352@amt.cnet>
+Patchwork-id: 22461
+O-Subject: [RHEL 6 KVM 19/20] KVM: only clear irq_source_id if irqchip is present
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit e50212bb51356f0df48d6cce0aae5acf41df336d
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Thu Oct 29 13:44:17 2009 -0200
+
+KVM: only clear irq_source_id if irqchip is present
+
+Otherwise kvm might attempt to dereference a NULL pointer.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/virt/kvm/irq_comm.c b/virt/kvm/irq_comm.c
+index 0d454d3..9b07734 100644
+--- a/virt/kvm/irq_comm.c
++++ b/virt/kvm/irq_comm.c
+@@ -243,6 +243,10 @@ void kvm_free_irq_source_id(struct kvm *kvm, int irq_source_id)
+ 		printk(KERN_ERR "kvm: IRQ source ID out of range!\n");
+ 		goto unlock;
+ 	}
++	clear_bit(irq_source_id, &kvm->arch.irq_sources_bitmap);
++	if (!irqchip_in_kernel(kvm))
++		goto unlock;
++
+ 	for (i = 0; i < KVM_IOAPIC_NUM_PINS; i++) {
+ 		clear_bit(irq_source_id, &kvm->arch.vioapic->irq_states[i]);
+ 		if (i >= 16)
+@@ -251,7 +255,6 @@ void kvm_free_irq_source_id(struct kvm *kvm, int irq_source_id)
+ 		clear_bit(irq_source_id, &pic_irqchip(kvm)->irq_states[i]);
+ #endif
+ 	}
+-	clear_bit(irq_source_id, &kvm->arch.irq_sources_bitmap);
+ unlock:
+ 	mutex_unlock(&kvm->irq_lock);
+ }

@@ -1,0 +1,37 @@
+From: Gleb Natapov <gleb@redhat.com>
+Date: Mon, 22 Feb 2010 14:00:03 -0500
+Subject: [kvm] x86 emulator: Forbid modifying CS segment register by mov instruction
+Message-id: <1266847206-28077-18-git-send-email-gleb@redhat.com>
+Patchwork-id: 23388
+O-Subject: [PATCH 17/20] KVM: x86 emulator: Forbid modifying CS segment register
+	by mov instruction
+Bugzilla: 560903 560904 563466
+CVE: CVE-2010-0298 CVE-2010-0306 CVE-2010-0419
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+Inject #UD if guest attempts to do so. This is in accordance to Intel
+SDM.
+
+Signed-off-by: Gleb Natapov <gleb@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index b7f8bc1..9737c50 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -2072,6 +2072,12 @@ special_insn:
+ 		int err;
+ 
+ 		sel = c->src.val;
++
++		if (c->modrm_reg == VCPU_SREG_CS) {
++			kvm_queue_exception(ctxt->vcpu, UD_VECTOR);
++			goto done;
++		}
++
+ 		if (c->modrm_reg == VCPU_SREG_SS)
+ 			toggle_interruptibility(ctxt, X86_SHADOW_INT_MOV_SS);
+ 

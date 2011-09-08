@@ -1,0 +1,77 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Thu, 10 Dec 2009 17:31:36 -0500
+Subject: [gfs2] Hook gfs2_quota_sync into VFS via gfs2_quotactl_ops
+Message-id: <1260466307-12654-3-git-send-email-swhiteho@redhat.com>
+Patchwork-id: 21857
+O-Subject: [RHEL6] [02/13] GFS2: Hook gfs2_quota_sync into VFS via
+	gfs2_quotactl_ops
+Bugzilla: 298561
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+The plan is to add further operations to the gfs2_quotactl_ops
+in future patches. The sync operation is easy, so we start with
+that one.
+
+We plan to use the XFS quota control functions because they more
+closely match the GFS2 ones.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/Kconfig b/fs/gfs2/Kconfig
+index 5971359..4dcddf8 100644
+--- a/fs/gfs2/Kconfig
++++ b/fs/gfs2/Kconfig
+@@ -8,6 +8,8 @@ config GFS2_FS
+ 	select FS_POSIX_ACL
+ 	select CRC32
+ 	select SLOW_WORK
++	select QUOTA
++	select QUOTACTL
+ 	help
+ 	  A cluster filesystem.
+ 
+diff --git a/fs/gfs2/ops_fstype.c b/fs/gfs2/ops_fstype.c
+index e5ee062..36b11cb 100644
+--- a/fs/gfs2/ops_fstype.c
++++ b/fs/gfs2/ops_fstype.c
+@@ -18,6 +18,7 @@
+ #include <linux/mount.h>
+ #include <linux/gfs2_ondisk.h>
+ #include <linux/slow-work.h>
++#include <linux/quotaops.h>
+ 
+ #include "gfs2.h"
+ #include "incore.h"
+@@ -1138,6 +1139,8 @@ static int fill_super(struct super_block *sb, struct gfs2_args *args, int silent
+ 	sb->s_op = &gfs2_super_ops;
+ 	sb->s_export_op = &gfs2_export_ops;
+ 	sb->s_xattr = gfs2_xattr_handlers;
++	sb->s_qcop = &gfs2_quotactl_ops;
++	sb_dqopt(sb)->flags |= DQUOT_QUOTA_SYS_FILE;
+ 	sb->s_time_gran = 1;
+ 	sb->s_maxbytes = MAX_LFS_FILESIZE;
+ 
+diff --git a/fs/gfs2/quota.c b/fs/gfs2/quota.c
+index ed9e197..73a43ce 100644
+--- a/fs/gfs2/quota.c
++++ b/fs/gfs2/quota.c
+@@ -1378,3 +1378,7 @@ int gfs2_quotad(void *data)
+ 	return 0;
+ }
+ 
++const struct quotactl_ops gfs2_quotactl_ops = {
++	.quota_sync     = gfs2_quota_sync,
++};
++
+diff --git a/fs/gfs2/quota.h b/fs/gfs2/quota.h
+index 437afa7..025d15b 100644
+--- a/fs/gfs2/quota.h
++++ b/fs/gfs2/quota.h
+@@ -50,5 +50,6 @@ static inline int gfs2_quota_lock_check(struct gfs2_inode *ip)
+ }
+ 
+ extern int gfs2_shrink_qd_memory(int nr, gfp_t gfp_mask);
++extern const struct quotactl_ops gfs2_quotactl_ops;
+ 
+ #endif /* __QUOTA_DOT_H__ */

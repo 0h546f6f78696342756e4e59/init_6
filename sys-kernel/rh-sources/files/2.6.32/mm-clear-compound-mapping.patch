@@ -1,0 +1,33 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:02 -0500
+Subject: [mm] clear compound mapping
+Message-id: <20100201152036.718798465@redhat.com>
+Patchwork-id: 23021
+O-Subject: [RHEL6 05/37] clear compound mapping
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Clear compound mapping for anonymous compound pages like it already happens for
+regular anonymous pages.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Mel Gorman <mel@csn.ul.ie>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index 3b46d4d..137e042 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -584,6 +584,8 @@ static void __free_pages_ok(struct page *page, unsigned int order)
+ 
+ 	kmemcheck_free_shadow(page, order);
+ 
++	if (PageAnon(page))
++		page->mapping = NULL;
+ 	for (i = 0 ; i < (1 << order) ; ++i)
+ 		bad += free_pages_check(page + i);
+ 	if (bad)

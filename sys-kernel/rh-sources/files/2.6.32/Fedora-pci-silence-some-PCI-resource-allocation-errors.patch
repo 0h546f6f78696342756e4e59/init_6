@@ -1,0 +1,42 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:40 -0500
+Subject: [Fedora] [pci] silence some PCI resource allocation errors
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6.30-hush-rom-warning.patch
+
+Silence some PCI resource allocation errors
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/pci/setup-res.c b/drivers/pci/setup-res.c
+index c54526b..4cc917c 100644
+--- a/drivers/pci/setup-res.c
++++ b/drivers/pci/setup-res.c
+@@ -101,6 +101,7 @@ int pci_claim_resource(struct pci_dev *dev, int resource)
+ 	struct resource *res = &dev->resource[resource];
+ 	struct resource *root;
+ 	int err;
++	const char *dtype = resource < PCI_BRIDGE_RESOURCES ? "device" : "bridge";
+ 
+ 	root = pci_find_parent_resource(dev, res);
+ 
+@@ -108,8 +109,13 @@ int pci_claim_resource(struct pci_dev *dev, int resource)
+ 	if (root != NULL)
+ 		err = request_resource(root, res);
+ 
+-	if (err) {
+-		const char *dtype = resource < PCI_BRIDGE_RESOURCES ? "device" : "bridge";
++	if (err && resource == 6) {
++		dev_info(&dev->dev, "BAR %d: %s of %s %pR\n",
++			resource,
++			root ? "address space collision on" :
++				"no parent found for",
++			dtype, res);
++	} else if (err) {
+ 		dev_err(&dev->dev, "BAR %d: %s of %s %pR\n",
+ 			resource,
+ 			root ? "address space collision on" :

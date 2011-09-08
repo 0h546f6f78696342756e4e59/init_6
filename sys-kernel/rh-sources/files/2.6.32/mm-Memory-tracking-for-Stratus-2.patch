@@ -1,0 +1,53 @@
+From: James Paradis <jparadis@redhat.com>
+Date: Wed, 27 Jan 2010 21:22:30 -0500
+Subject: [mm] Memory tracking for Stratus
+Message-id: <20100127212014.18756.1189.sendpatchset@localhost.localdomain>
+Patchwork-id: 22971
+O-Subject: [RHEL6 PATCH] Memory tracking for Stratus w/fewer exports
+Bugzilla: 512400
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+https://bugzilla.redhat.com/show_bug.cgi?id=512400
+
+In response to Christoph's comment, I took a closer look and it turns out
+that some of the symbol exports are not necessary after all; they're used
+in the kernel but not in the client code.  Attached is a revised patch.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/mm/track.c b/arch/x86/mm/track.c
+index d54511f..1846eb0 100644
+--- a/arch/x86/mm/track.c
++++ b/arch/x86/mm/track.c
+@@ -52,7 +52,6 @@ void do_mm_track_pte(void *val)
+ 	if (!test_and_set_bit(pfn, mm_tracking_struct.vector))
+ 		atomic_inc(&mm_tracking_struct.count);
+ }
+-EXPORT_SYMBOL_GPL(do_mm_track_pte);
+ 
+ #define LARGE_PMD_SIZE	(1 << PMD_SHIFT)
+ 
+@@ -86,7 +85,6 @@ void do_mm_track_pmd(void *val)
+ 	for (i = 0; i < PTRS_PER_PTE; i++, pte++)
+ 		do_mm_track_pte(pte);
+ }
+-EXPORT_SYMBOL_GPL(do_mm_track_pmd);
+ 
+ static inline void track_as_pte(void *val)
+ {
+@@ -102,13 +100,11 @@ void do_mm_track_pud(void *val)
+ {
+ 	track_as_pte(val);
+ }
+-EXPORT_SYMBOL_GPL(do_mm_track_pud);
+ 
+ void do_mm_track_pgd(void *val)
+ {
+ 	track_as_pte(val);
+ }
+-EXPORT_SYMBOL_GPL(do_mm_track_pgd);
+ 
+ void do_mm_track_phys(void *val)
+ {

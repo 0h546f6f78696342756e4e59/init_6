@@ -1,0 +1,36 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:03 -0500
+Subject: [mm] add native_set_pmd_at
+Message-id: <20100201152036.884645220@redhat.com>
+Patchwork-id: 23017
+O-Subject: [RHEL6 06/37] add native_set_pmd_at
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Used by paravirt and not paravirt set_pmd_at.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Mel Gorman <mel@csn.ul.ie>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/pgtable.h b/arch/x86/include/asm/pgtable.h
+index 3e11834..b9b8154 100644
+--- a/arch/x86/include/asm/pgtable.h
++++ b/arch/x86/include/asm/pgtable.h
+@@ -528,6 +528,12 @@ static inline void native_set_pte_at(struct mm_struct *mm, unsigned long addr,
+ 	native_set_pte(ptep, pte);
+ }
+ 
++static inline void native_set_pmd_at(struct mm_struct *mm, unsigned long addr,
++				     pmd_t *pmdp , pmd_t pmd)
++{
++	native_set_pmd(pmdp, pmd);
++}
++
+ #ifndef CONFIG_PARAVIRT
+ /*
+  * Rules for using pte_update - it must be called after any PTE update which

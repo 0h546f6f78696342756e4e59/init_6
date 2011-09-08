@@ -1,0 +1,47 @@
+From: Prarit Bhargava <prarit@redhat.com>
+Date: Wed, 20 Jan 2010 14:42:17 -0500
+Subject: [x86] Disable Memory hot add on x86 32-bit
+Message-id: <20100120143412.7758.51575.sendpatchset@prarit.bos.redhat.com>
+Patchwork-id: 22677
+O-Subject: [RHEL6]: x86: Disable Memory hot add on x86 32-bit
+Bugzilla: 557131
+RH-Acked-by: Don Zickus <dzickus@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Christopher Lalancette <clalance@redhat.com>
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+RH-Acked-by: Peter Martuccelli <peterm@redhat.com>
+
+Memory hot add currently does not work on 32-bit.  The kernel panics or hangs
+when attempting to add memory.
+
+Patches are currently being worked on upstream and are unlikely to be ready
+for the RHEL6.0 deadline.
+
+We cannot disable MEMORY_HOTPLUG, and re-enable it later because of kabi
+concerns.
+
+Disable memory hot add for x86 32-bit RHEL6.0.  We will re-enable it for
+RHEL6.1.
+
+Resolves BZ 557131.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/memory_hotplug.c b/mm/memory_hotplug.c
+index 30744ca..b6d840f 100644
+--- a/mm/memory_hotplug.c
++++ b/mm/memory_hotplug.c
+@@ -387,6 +387,13 @@ int online_pages(unsigned long pfn, unsigned long nr_pages)
+ 	int ret;
+ 	struct memory_notify arg;
+ 
++#ifdef __i386__
++	/* BZ 557131 -- disable Memory Hotplug (hot add) for 32-bit kernel.
++	 * This code block must be removed when hot add is re-enabled for
++	 * 32-bit */
++	pr_info("ERROR: Memory Hot Add is currently disabled for x86 32-bit\n");
++	return -EINVAL;
++#endif
+ 	arg.start_pfn = pfn;
+ 	arg.nr_pages = nr_pages;
+ 	arg.status_change_nid = -1;

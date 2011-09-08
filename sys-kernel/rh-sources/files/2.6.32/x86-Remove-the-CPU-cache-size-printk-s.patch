@@ -1,0 +1,70 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Sat, 19 Dec 2009 02:33:32 -0500
+Subject: [x86] Remove the CPU cache size printk's
+Message-id: <20091218211951.23706.25834.sendpatchset@localhost.localdomain>
+Patchwork-id: 22210
+O-Subject: [RHEL6 PATCH 1/9] x86: Remove the CPU cache size printk's
+Bugzilla: 548840
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+commit 15cd8812ab2ce62a2f779e93a8398bdad752291a
+Author: Dave Jones <davej@redhat.com>
+Date:   Thu Nov 12 18:15:43 2009 -0500
+
+    x86: Remove the CPU cache size printk's
+
+    They aren't really useful, and they pollute the dmesg output a lot
+    (especially on machines with many cores).
+
+    Also the same information can be trivially found out from
+    userspace.
+
+    Reported-by: Mike Travis <travis@sgi.com>
+    Signed-off-by: Dave Jones <davej@redhat.com>
+    Acked-by: H. Peter Anvin <hpa@zytor.com>
+    Cc: Andi Kleen <ak@linux.intel.com>
+    Cc: Heiko Carstens <heiko.carstens@de.ibm.com>
+    Cc: Roland Dreier <rdreier@cisco.com>
+    Cc: Randy Dunlap <rdunlap@xenotime.net>
+    Cc: Tejun Heo <tj@kernel.org>
+    Cc: Greg Kroah-Hartman <gregkh@suse.de>
+    Cc: Yinghai Lu <yinghai@kernel.org>
+    Cc: David Rientjes <rientjes@google.com>
+    Cc: Steven Rostedt <rostedt@goodmis.org>
+    Cc: Rusty Russell <rusty@rustcorp.com.au>
+    Cc: Hidetoshi Seto <seto.hidetoshi@jp.fujitsu.com>
+    Cc: Jack Steiner <steiner@sgi.com>
+    Cc: Frederic Weisbecker <fweisbec@gmail.com>
+    LKML-Reference: <20091112231542.GA7129@redhat.com>
+    Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/cpu/intel_cacheinfo.c b/arch/x86/kernel/cpu/intel_cacheinfo.c
+index 804c40e..0df4c2b 100644
+--- a/arch/x86/kernel/cpu/intel_cacheinfo.c
++++ b/arch/x86/kernel/cpu/intel_cacheinfo.c
+@@ -488,22 +488,6 @@ unsigned int __cpuinit init_intel_cacheinfo(struct cpuinfo_x86 *c)
+ #endif
+ 	}
+ 
+-	if (trace)
+-		printk(KERN_INFO "CPU: Trace cache: %dK uops", trace);
+-	else if (l1i)
+-		printk(KERN_INFO "CPU: L1 I cache: %dK", l1i);
+-
+-	if (l1d)
+-		printk(KERN_CONT ", L1 D cache: %dK\n", l1d);
+-	else
+-		printk(KERN_CONT "\n");
+-
+-	if (l2)
+-		printk(KERN_INFO "CPU: L2 cache: %dK\n", l2);
+-
+-	if (l3)
+-		printk(KERN_INFO "CPU: L3 cache: %dK\n", l3);
+-
+ 	c->x86_cache_size = l3 ? l3 : (l2 ? l2 : (l1i+l1d));
+ 
+ 	return l2;

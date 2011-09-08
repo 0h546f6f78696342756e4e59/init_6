@@ -1,0 +1,1685 @@
+From: Dean Nelson <dnelson@redhat.com>
+Date: Thu, 17 Dec 2009 18:39:46 -0500
+Subject: [mm] hwpoison: backport the latest patches from linux-2.6.33
+Message-id: <20091217183946.7972.37467.send-patch@aqua>
+Patchwork-id: 22086
+O-Subject: [RHEL6.0 PATCH] HWPOISON: backport the latest patches from
+	linux-2.6.33
+Bugzilla: 547705
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+This resolves RHBZ 547705.
+
+This is a backport of Andi Kleen's 34 HWPOISON patches just submitted and
+applied to linux-2.6.33. They represent bugfixes, cleanups, and enhancements
+to the HWPOISON feature Andi introduced in linux-2.6.32.
+
+This patch is a backport of the following upstream commits. (The first commit
+is not part of Andi's set of patches, but including the portion of it I did
+allowed for one of Andi's patches to be applied without change.):
+
+  http://git.kernel.org/linus/af901ca181d92aac3a7dc265144a9081a86d8f39
+
+  http://git.kernel.org/linus/7bc98b97ed5dfe710025414de771baa674998892
+  http://git.kernel.org/linus/588f9ce6ca61ecb4663ee6ef2f75d2d96c73151e
+  http://git.kernel.org/linus/0e9052eb98a9986ec0669d030604f7a68f6df638
+  http://git.kernel.org/linus/9b9a29ecd75e310f75a9243e1c3538ad34598fcb
+  http://git.kernel.org/linus/a7560fc80f33cab33176ee78f146df22b28e3338
+  http://git.kernel.org/linus/bd1ce5f91f545730df4af492f774d9d32f5da3cb
+  http://git.kernel.org/linus/82ba011b9041dd31c15e4f63797b08aa0a288e61
+  http://git.kernel.org/linus/1668bfd5be9d8a52536c4865000fbbe065a3613b
+  http://git.kernel.org/linus/db0480b3a61bd6ad86ead3b8bbad094ab0996932
+  http://git.kernel.org/linus/71f72525dfaaec012e23089c73331654ea7b12d3
+  http://git.kernel.org/linus/dc2a1cbf7d862e9d0abea1d1b4c8712dfbb5a398
+  http://git.kernel.org/linus/95d01fc664b9476e0d18e3d745bb209a42a33588
+  http://git.kernel.org/linus/8d22ba1b74aa9420b6032d856446564fb21f8090
+  http://git.kernel.org/linus/847ce401df392b0704369fd3f75df614ac1414b4
+  http://git.kernel.org/linus/d95ea51e3a7e9ee051d19f1dd283ca61d1aa5ec6
+  http://git.kernel.org/linus/138ce286eb6ee6d39ca4fb50516e93adaf6b605f
+  http://git.kernel.org/linus/7c116f2b0dbac4a1dd051c7a5e8cef37701cafd4
+  http://git.kernel.org/linus/31d3d3484f9bd263925ecaa341500ac2df3a5d9b
+  http://git.kernel.org/linus/1a9b5b7fe0c5dad8a635288882d36785dea742f9
+  http://git.kernel.org/linus/478c5ffc0b50527bd2390f2daa46cc16276b8413
+  http://git.kernel.org/linus/e42d9d5d47961fb5db0be65b56dd52fe7b2421f1
+  http://git.kernel.org/linus/d324236b3333e87c8825b35f2104184734020d35
+  http://git.kernel.org/linus/4fd466eb46a6a917c317a87fb94bfc7252a0f7ed
+  http://git.kernel.org/linus/1bfe5febe34d2be2120803c10720e179186357c9
+  http://git.kernel.org/linus/d15f107d97bd74c74d8f5144843d372666ddbdac
+  http://git.kernel.org/linus/413f9efbc513d330f00352bb7cba060a729999d3
+  http://git.kernel.org/linus/fe194d3e100dea323d7b2de96d3b44d0c067ba7a
+  http://git.kernel.org/linus/0474a60ec704324577782b1057d05b574388d552
+  http://git.kernel.org/linus/2326c467df4ff814dc07cf1bdaa1e6e0a9c9f21c
+  http://git.kernel.org/linus/facb6011f3993947283fa15d039dacb4ad140230
+  http://git.kernel.org/linus/afcf938ee0aac4ef95b1a23bac704c6fbeb26de6
+  http://git.kernel.org/linus/0d57eb8dfcb92e3dd928d792f4ed2b2fec680bb7
+  http://git.kernel.org/linus/12686d153abff397fa0927c620d5a3de84910b72
+  http://git.kernel.org/linus/f2c03debdfb387fa2e35cac6382779072b8b9209
+
+The brew build taskid is 2158109.
+
+Tested inhouse on a Nehalim-EP system. Set CONFIG_X86_MCE_INJECT and
+CONFIG_HWPOISON_INJECT and built, booted and ran. Installed the mce test suite
+(from upstream) and ran the basic set of tests. All passed. I plan on running
+some of the other mce tests, but wanted to get this patch posted before the
+deadline.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/Documentation/ABI/testing/sysfs-memory-page-offline b/Documentation/ABI/testing/sysfs-memory-page-offline
+new file mode 100644
+index 0000000..e14703f
+--- /dev/null
++++ b/Documentation/ABI/testing/sysfs-memory-page-offline
+@@ -0,0 +1,44 @@
++What:		/sys/devices/system/memory/soft_offline_page
++Date:		Sep 2009
++KernelVersion:	2.6.33
++Contact:	andi@firstfloor.org
++Description:
++		Soft-offline the memory page containing the physical address
++		written into this file. Input is a hex number specifying the
++		physical address of the page. The kernel will then attempt
++		to soft-offline it, by moving the contents elsewhere or
++		dropping it if possible. The kernel will then be placed
++		on the bad page list and never be reused.
++
++		The offlining is done in kernel specific granuality.
++		Normally it's the base page size of the kernel, but
++		this might change.
++
++		The page must be still accessible, not poisoned. The
++		kernel will never kill anything for this, but rather
++		fail the offline.  Return value is the size of the
++		number, or a error when the offlining failed.  Reading
++		the file is not allowed.
++
++What:		/sys/devices/system/memory/hard_offline_page
++Date:		Sep 2009
++KernelVersion:	2.6.33
++Contact:	andi@firstfloor.org
++Description:
++		Hard-offline the memory page containing the physical
++		address written into this file. Input is a hex number
++		specifying the physical address of the page. The
++		kernel will then attempt to hard-offline the page, by
++		trying to drop the page or killing any owner or
++		triggering IO errors if needed.  Note this may kill
++		any processes owning the page. The kernel will avoid
++		to access this page assuming it's poisoned by the
++		hardware.
++
++		The offlining is done in kernel specific granuality.
++		Normally it's the base page size of the kernel, but
++		this might change.
++
++		Return value is the size of the number, or a error when
++		the offlining failed.
++		Reading the file is not allowed.
+diff --git a/Documentation/vm/hwpoison.txt b/Documentation/vm/hwpoison.txt
+index 3ffadf8..12f9ba2 100644
+--- a/Documentation/vm/hwpoison.txt
++++ b/Documentation/vm/hwpoison.txt
+@@ -92,16 +92,62 @@ PR_MCE_KILL_GET
+ 
+ Testing:
+ 
+-madvise(MADV_POISON, ....)
++madvise(MADV_HWPOISON, ....)
+ 	(as root)
+ 	Poison a page in the process for testing
+ 
+ 
+ hwpoison-inject module through debugfs
+-	/sys/debug/hwpoison/corrupt-pfn
+ 
+-Inject hwpoison fault at PFN echoed into this file
++/sys/debug/hwpoison/
+ 
++corrupt-pfn
++
++Inject hwpoison fault at PFN echoed into this file. This does
++some early filtering to avoid corrupted unintended pages in test suites.
++
++unpoison-pfn
++
++Software-unpoison page at PFN echoed into this file. This
++way a page can be reused again.
++This only works for Linux injected failures, not for real
++memory failures.
++
++Note these injection interfaces are not stable and might change between
++kernel versions
++
++corrupt-filter-dev-major
++corrupt-filter-dev-minor
++
++Only handle memory failures to pages associated with the file system defined
++by block device major/minor.  -1U is the wildcard value.
++This should be only used for testing with artificial injection.
++
++corrupt-filter-memcg
++
++Limit injection to pages owned by memgroup. Specified by inode number
++of the memcg.
++
++Example:
++        mkdir /cgroup/hwpoison
++
++        usemem -m 100 -s 1000 &
++        echo `jobs -p` > /cgroup/hwpoison/tasks
++
++        memcg_ino=$(ls -id /cgroup/hwpoison | cut -f1 -d' ')
++        echo $memcg_ino > /debug/hwpoison/corrupt-filter-memcg
++
++        page-types -p `pidof init`   --hwpoison  # shall do nothing
++        page-types -p `pidof usemem` --hwpoison  # poison its pages
++
++corrupt-filter-flags-mask
++corrupt-filter-flags-value
++
++When specified, only poison pages if ((page_flags & mask) == value).
++This allows stress testing of many kinds of pages. The page_flags
++are the same as in /proc/kpageflags. The flag bits are defined in
++include/linux/kernel-page-flags.h and documented in
++Documentation/vm/pagemap.txt
+ 
+ Architecture specific MCE injector
+ 
+diff --git a/Documentation/vm/page-types.c b/Documentation/vm/page-types.c
+index 4793c6a..ea7fbc0 100644
+--- a/Documentation/vm/page-types.c
++++ b/Documentation/vm/page-types.c
+@@ -1,11 +1,22 @@
+ /*
+  * page-types: Tool for querying page flags
+  *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the Free
++ * Software Foundation; version 2.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should find a copy of v2 of the GNU General Public License somewhere on
++ * your Linux system; if not, write to the Free Software Foundation, Inc., 59
++ * Temple Place, Suite 330, Boston, MA 02111-1307 USA.
++ *
+  * Copyright (C) 2009 Intel corporation
+  *
+  * Authors: Wu Fengguang <fengguang.wu@intel.com>
+- *
+- * Released under the General Public License (GPL).
+  */
+ 
+ #define _LARGEFILE64_SOURCE
+diff --git a/MAINTAINERS b/MAINTAINERS
+index bf6a919..39e61d3 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -2322,6 +2322,15 @@ W:	http://www.kernel.org/pub/linux/kernel/people/fseidel/hdaps/
+ S:	Maintained
+ F:	drivers/hwmon/hdaps.c
+ 
++HWPOISON MEMORY FAILURE HANDLING
++M:	Andi Kleen <andi@firstfloor.org>
++L:	linux-mm@kvack.org
++L:	linux-kernel@vger.kernel.org
++T:	git git://git.kernel.org/pub/scm/linux/kernel/git/ak/linux-mce-2.6.git hwpoison
++S:	Maintained
++F:	mm/memory-failure.c
++F:	mm/hwpoison-inject.c
++
+ HYPERVISOR VIRTUAL CONSOLE DRIVER
+ L:	linuxppc-dev@ozlabs.org
+ S:	Odd Fixes
+diff --git a/drivers/base/memory.c b/drivers/base/memory.c
+index 989429c..c4c8f2e 100644
+--- a/drivers/base/memory.c
++++ b/drivers/base/memory.c
+@@ -341,6 +341,64 @@ static inline int memory_probe_init(void)
+ }
+ #endif
+ 
++#ifdef CONFIG_MEMORY_FAILURE
++/*
++ * Support for offlining pages of memory
++ */
++
++/* Soft offline a page */
++static ssize_t
++store_soft_offline_page(struct class *class, const char *buf, size_t count)
++{
++	int ret;
++	u64 pfn;
++	if (!capable(CAP_SYS_ADMIN))
++		return -EPERM;
++	if (strict_strtoull(buf, 0, &pfn) < 0)
++		return -EINVAL;
++	pfn >>= PAGE_SHIFT;
++	if (!pfn_valid(pfn))
++		return -ENXIO;
++	ret = soft_offline_page(pfn_to_page(pfn), 0);
++	return ret == 0 ? count : ret;
++}
++
++/* Forcibly offline a page, including killing processes. */
++static ssize_t
++store_hard_offline_page(struct class *class, const char *buf, size_t count)
++{
++	int ret;
++	u64 pfn;
++	if (!capable(CAP_SYS_ADMIN))
++		return -EPERM;
++	if (strict_strtoull(buf, 0, &pfn) < 0)
++		return -EINVAL;
++	pfn >>= PAGE_SHIFT;
++	ret = __memory_failure(pfn, 0, 0);
++	return ret ? ret : count;
++}
++
++static CLASS_ATTR(soft_offline_page, 0644, NULL, store_soft_offline_page);
++static CLASS_ATTR(hard_offline_page, 0644, NULL, store_hard_offline_page);
++
++static __init int memory_fail_init(void)
++{
++	int err;
++
++	err = sysfs_create_file(&memory_sysdev_class.kset.kobj,
++				&class_attr_soft_offline_page.attr);
++	if (!err)
++		err = sysfs_create_file(&memory_sysdev_class.kset.kobj,
++				&class_attr_hard_offline_page.attr);
++	return err;
++}
++#else
++static inline int memory_fail_init(void)
++{
++	return 0;
++}
++#endif
++
+ /*
+  * Note that phys_device is optional.  It is here to allow for
+  * differentiation between which *physical* devices each
+@@ -473,6 +531,9 @@ int __init memory_dev_init(void)
+ 	err = memory_probe_init();
+ 	if (!ret)
+ 		ret = err;
++	err = memory_fail_init();
++	if (!ret)
++		ret = err;
+ 	err = block_size_init();
+ 	if (!ret)
+ 		ret = err;
+diff --git a/fs/proc/page.c b/fs/proc/page.c
+index 5033ce0..180cf5a 100644
+--- a/fs/proc/page.c
++++ b/fs/proc/page.c
+@@ -8,6 +8,7 @@
+ #include <linux/proc_fs.h>
+ #include <linux/seq_file.h>
+ #include <linux/hugetlb.h>
++#include <linux/kernel-page-flags.h>
+ #include <asm/uaccess.h>
+ #include "internal.h"
+ 
+@@ -71,52 +72,12 @@ static const struct file_operations proc_kpagecount_operations = {
+  * physical page flags.
+  */
+ 
+-/* These macros are used to decouple internal flags from exported ones */
+-
+-#define KPF_LOCKED		0
+-#define KPF_ERROR		1
+-#define KPF_REFERENCED		2
+-#define KPF_UPTODATE		3
+-#define KPF_DIRTY		4
+-#define KPF_LRU			5
+-#define KPF_ACTIVE		6
+-#define KPF_SLAB		7
+-#define KPF_WRITEBACK		8
+-#define KPF_RECLAIM		9
+-#define KPF_BUDDY		10
+-
+-/* 11-20: new additions in 2.6.31 */
+-#define KPF_MMAP		11
+-#define KPF_ANON		12
+-#define KPF_SWAPCACHE		13
+-#define KPF_SWAPBACKED		14
+-#define KPF_COMPOUND_HEAD	15
+-#define KPF_COMPOUND_TAIL	16
+-#define KPF_HUGE		17
+-#define KPF_UNEVICTABLE		18
+-#define KPF_HWPOISON		19
+-#define KPF_NOPAGE		20
+-
+-#define KPF_KSM			21
+-
+-/* kernel hacking assistances
+- * WARNING: subject to change, never rely on them!
+- */
+-#define KPF_RESERVED		32
+-#define KPF_MLOCKED		33
+-#define KPF_MAPPEDTODISK	34
+-#define KPF_PRIVATE		35
+-#define KPF_PRIVATE_2		36
+-#define KPF_OWNER_PRIVATE	37
+-#define KPF_ARCH		38
+-#define KPF_UNCACHED		39
+-
+ static inline u64 kpf_copy_bit(u64 kflags, int ubit, int kbit)
+ {
+ 	return ((kflags >> kbit) & 1) << ubit;
+ }
+ 
+-static u64 get_uflags(struct page *page)
++u64 stable_page_flags(struct page *page)
+ {
+ 	u64 k;
+ 	u64 u;
+@@ -219,7 +180,7 @@ static ssize_t kpageflags_read(struct file *file, char __user *buf,
+ 		else
+ 			ppage = NULL;
+ 
+-		if (put_user(get_uflags(ppage), out)) {
++		if (put_user(stable_page_flags(ppage), out)) {
+ 			ret = -EFAULT;
+ 			break;
+ 		}
+diff --git a/include/asm-generic/mman-common.h b/include/asm-generic/mman-common.h
+index 5ee13b2..40b9731 100644
+--- a/include/asm-generic/mman-common.h
++++ b/include/asm-generic/mman-common.h
+@@ -35,6 +35,7 @@
+ #define MADV_DONTFORK	10		/* don't inherit across fork */
+ #define MADV_DOFORK	11		/* do inherit across fork */
+ #define MADV_HWPOISON	100		/* poison a page for testing */
++#define MADV_SOFT_OFFLINE 101		/* soft offline page for testing */
+ 
+ #define MADV_MERGEABLE   12		/* KSM may merge identical pages */
+ #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
+diff --git a/include/linux/kernel-page-flags.h b/include/linux/kernel-page-flags.h
+new file mode 100644
+index 0000000..bd92a89
+--- /dev/null
++++ b/include/linux/kernel-page-flags.h
+@@ -0,0 +1,46 @@
++#ifndef LINUX_KERNEL_PAGE_FLAGS_H
++#define LINUX_KERNEL_PAGE_FLAGS_H
++
++/*
++ * Stable page flag bits exported to user space
++ */
++
++#define KPF_LOCKED		0
++#define KPF_ERROR		1
++#define KPF_REFERENCED		2
++#define KPF_UPTODATE		3
++#define KPF_DIRTY		4
++#define KPF_LRU			5
++#define KPF_ACTIVE		6
++#define KPF_SLAB		7
++#define KPF_WRITEBACK		8
++#define KPF_RECLAIM		9
++#define KPF_BUDDY		10
++
++/* 11-20: new additions in 2.6.31 */
++#define KPF_MMAP		11
++#define KPF_ANON		12
++#define KPF_SWAPCACHE		13
++#define KPF_SWAPBACKED		14
++#define KPF_COMPOUND_HEAD	15
++#define KPF_COMPOUND_TAIL	16
++#define KPF_HUGE		17
++#define KPF_UNEVICTABLE		18
++#define KPF_HWPOISON		19
++#define KPF_NOPAGE		20
++
++#define KPF_KSM			21
++
++/* kernel hacking assistances
++ * WARNING: subject to change, never rely on them!
++ */
++#define KPF_RESERVED		32
++#define KPF_MLOCKED		33
++#define KPF_MAPPEDTODISK	34
++#define KPF_PRIVATE		35
++#define KPF_PRIVATE_2		36
++#define KPF_OWNER_PRIVATE	37
++#define KPF_ARCH		38
++#define KPF_UNCACHED		39
++
++#endif /* LINUX_KERNEL_PAGE_FLAGS_H */
+diff --git a/include/linux/memcontrol.h b/include/linux/memcontrol.h
+index bf9213b..2c30a11 100644
+--- a/include/linux/memcontrol.h
++++ b/include/linux/memcontrol.h
+@@ -68,6 +68,7 @@ extern unsigned long mem_cgroup_isolate_pages(unsigned long nr_to_scan,
+ extern void mem_cgroup_out_of_memory(struct mem_cgroup *mem, gfp_t gfp_mask);
+ int task_in_mem_cgroup(struct task_struct *task, const struct mem_cgroup *mem);
+ 
++extern struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page);
+ extern struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p);
+ 
+ static inline
+@@ -80,6 +81,8 @@ int mm_match_cgroup(const struct mm_struct *mm, const struct mem_cgroup *cgroup)
+ 	return cgroup == mem;
+ }
+ 
++extern struct cgroup_subsys_state *mem_cgroup_css(struct mem_cgroup *mem);
++
+ extern int
+ mem_cgroup_prepare_migration(struct page *page, struct mem_cgroup **ptr);
+ extern void mem_cgroup_end_migration(struct mem_cgroup *mem,
+@@ -189,6 +192,11 @@ mem_cgroup_move_lists(struct page *page, enum lru_list from, enum lru_list to)
+ {
+ }
+ 
++static inline struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page)
++{
++	return NULL;
++}
++
+ static inline int mm_match_cgroup(struct mm_struct *mm, struct mem_cgroup *mem)
+ {
+ 	return 1;
+@@ -200,6 +208,11 @@ static inline int task_in_mem_cgroup(struct task_struct *task,
+ 	return 1;
+ }
+ 
++static inline struct cgroup_subsys_state *mem_cgroup_css(struct mem_cgroup *mem)
++{
++	return NULL;
++}
++
+ static inline int
+ mem_cgroup_prepare_migration(struct page *page, struct mem_cgroup **ptr)
+ {
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+index 09f99eb..320ca67 100644
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -1337,11 +1337,17 @@ extern int account_locked_memory(struct mm_struct *mm, struct rlimit *rlim,
+ 				 size_t size);
+ extern void refund_locked_memory(struct mm_struct *mm, size_t size);
+ 
++enum mf_flags {
++	MF_COUNT_INCREASED = 1 << 0,
++};
+ extern void memory_failure(unsigned long pfn, int trapno);
+-extern int __memory_failure(unsigned long pfn, int trapno, int ref);
++extern int __memory_failure(unsigned long pfn, int trapno, int flags);
++extern int unpoison_memory(unsigned long pfn);
+ extern int sysctl_memory_failure_early_kill;
+ extern int sysctl_memory_failure_recovery;
++extern void shake_page(struct page *p, int access);
+ extern atomic_long_t mce_bad_pages;
++extern int soft_offline_page(struct page *page, int flags);
+ 
+ #endif /* __KERNEL__ */
+ #endif /* _LINUX_MM_H */
+diff --git a/include/linux/page-flags.h b/include/linux/page-flags.h
+index 49e907b..feee2ba 100644
+--- a/include/linux/page-flags.h
++++ b/include/linux/page-flags.h
+@@ -275,13 +275,15 @@ PAGEFLAG_FALSE(Uncached)
+ 
+ #ifdef CONFIG_MEMORY_FAILURE
+ PAGEFLAG(HWPoison, hwpoison)
+-TESTSETFLAG(HWPoison, hwpoison)
++TESTSCFLAG(HWPoison, hwpoison)
+ #define __PG_HWPOISON (1UL << PG_hwpoison)
+ #else
+ PAGEFLAG_FALSE(HWPoison)
+ #define __PG_HWPOISON 0
+ #endif
+ 
++u64 stable_page_flags(struct page *page);
++
+ static inline int PageUptodate(struct page *page)
+ {
+ 	int ret = test_bit(PG_uptodate, &(page)->flags);
+diff --git a/mm/Kconfig b/mm/Kconfig
+index 2310984..43ea8c3 100644
+--- a/mm/Kconfig
++++ b/mm/Kconfig
+@@ -251,8 +251,9 @@ config MEMORY_FAILURE
+ 	  special hardware support and typically ECC memory.
+ 
+ config HWPOISON_INJECT
+-	tristate "Poison pages injector"
++	tristate "HWPoison pages injector"
+ 	depends on MEMORY_FAILURE && DEBUG_KERNEL
++	select PROC_PAGE_MONITOR
+ 
+ config NOMMU_INITIAL_TRIM_EXCESS
+ 	int "Turn on mmap() excess space trimming before booting"
+diff --git a/mm/hwpoison-inject.c b/mm/hwpoison-inject.c
+index e1d8513..10ea719 100644
+--- a/mm/hwpoison-inject.c
++++ b/mm/hwpoison-inject.c
+@@ -3,18 +3,68 @@
+ #include <linux/debugfs.h>
+ #include <linux/kernel.h>
+ #include <linux/mm.h>
++#include <linux/swap.h>
++#include <linux/pagemap.h>
++#include "internal.h"
+ 
+-static struct dentry *hwpoison_dir, *corrupt_pfn;
++static struct dentry *hwpoison_dir;
+ 
+ static int hwpoison_inject(void *data, u64 val)
+ {
++	unsigned long pfn = val;
++	struct page *p;
++	int err;
++
++	if (!capable(CAP_SYS_ADMIN))
++		return -EPERM;
++
++	if (!hwpoison_filter_enable)
++		goto inject;
++	if (!pfn_valid(pfn))
++		return -ENXIO;
++
++	p = pfn_to_page(pfn);
++	/*
++	 * This implies unable to support free buddy pages.
++	 */
++	if (!get_page_unless_zero(p))
++		return 0;
++
++	if (!PageLRU(p))
++		shake_page(p, 0);
++	/*
++	 * This implies unable to support non-LRU pages.
++	 */
++	if (!PageLRU(p))
++		return 0;
++
++	/*
++	 * do a racy check with elevated page count, to make sure PG_hwpoison
++	 * will only be set for the targeted owner (or on a free page).
++	 * We temporarily take page lock for try_get_mem_cgroup_from_page().
++	 * __memory_failure() will redo the check reliably inside page lock.
++	 */
++	lock_page(p);
++	err = hwpoison_filter(p);
++	unlock_page(p);
++	if (err)
++		return 0;
++
++inject:
++	printk(KERN_INFO "Injecting memory failure at pfn %lx\n", pfn);
++	return __memory_failure(pfn, 18, MF_COUNT_INCREASED);
++}
++
++static int hwpoison_unpoison(void *data, u64 val)
++{
+ 	if (!capable(CAP_SYS_ADMIN))
+ 		return -EPERM;
+-	printk(KERN_INFO "Injecting memory failure at pfn %Lx\n", val);
+-	return __memory_failure(val, 18, 0);
++
++	return unpoison_memory(val);
+ }
+ 
+ DEFINE_SIMPLE_ATTRIBUTE(hwpoison_fops, NULL, hwpoison_inject, "%lli\n");
++DEFINE_SIMPLE_ATTRIBUTE(unpoison_fops, NULL, hwpoison_unpoison, "%lli\n");
+ 
+ static void pfn_inject_exit(void)
+ {
+@@ -24,16 +74,63 @@ static void pfn_inject_exit(void)
+ 
+ static int pfn_inject_init(void)
+ {
++	struct dentry *dentry;
++
+ 	hwpoison_dir = debugfs_create_dir("hwpoison", NULL);
+ 	if (hwpoison_dir == NULL)
+ 		return -ENOMEM;
+-	corrupt_pfn = debugfs_create_file("corrupt-pfn", 0600, hwpoison_dir,
++
++	/*
++	 * Note that the below poison/unpoison interfaces do not involve
++	 * hardware status change, hence do not require hardware support.
++	 * They are mainly for testing hwpoison in software level.
++	 */
++	dentry = debugfs_create_file("corrupt-pfn", 0600, hwpoison_dir,
+ 					  NULL, &hwpoison_fops);
+-	if (corrupt_pfn == NULL) {
+-		pfn_inject_exit();
+-		return -ENOMEM;
+-	}
++	if (!dentry)
++		goto fail;
++
++	dentry = debugfs_create_file("unpoison-pfn", 0600, hwpoison_dir,
++				     NULL, &unpoison_fops);
++	if (!dentry)
++		goto fail;
++
++	dentry = debugfs_create_u32("corrupt-filter-enable", 0600,
++				    hwpoison_dir, &hwpoison_filter_enable);
++	if (!dentry)
++		goto fail;
++
++	dentry = debugfs_create_u32("corrupt-filter-dev-major", 0600,
++				    hwpoison_dir, &hwpoison_filter_dev_major);
++	if (!dentry)
++		goto fail;
++
++	dentry = debugfs_create_u32("corrupt-filter-dev-minor", 0600,
++				    hwpoison_dir, &hwpoison_filter_dev_minor);
++	if (!dentry)
++		goto fail;
++
++	dentry = debugfs_create_u64("corrupt-filter-flags-mask", 0600,
++				    hwpoison_dir, &hwpoison_filter_flags_mask);
++	if (!dentry)
++		goto fail;
++
++	dentry = debugfs_create_u64("corrupt-filter-flags-value", 0600,
++				    hwpoison_dir, &hwpoison_filter_flags_value);
++	if (!dentry)
++		goto fail;
++
++#ifdef	CONFIG_CGROUP_MEM_RES_CTLR_SWAP
++	dentry = debugfs_create_u64("corrupt-filter-memcg", 0600,
++				    hwpoison_dir, &hwpoison_filter_memcg);
++	if (!dentry)
++		goto fail;
++#endif
++
+ 	return 0;
++fail:
++	pfn_inject_exit();
++	return -ENOMEM;
+ }
+ 
+ module_init(pfn_inject_init);
+diff --git a/mm/internal.h b/mm/internal.h
+index a4b927c..90e8126 100644
+--- a/mm/internal.h
++++ b/mm/internal.h
+@@ -50,6 +50,9 @@ extern void putback_lru_page(struct page *page);
+  */
+ extern void __free_pages_bootmem(struct page *page, unsigned int order);
+ extern void prep_compound_page(struct page *page, unsigned long order);
++#ifdef CONFIG_MEMORY_FAILURE
++extern bool is_free_buddy_page(struct page *page);
++#endif
+ 
+ 
+ /*
+@@ -259,3 +262,12 @@ int __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
+ #define ZONE_RECLAIM_SOME	0
+ #define ZONE_RECLAIM_SUCCESS	1
+ #endif
++
++extern int hwpoison_filter(struct page *p);
++
++extern u32 hwpoison_filter_dev_major;
++extern u32 hwpoison_filter_dev_minor;
++extern u64 hwpoison_filter_flags_mask;
++extern u64 hwpoison_filter_flags_value;
++extern u64 hwpoison_filter_memcg;
++extern u32 hwpoison_filter_enable;
+diff --git a/mm/madvise.c b/mm/madvise.c
+index 35b1479..319528b 100644
+--- a/mm/madvise.c
++++ b/mm/madvise.c
+@@ -9,6 +9,7 @@
+ #include <linux/pagemap.h>
+ #include <linux/syscalls.h>
+ #include <linux/mempolicy.h>
++#include <linux/page-isolation.h>
+ #include <linux/hugetlb.h>
+ #include <linux/sched.h>
+ #include <linux/ksm.h>
+@@ -222,7 +223,7 @@ static long madvise_remove(struct vm_area_struct *vma,
+ /*
+  * Error injection support for memory error handling.
+  */
+-static int madvise_hwpoison(unsigned long start, unsigned long end)
++static int madvise_hwpoison(int bhv, unsigned long start, unsigned long end)
+ {
+ 	int ret = 0;
+ 
+@@ -230,15 +231,21 @@ static int madvise_hwpoison(unsigned long start, unsigned long end)
+ 		return -EPERM;
+ 	for (; start < end; start += PAGE_SIZE) {
+ 		struct page *p;
+-		int ret = get_user_pages(current, current->mm, start, 1,
+-						0, 0, &p, NULL);
++		int ret = get_user_pages_fast(start, 1, 0, &p);
+ 		if (ret != 1)
+ 			return ret;
++		if (bhv == MADV_SOFT_OFFLINE) {
++			printk(KERN_INFO "Soft offlining page %lx at %lx\n",
++				page_to_pfn(p), start);
++			ret = soft_offline_page(p, MF_COUNT_INCREASED);
++			if (ret)
++				break;
++			continue;
++		}
+ 		printk(KERN_INFO "Injecting memory failure for page %lx at %lx\n",
+ 		       page_to_pfn(p), start);
+ 		/* Ignore return value for now */
+-		__memory_failure(page_to_pfn(p), 0, 1);
+-		put_page(p);
++		__memory_failure(page_to_pfn(p), 0, MF_COUNT_INCREASED);
+ 	}
+ 	return ret;
+ }
+@@ -335,8 +342,8 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
+ 	size_t len;
+ 
+ #ifdef CONFIG_MEMORY_FAILURE
+-	if (behavior == MADV_HWPOISON)
+-		return madvise_hwpoison(start, start+len_in);
++	if (behavior == MADV_HWPOISON || behavior == MADV_SOFT_OFFLINE)
++		return madvise_hwpoison(behavior, start, start+len_in);
+ #endif
+ 	if (!madvise_behavior_valid(behavior))
+ 		return error;
+diff --git a/mm/memcontrol.c b/mm/memcontrol.c
+index a399e06..e972757 100644
+--- a/mm/memcontrol.c
++++ b/mm/memcontrol.c
+@@ -282,6 +282,11 @@ mem_cgroup_zoneinfo(struct mem_cgroup *mem, int nid, int zid)
+ 	return &mem->info.nodeinfo[nid]->zoneinfo[zid];
+ }
+ 
++struct cgroup_subsys_state *mem_cgroup_css(struct mem_cgroup *mem)
++{
++	return &mem->css;
++}
++
+ static struct mem_cgroup_per_zone *
+ page_cgroup_zoneinfo(struct page_cgroup *pc)
+ {
+@@ -1379,25 +1384,22 @@ static struct mem_cgroup *mem_cgroup_lookup(unsigned short id)
+ 	return container_of(css, struct mem_cgroup, css);
+ }
+ 
+-static struct mem_cgroup *try_get_mem_cgroup_from_swapcache(struct page *page)
++struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page)
+ {
+-	struct mem_cgroup *mem;
++	struct mem_cgroup *mem = NULL;
+ 	struct page_cgroup *pc;
+ 	unsigned short id;
+ 	swp_entry_t ent;
+ 
+ 	VM_BUG_ON(!PageLocked(page));
+ 
+-	if (!PageSwapCache(page))
+-		return NULL;
+-
+ 	pc = lookup_page_cgroup(page);
+ 	lock_page_cgroup(pc);
+ 	if (PageCgroupUsed(pc)) {
+ 		mem = pc->mem_cgroup;
+ 		if (mem && !css_tryget(&mem->css))
+ 			mem = NULL;
+-	} else {
++	} else if (PageSwapCache(page)) {
+ 		ent.val = page_private(page);
+ 		id = lookup_swap_cgroup(ent);
+ 		rcu_read_lock();
+@@ -1743,7 +1745,7 @@ int mem_cgroup_try_charge_swapin(struct mm_struct *mm,
+ 	 */
+ 	if (!PageSwapCache(page))
+ 		goto charge_cur_mm;
+-	mem = try_get_mem_cgroup_from_swapcache(page);
++	mem = try_get_mem_cgroup_from_page(page);
+ 	if (!mem)
+ 		goto charge_cur_mm;
+ 	*ptr = mem;
+diff --git a/mm/memory-failure.c b/mm/memory-failure.c
+index 0acd4dc..6a0466e 100644
+--- a/mm/memory-failure.c
++++ b/mm/memory-failure.c
+@@ -34,12 +34,16 @@
+ #include <linux/kernel.h>
+ #include <linux/mm.h>
+ #include <linux/page-flags.h>
++#include <linux/kernel-page-flags.h>
+ #include <linux/sched.h>
+ #include <linux/ksm.h>
+ #include <linux/rmap.h>
+ #include <linux/pagemap.h>
+ #include <linux/swap.h>
+ #include <linux/backing-dev.h>
++#include <linux/migrate.h>
++#include <linux/page-isolation.h>
++#include <linux/suspend.h>
+ #include "internal.h"
+ 
+ int sysctl_memory_failure_early_kill __read_mostly = 0;
+@@ -48,6 +52,120 @@ int sysctl_memory_failure_recovery __read_mostly = 1;
+ 
+ atomic_long_t mce_bad_pages __read_mostly = ATOMIC_LONG_INIT(0);
+ 
++u32 hwpoison_filter_enable = 0;
++u32 hwpoison_filter_dev_major = ~0U;
++u32 hwpoison_filter_dev_minor = ~0U;
++u64 hwpoison_filter_flags_mask;
++u64 hwpoison_filter_flags_value;
++EXPORT_SYMBOL_GPL(hwpoison_filter_enable);
++EXPORT_SYMBOL_GPL(hwpoison_filter_dev_major);
++EXPORT_SYMBOL_GPL(hwpoison_filter_dev_minor);
++EXPORT_SYMBOL_GPL(hwpoison_filter_flags_mask);
++EXPORT_SYMBOL_GPL(hwpoison_filter_flags_value);
++
++static int hwpoison_filter_dev(struct page *p)
++{
++	struct address_space *mapping;
++	dev_t dev;
++
++	if (hwpoison_filter_dev_major == ~0U &&
++	    hwpoison_filter_dev_minor == ~0U)
++		return 0;
++
++	/*
++	 * page_mapping() does not accept slab page
++	 */
++	if (PageSlab(p))
++		return -EINVAL;
++
++	mapping = page_mapping(p);
++	if (mapping == NULL || mapping->host == NULL)
++		return -EINVAL;
++
++	dev = mapping->host->i_sb->s_dev;
++	if (hwpoison_filter_dev_major != ~0U &&
++	    hwpoison_filter_dev_major != MAJOR(dev))
++		return -EINVAL;
++	if (hwpoison_filter_dev_minor != ~0U &&
++	    hwpoison_filter_dev_minor != MINOR(dev))
++		return -EINVAL;
++
++	return 0;
++}
++
++static int hwpoison_filter_flags(struct page *p)
++{
++	if (!hwpoison_filter_flags_mask)
++		return 0;
++
++	if ((stable_page_flags(p) & hwpoison_filter_flags_mask) ==
++				    hwpoison_filter_flags_value)
++		return 0;
++	else
++		return -EINVAL;
++}
++
++/*
++ * This allows stress tests to limit test scope to a collection of tasks
++ * by putting them under some memcg. This prevents killing unrelated/important
++ * processes such as /sbin/init. Note that the target task may share clean
++ * pages with init (eg. libc text), which is harmless. If the target task
++ * share _dirty_ pages with another task B, the test scheme must make sure B
++ * is also included in the memcg. At last, due to race conditions this filter
++ * can only guarantee that the page either belongs to the memcg tasks, or is
++ * a freed page.
++ */
++#ifdef	CONFIG_CGROUP_MEM_RES_CTLR_SWAP
++u64 hwpoison_filter_memcg;
++EXPORT_SYMBOL_GPL(hwpoison_filter_memcg);
++static int hwpoison_filter_task(struct page *p)
++{
++	struct mem_cgroup *mem;
++	struct cgroup_subsys_state *css;
++	unsigned long ino;
++
++	if (!hwpoison_filter_memcg)
++		return 0;
++
++	mem = try_get_mem_cgroup_from_page(p);
++	if (!mem)
++		return -EINVAL;
++
++	css = mem_cgroup_css(mem);
++	/* root_mem_cgroup has NULL dentries */
++	if (!css->cgroup->dentry)
++		return -EINVAL;
++
++	ino = css->cgroup->dentry->d_inode->i_ino;
++	css_put(css);
++
++	if (ino != hwpoison_filter_memcg)
++		return -EINVAL;
++
++	return 0;
++}
++#else
++static int hwpoison_filter_task(struct page *p) { return 0; }
++#endif
++
++int hwpoison_filter(struct page *p)
++{
++	if (!hwpoison_filter_enable)
++		return 0;
++
++	if (hwpoison_filter_dev(p))
++		return -EINVAL;
++
++	if (hwpoison_filter_flags(p))
++		return -EINVAL;
++
++	if (hwpoison_filter_task(p))
++		return -EINVAL;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(hwpoison_filter);
++
+ /*
+  * Send all the processes who have the page mapped an ``action optional''
+  * signal.
+@@ -83,6 +201,36 @@ static int kill_proc_ao(struct task_struct *t, unsigned long addr, int trapno,
+ }
+ 
+ /*
++ * When a unknown page type is encountered drain as many buffers as possible
++ * in the hope to turn the page into a LRU or free page, which we can handle.
++ */
++void shake_page(struct page *p, int access)
++{
++	if (!PageSlab(p)) {
++		lru_add_drain_all();
++		if (PageLRU(p))
++			return;
++		drain_all_pages();
++		if (PageLRU(p) || is_free_buddy_page(p))
++			return;
++	}
++
++	/*
++	 * Only all shrink_slab here (which would also
++	 * shrink other caches) if access is not potentially fatal.
++	 */
++	if (access) {
++		int nr;
++		do {
++			nr = shrink_slab(1000, GFP_KERNEL, 1000);
++			if (page_count(p) == 0)
++				break;
++		} while (nr > 10);
++	}
++}
++EXPORT_SYMBOL_GPL(shake_page);
++
++/*
+  * Kill all processes that have a poisoned page mapped and then isolate
+  * the page.
+  *
+@@ -174,10 +322,9 @@ static void kill_procs_ao(struct list_head *to_kill, int doit, int trapno,
+ 	list_for_each_entry_safe (tk, next, to_kill, nd) {
+ 		if (doit) {
+ 			/*
+-			 * In case something went wrong with munmaping
++			 * In case something went wrong with munmapping
+ 			 * make sure the process doesn't catch the
+ 			 * signal and then access the memory. Just kill it.
+-			 * the signal handlers
+ 			 */
+ 			if (fail || tk->addr_valid == 0) {
+ 				printk(KERN_ERR
+@@ -314,33 +461,49 @@ static void collect_procs(struct page *page, struct list_head *tokill)
+  */
+ 
+ enum outcome {
+-	FAILED,		/* Error handling failed */
++	IGNORED,	/* Error: cannot be handled */
++	FAILED,		/* Error: handling failed */
+ 	DELAYED,	/* Will be handled later */
+-	IGNORED,	/* Error safely ignored */
+ 	RECOVERED,	/* Successfully recovered */
+ };
+ 
+ static const char *action_name[] = {
++	[IGNORED] = "Ignored",
+ 	[FAILED] = "Failed",
+ 	[DELAYED] = "Delayed",
+-	[IGNORED] = "Ignored",
+ 	[RECOVERED] = "Recovered",
+ };
+ 
+ /*
+- * Error hit kernel page.
+- * Do nothing, try to be lucky and not touch this instead. For a few cases we
+- * could be more sophisticated.
++ * XXX: It is possible that a page is isolated from LRU cache,
++ * and then kept in swap cache or failed to remove from page cache.
++ * The page count will stop it from being freed by unpoison.
++ * Stress tests should be aware of this memory leak problem.
+  */
+-static int me_kernel(struct page *p, unsigned long pfn)
++static int delete_from_lru_cache(struct page *p)
+ {
+-	return DELAYED;
++	if (!isolate_lru_page(p)) {
++		/*
++		 * Clear sensible page flags, so that the buddy system won't
++		 * complain when the page is unpoison-and-freed.
++		 */
++		ClearPageActive(p);
++		ClearPageUnevictable(p);
++		/*
++		 * drop the page count elevated by isolate_lru_page()
++		 */
++		page_cache_release(p);
++		return 0;
++	}
++	return -EIO;
+ }
+ 
+ /*
+- * Already poisoned page.
++ * Error hit kernel page.
++ * Do nothing, try to be lucky and not touch this instead. For a few cases we
++ * could be more sophisticated.
+  */
+-static int me_ignore(struct page *p, unsigned long pfn)
++static int me_kernel(struct page *p, unsigned long pfn)
+ {
+ 	return IGNORED;
+ }
+@@ -355,14 +518,6 @@ static int me_unknown(struct page *p, unsigned long pfn)
+ }
+ 
+ /*
+- * Free memory
+- */
+-static int me_free(struct page *p, unsigned long pfn)
+-{
+-	return DELAYED;
+-}
+-
+-/*
+  * Clean (or cleaned) page cache page.
+  */
+ static int me_pagecache_clean(struct page *p, unsigned long pfn)
+@@ -371,6 +526,8 @@ static int me_pagecache_clean(struct page *p, unsigned long pfn)
+ 	int ret = FAILED;
+ 	struct address_space *mapping;
+ 
++	delete_from_lru_cache(p);
++
+ 	/*
+ 	 * For anonymous pages we're done the only reference left
+ 	 * should be the one m_f() holds.
+@@ -500,14 +657,20 @@ static int me_swapcache_dirty(struct page *p, unsigned long pfn)
+ 	/* Trigger EIO in shmem: */
+ 	ClearPageUptodate(p);
+ 
+-	return DELAYED;
++	if (!delete_from_lru_cache(p))
++		return DELAYED;
++	else
++		return FAILED;
+ }
+ 
+ static int me_swapcache_clean(struct page *p, unsigned long pfn)
+ {
+ 	delete_from_swap_cache(p);
+ 
+-	return RECOVERED;
++	if (!delete_from_lru_cache(p))
++		return RECOVERED;
++	else
++		return FAILED;
+ }
+ 
+ /*
+@@ -550,7 +713,6 @@ static int me_huge_page(struct page *p, unsigned long pfn)
+ #define tail		(1UL << PG_tail)
+ #define compound	(1UL << PG_compound)
+ #define slab		(1UL << PG_slab)
+-#define buddy		(1UL << PG_buddy)
+ #define reserved	(1UL << PG_reserved)
+ 
+ static struct page_state {
+@@ -559,8 +721,11 @@ static struct page_state {
+ 	char *msg;
+ 	int (*action)(struct page *p, unsigned long pfn);
+ } error_states[] = {
+-	{ reserved,	reserved,	"reserved kernel",	me_ignore },
+-	{ buddy,	buddy,		"free kernel",	me_free },
++	{ reserved,	reserved,	"reserved kernel",	me_kernel },
++	/*
++	 * free pages are specially detected outside this table:
++	 * PG_buddy pages only make a small fraction of all free pages.
++	 */
+ 
+ 	/*
+ 	 * Could in theory check if slab page is free or if we can drop
+@@ -587,7 +752,6 @@ static struct page_state {
+ 
+ 	{ lru|dirty,	lru|dirty,	"LRU",		me_pagecache_dirty },
+ 	{ lru|dirty,	lru,		"clean LRU",	me_pagecache_clean },
+-	{ swapbacked,	swapbacked,	"anonymous",	me_pagecache_clean },
+ 
+ 	/*
+ 	 * Catchall entry: must be at end.
+@@ -595,20 +759,31 @@ static struct page_state {
+ 	{ 0,		0,		"unknown page state",	me_unknown },
+ };
+ 
++#undef dirty
++#undef sc
++#undef unevict
++#undef mlock
++#undef writeback
++#undef lru
++#undef swapbacked
++#undef head
++#undef tail
++#undef compound
++#undef slab
++#undef reserved
++
+ static void action_result(unsigned long pfn, char *msg, int result)
+ {
+-	struct page *page = NULL;
+-	if (pfn_valid(pfn))
+-		page = pfn_to_page(pfn);
++	struct page *page = pfn_to_page(pfn);
+ 
+ 	printk(KERN_ERR "MCE %#lx: %s%s page recovery: %s\n",
+ 		pfn,
+-		page && PageDirty(page) ? "dirty " : "",
++		PageDirty(page) ? "dirty " : "",
+ 		msg, action_name[result]);
+ }
+ 
+ static int page_action(struct page_state *ps, struct page *p,
+-			unsigned long pfn, int ref)
++			unsigned long pfn)
+ {
+ 	int result;
+ 	int count;
+@@ -616,18 +791,22 @@ static int page_action(struct page_state *ps, struct page *p,
+ 	result = ps->action(p, pfn);
+ 	action_result(pfn, ps->msg, result);
+ 
+-	count = page_count(p) - 1 - ref;
+-	if (count != 0)
++	count = page_count(p) - 1;
++	if (ps->action == me_swapcache_dirty && result == DELAYED)
++		count--;
++	if (count != 0) {
+ 		printk(KERN_ERR
+ 		       "MCE %#lx: %s page still referenced by %d users\n",
+ 		       pfn, ps->msg, count);
++		result = FAILED;
++	}
+ 
+ 	/* Could do more checks here if page looks ok */
+ 	/*
+ 	 * Could adjust zone counters here to correct for the missing page.
+ 	 */
+ 
+-	return result == RECOVERED ? 0 : -EBUSY;
++	return (result == RECOVERED || result == DELAYED) ? 0 : -EBUSY;
+ }
+ 
+ #define N_UNMAP_TRIES 5
+@@ -636,7 +815,7 @@ static int page_action(struct page_state *ps, struct page *p,
+  * Do all that is necessary to remove user space mappings. Unmap
+  * the pages and send SIGBUS to the processes if the data was dirty.
+  */
+-static void hwpoison_user_mappings(struct page *p, unsigned long pfn,
++static int hwpoison_user_mappings(struct page *p, unsigned long pfn,
+ 				  int trapno)
+ {
+ 	enum ttu_flags ttu = TTU_UNMAP | TTU_IGNORE_MLOCK | TTU_IGNORE_ACCESS;
+@@ -646,15 +825,18 @@ static void hwpoison_user_mappings(struct page *p, unsigned long pfn,
+ 	int i;
+ 	int kill = 1;
+ 
+-	if (PageReserved(p) || PageCompound(p) || PageSlab(p) || PageKsm(p))
+-		return;
++	if (PageReserved(p) || PageSlab(p))
++		return SWAP_SUCCESS;
+ 
+ 	/*
+ 	 * This check implies we don't kill processes if their pages
+ 	 * are in the swap cache early. Those are always late kills.
+ 	 */
+ 	if (!page_mapped(p))
+-		return;
++		return SWAP_SUCCESS;
++
++	if (PageCompound(p) || PageKsm(p))
++		return SWAP_FAIL;
+ 
+ 	if (PageSwapCache(p)) {
+ 		printk(KERN_ERR
+@@ -665,6 +847,8 @@ static void hwpoison_user_mappings(struct page *p, unsigned long pfn,
+ 	/*
+ 	 * Propagate the dirty bit from PTEs to struct page first, because we
+ 	 * need this to decide if we should kill or just drop the page.
++	 * XXX: the dirty test could be racy: set_page_dirty() may not always
++	 * be called inside page lock (it's recommended but not enforced).
+ 	 */
+ 	mapping = page_mapping(p);
+ 	if (!PageDirty(p) && mapping && mapping_cap_writeback_dirty(mapping)) {
+@@ -716,11 +900,12 @@ static void hwpoison_user_mappings(struct page *p, unsigned long pfn,
+ 	 */
+ 	kill_procs_ao(&tokill, !!PageDirty(p), trapno,
+ 		      ret != SWAP_SUCCESS, pfn);
++
++	return ret;
+ }
+ 
+-int __memory_failure(unsigned long pfn, int trapno, int ref)
++int __memory_failure(unsigned long pfn, int trapno, int flags)
+ {
+-	unsigned long lru_flag;
+ 	struct page_state *ps;
+ 	struct page *p;
+ 	int res;
+@@ -729,13 +914,15 @@ int __memory_failure(unsigned long pfn, int trapno, int ref)
+ 		panic("Memory failure from trap %d on page %lx", trapno, pfn);
+ 
+ 	if (!pfn_valid(pfn)) {
+-		action_result(pfn, "memory outside kernel control", IGNORED);
+-		return -EIO;
++		printk(KERN_ERR
++		       "MCE %#lx: memory outside kernel control\n",
++		       pfn);
++		return -ENXIO;
+ 	}
+ 
+ 	p = pfn_to_page(pfn);
+ 	if (TestSetPageHWPoison(p)) {
+-		action_result(pfn, "already hardware poisoned", IGNORED);
++		printk(KERN_ERR "MCE %#lx: already hardware poisoned\n", pfn);
+ 		return 0;
+ 	}
+ 
+@@ -752,9 +939,15 @@ int __memory_failure(unsigned long pfn, int trapno, int ref)
+ 	 * In fact it's dangerous to directly bump up page count from 0,
+ 	 * that may make page_freeze_refs()/page_unfreeze_refs() mismatch.
+ 	 */
+-	if (!get_page_unless_zero(compound_head(p))) {
+-		action_result(pfn, "free or high order kernel", IGNORED);
+-		return PageBuddy(compound_head(p)) ? 0 : -EBUSY;
++	if (!(flags & MF_COUNT_INCREASED) &&
++		!get_page_unless_zero(compound_head(p))) {
++		if (is_free_buddy_page(p)) {
++			action_result(pfn, "free buddy", DELAYED);
++			return 0;
++		} else {
++			action_result(pfn, "high order kernel", IGNORED);
++			return -EBUSY;
++		}
+ 	}
+ 
+ 	/*
+@@ -766,14 +959,19 @@ int __memory_failure(unsigned long pfn, int trapno, int ref)
+ 	 * walked by the page reclaim code, however that's not a big loss.
+ 	 */
+ 	if (!PageLRU(p))
+-		lru_add_drain_all();
+-	lru_flag = p->flags & lru;
+-	if (isolate_lru_page(p)) {
++		shake_page(p, 0);
++	if (!PageLRU(p)) {
++		/*
++		 * shake_page could have turned it free.
++		 */
++		if (is_free_buddy_page(p)) {
++			action_result(pfn, "free buddy, 2nd try", DELAYED);
++			return 0;
++		}
+ 		action_result(pfn, "non LRU", IGNORED);
+ 		put_page(p);
+ 		return -EBUSY;
+ 	}
+-	page_cache_release(p);
+ 
+ 	/*
+ 	 * Lock the page and wait for writeback to finish.
+@@ -781,26 +979,48 @@ int __memory_failure(unsigned long pfn, int trapno, int ref)
+ 	 * and in many cases impossible, so we just avoid it here.
+ 	 */
+ 	lock_page_nosync(p);
++
++	/*
++	 * unpoison always clear PG_hwpoison inside page lock
++	 */
++	if (!PageHWPoison(p)) {
++		printk(KERN_ERR "MCE %#lx: just unpoisoned\n", pfn);
++		res = 0;
++		goto out;
++	}
++	if (hwpoison_filter(p)) {
++		if (TestClearPageHWPoison(p))
++			atomic_long_dec(&mce_bad_pages);
++		unlock_page(p);
++		put_page(p);
++		return 0;
++	}
++
+ 	wait_on_page_writeback(p);
+ 
+ 	/*
+ 	 * Now take care of user space mappings.
++	 * Abort on fail: __remove_from_page_cache() assumes unmapped page.
+ 	 */
+-	hwpoison_user_mappings(p, pfn, trapno);
++	if (hwpoison_user_mappings(p, pfn, trapno) != SWAP_SUCCESS) {
++		printk(KERN_ERR "MCE %#lx: cannot unmap page, give up\n", pfn);
++		res = -EBUSY;
++		goto out;
++	}
+ 
+ 	/*
+ 	 * Torn down by someone else?
+ 	 */
+-	if ((lru_flag & lru) && !PageSwapCache(p) && p->mapping == NULL) {
++	if (PageLRU(p) && !PageSwapCache(p) && p->mapping == NULL) {
+ 		action_result(pfn, "already truncated LRU", IGNORED);
+-		res = 0;
++		res = -EBUSY;
+ 		goto out;
+ 	}
+ 
+ 	res = -EBUSY;
+ 	for (ps = error_states;; ps++) {
+-		if (((p->flags | lru_flag)& ps->mask) == ps->res) {
+-			res = page_action(ps, p, pfn, ref);
++		if ((p->flags & ps->mask) == ps->res) {
++			res = page_action(ps, p, pfn);
+ 			break;
+ 		}
+ 	}
+@@ -831,3 +1051,235 @@ void memory_failure(unsigned long pfn, int trapno)
+ {
+ 	__memory_failure(pfn, trapno, 0);
+ }
++
++/**
++ * unpoison_memory - Unpoison a previously poisoned page
++ * @pfn: Page number of the to be unpoisoned page
++ *
++ * Software-unpoison a page that has been poisoned by
++ * memory_failure() earlier.
++ *
++ * This is only done on the software-level, so it only works
++ * for linux injected failures, not real hardware failures
++ *
++ * Returns 0 for success, otherwise -errno.
++ */
++int unpoison_memory(unsigned long pfn)
++{
++	struct page *page;
++	struct page *p;
++	int freeit = 0;
++
++	if (!pfn_valid(pfn))
++		return -ENXIO;
++
++	p = pfn_to_page(pfn);
++	page = compound_head(p);
++
++	if (!PageHWPoison(p)) {
++		pr_debug("MCE: Page was already unpoisoned %#lx\n", pfn);
++		return 0;
++	}
++
++	if (!get_page_unless_zero(page)) {
++		if (TestClearPageHWPoison(p))
++			atomic_long_dec(&mce_bad_pages);
++		pr_debug("MCE: Software-unpoisoned free page %#lx\n", pfn);
++		return 0;
++	}
++
++	lock_page_nosync(page);
++	/*
++	 * This test is racy because PG_hwpoison is set outside of page lock.
++	 * That's acceptable because that won't trigger kernel panic. Instead,
++	 * the PG_hwpoison page will be caught and isolated on the entrance to
++	 * the free buddy page pool.
++	 */
++	if (TestClearPageHWPoison(p)) {
++		pr_debug("MCE: Software-unpoisoned page %#lx\n", pfn);
++		atomic_long_dec(&mce_bad_pages);
++		freeit = 1;
++	}
++	unlock_page(page);
++
++	put_page(page);
++	if (freeit)
++		put_page(page);
++
++	return 0;
++}
++EXPORT_SYMBOL(unpoison_memory);
++
++static struct page *new_page(struct page *p, unsigned long private, int **x)
++{
++	int nid = page_to_nid(p);
++	return alloc_pages_exact_node(nid, GFP_HIGHUSER_MOVABLE, 0);
++}
++
++/*
++ * Safely get reference count of an arbitrary page.
++ * Returns 0 for a free page, -EIO for a zero refcount page
++ * that is not free, and 1 for any other page type.
++ * For 1 the page is returned with increased page count, otherwise not.
++ */
++static int get_any_page(struct page *p, unsigned long pfn, int flags)
++{
++	int ret;
++
++	if (flags & MF_COUNT_INCREASED)
++		return 1;
++
++	/*
++	 * The lock_system_sleep prevents a race with memory hotplug,
++	 * because the isolation assumes there's only a single user.
++	 * This is a big hammer, a better would be nicer.
++	 */
++	lock_system_sleep();
++
++	/*
++	 * Isolate the page, so that it doesn't get reallocated if it
++	 * was free.
++	 */
++	set_migratetype_isolate(p);
++	if (!get_page_unless_zero(compound_head(p))) {
++		if (is_free_buddy_page(p)) {
++			pr_debug("get_any_page: %#lx free buddy page\n", pfn);
++			/* Set hwpoison bit while page is still isolated */
++			SetPageHWPoison(p);
++			ret = 0;
++		} else {
++			pr_debug("get_any_page: %#lx: unknown zero refcount page type %lx\n",
++				pfn, p->flags);
++			ret = -EIO;
++		}
++	} else {
++		/* Not a free page */
++		ret = 1;
++	}
++	unset_migratetype_isolate(p);
++	unlock_system_sleep();
++	return ret;
++}
++
++/**
++ * soft_offline_page - Soft offline a page.
++ * @page: page to offline
++ * @flags: flags. Same as memory_failure().
++ *
++ * Returns 0 on success, otherwise negated errno.
++ *
++ * Soft offline a page, by migration or invalidation,
++ * without killing anything. This is for the case when
++ * a page is not corrupted yet (so it's still valid to access),
++ * but has had a number of corrected errors and is better taken
++ * out.
++ *
++ * The actual policy on when to do that is maintained by
++ * user space.
++ *
++ * This should never impact any application or cause data loss,
++ * however it might take some time.
++ *
++ * This is not a 100% solution for all memory, but tries to be
++ * ``good enough'' for the majority of memory.
++ */
++int soft_offline_page(struct page *page, int flags)
++{
++	int ret;
++	unsigned long pfn = page_to_pfn(page);
++
++	ret = get_any_page(page, pfn, flags);
++	if (ret < 0)
++		return ret;
++	if (ret == 0)
++		goto done;
++
++	/*
++	 * Page cache page we can handle?
++	 */
++	if (!PageLRU(page)) {
++		/*
++		 * Try to free it.
++		 */
++		put_page(page);
++		shake_page(page, 1);
++
++		/*
++		 * Did it turn free?
++		 */
++		ret = get_any_page(page, pfn, 0);
++		if (ret < 0)
++			return ret;
++		if (ret == 0)
++			goto done;
++	}
++	if (!PageLRU(page)) {
++		pr_debug("soft_offline: %#lx: unknown non LRU page type %lx\n",
++				pfn, page->flags);
++		return -EIO;
++	}
++
++	lock_page(page);
++	wait_on_page_writeback(page);
++
++	/*
++	 * Synchronized using the page lock with memory_failure()
++	 */
++	if (PageHWPoison(page)) {
++		unlock_page(page);
++		put_page(page);
++		pr_debug("soft offline: %#lx page already poisoned\n", pfn);
++		return -EBUSY;
++	}
++
++	/*
++	 * Try to invalidate first. This should work for
++	 * non dirty unmapped page cache pages.
++	 */
++	ret = invalidate_inode_page(page);
++	unlock_page(page);
++
++	/*
++	 * Drop count because page migration doesn't like raised
++	 * counts. The page could get re-allocated, but if it becomes
++	 * LRU the isolation will just fail.
++	 * RED-PEN would be better to keep it isolated here, but we
++	 * would need to fix isolation locking first.
++	 */
++	put_page(page);
++	if (ret == 1) {
++		ret = 0;
++		pr_debug("soft_offline: %#lx: invalidated\n", pfn);
++		goto done;
++	}
++
++	/*
++	 * Simple invalidation didn't work.
++	 * Try to migrate to a new page instead. migrate.c
++	 * handles a large number of cases for us.
++	 */
++	ret = isolate_lru_page(page);
++	if (!ret) {
++		LIST_HEAD(pagelist);
++
++		list_add(&page->lru, &pagelist);
++		ret = migrate_pages(&pagelist, new_page, MPOL_MF_MOVE_ALL, 0);
++		if (ret) {
++			pr_debug("soft offline: %#lx: migration failed %d, type %lx\n",
++				pfn, ret, page->flags);
++			if (ret > 0)
++				ret = -EIO;
++		}
++	} else {
++		pr_debug("soft offline: %#lx: isolation failed: %d, page count %d, type %lx\n",
++				pfn, ret, page_count(page), page->flags);
++	}
++	if (ret)
++		return ret;
++
++done:
++	atomic_long_add(1, &mce_bad_pages);
++	SetPageHWPoison(page);
++	/* keep elevated page count for bad page */
++	return ret;
++}
+diff --git a/mm/memory.c b/mm/memory.c
+index 21c90b7..2b773dc 100644
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -2559,6 +2559,10 @@ static int do_swap_page(struct mm_struct *mm, struct vm_area_struct *vma,
+ 		ret = VM_FAULT_MAJOR;
+ 		count_vm_event(PGMAJFAULT);
+ 	} else if (PageHWPoison(page)) {
++		/*
++		 * hwpoisoned dirty swapcache pages are kept for killing
++		 * owner processes (which may be unknown at hwpoison time)
++		 */
+ 		ret = VM_FAULT_HWPOISON;
+ 		delayacct_clear_flag(DELAYACCT_PF_SWAPIN);
+ 		goto out_release;
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index e5a7b49..3b46d4d 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -5082,3 +5082,24 @@ __offline_isolated_pages(unsigned long start_pfn, unsigned long end_pfn)
+ 	spin_unlock_irqrestore(&zone->lock, flags);
+ }
+ #endif
++
++#ifdef CONFIG_MEMORY_FAILURE
++bool is_free_buddy_page(struct page *page)
++{
++	struct zone *zone = page_zone(page);
++	unsigned long pfn = page_to_pfn(page);
++	unsigned long flags;
++	int order;
++
++	spin_lock_irqsave(&zone->lock, flags);
++	for (order = 0; order < MAX_ORDER; order++) {
++		struct page *page_head = page - (pfn & ((1 << order) - 1));
++
++		if (PageBuddy(page_head) && page_order(page_head) >= order)
++			break;
++	}
++	spin_unlock_irqrestore(&zone->lock, flags);
++
++	return order < MAX_ORDER;
++}
++#endif

@@ -1,0 +1,39 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Thu, 10 Dec 2009 15:39:51 -0500
+Subject: [Fedora] perf: Don't free perf_mmap_data until work has been done
+perf-dont-free-perf_mmap_data-until-work-has-been-done.patch, 2.6.32-8.fc13 reference
+
+In the CONFIG_PERF_USE_VMALLOC case, perf_mmap_data_free() only
+schedules the cleanup of the perf_mmap_data struct.  In that case
+we have to wait until the work has been done before we free data.
+
+Signed-off-by: Kristian Høgsberg <krh@bitplanet.net>
+
+diff --git a/kernel/perf_event.c b/kernel/perf_event.c
+index 7f29643..f1854b9 100644
+--- a/kernel/perf_event.c
++++ b/kernel/perf_event.c
+@@ -2174,6 +2174,7 @@ static void perf_mmap_data_free(struct perf_mmap_data *data)
+ 	perf_mmap_free_page((unsigned long)data->user_page);
+ 	for (i = 0; i < data->nr_pages; i++)
+ 		perf_mmap_free_page((unsigned long)data->data_pages[i]);
++	kfree(data);
+ }
+ 
+ #else
+@@ -2214,6 +2215,7 @@ static void perf_mmap_data_free_work(struct work_struct *work)
+ 		perf_mmap_unmark_page(base + (i * PAGE_SIZE));
+ 
+ 	vfree(base);
++	kfree(data);
+ }
+ 
+ static void perf_mmap_data_free(struct perf_mmap_data *data)
+@@ -2319,7 +2321,6 @@ static void perf_mmap_data_free_rcu(struct rcu_head *rcu_head)
+ 
+ 	data = container_of(rcu_head, struct perf_mmap_data, rcu_head);
+ 	perf_mmap_data_free(data);
+-	kfree(data);
+ }
+ 
+ static void perf_mmap_data_release(struct perf_event *event)

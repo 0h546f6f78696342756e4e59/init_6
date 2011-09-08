@@ -1,0 +1,59 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 18 Jan 2010 13:32:10 -0500
+Subject: [nfs] sunrpc: fix peername failed on closed listener
+Message-id: <4B5462DA.3010301@RedHat.com>
+Patchwork-id: 22622
+O-Subject: [RHEL6] [PATCH 2/7] NFS server and client 2.6.33 bugfixes.
+Bugzilla: 437715
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit b292cf9ce70d221c3f04ff62db5ab13d9a249ca8
+Author: Xiaotian Feng <dfeng@redhat.com>
+Date:   Thu Dec 31 10:52:36 2009 +0800
+
+    sunrpc: fix peername failed on closed listener
+
+    There're some warnings of "nfsd: peername failed (err 107)!"
+    socket error -107 means Transport endpoint is not connected.
+    This warning message was outputed by svc_tcp_accept() [net/sunrpc/svcsock.c],
+    when kernel_getpeername returns -107. This means socket might be CLOSED.
+
+    And svc_tcp_accept was called by svc_recv() [net/sunrpc/svc_xprt.c]
+
+            if (test_bit(XPT_LISTENER, &xprt->xpt_flags)) {
+            <snip>
+                    newxpt = xprt->xpt_ops->xpo_accept(xprt);
+            <snip>
+
+    So this might happen when xprt->xpt_flags has both XPT_LISTENER and XPT_CLOSE.
+
+    Let's take a look at commit b0401d72, this commit has moved the close
+    processing after do recvfrom method, but this commit also introduces this
+    warnings, if the xpt_flags has both XPT_LISTENER and XPT_CLOSED, we should
+    close it, not accpet then close.
+
+    Signed-off-by: Xiaotian Feng <dfeng@redhat.com>
+    Cc: J. Bruce Fields <bfields@fieldses.org>
+    Cc: Neil Brown <neilb@suse.de>
+    Cc: Trond Myklebust <Trond.Myklebust@netapp.com>
+    Cc: David S. Miller <davem@davemloft.net>
+    Cc: stable@kernel.org
+    Signed-off-by: J. Bruce Fields <bfields@citi.umich.edu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/net/sunrpc/svc_xprt.c b/net/sunrpc/svc_xprt.c
+index 2c58b75..810ffe8 100644
+--- a/net/sunrpc/svc_xprt.c
++++ b/net/sunrpc/svc_xprt.c
+@@ -699,7 +699,8 @@ int svc_recv(struct svc_rqst *rqstp, long timeout)
+ 	spin_unlock_bh(&pool->sp_lock);
+ 
+ 	len = 0;
+-	if (test_bit(XPT_LISTENER, &xprt->xpt_flags)) {
++	if (test_bit(XPT_LISTENER, &xprt->xpt_flags) &&
++	    !test_bit(XPT_CLOSE, &xprt->xpt_flags)) {
+ 		struct svc_xprt *newxpt;
+ 		newxpt = xprt->xpt_ops->xpo_accept(xprt);
+ 		if (newxpt) {

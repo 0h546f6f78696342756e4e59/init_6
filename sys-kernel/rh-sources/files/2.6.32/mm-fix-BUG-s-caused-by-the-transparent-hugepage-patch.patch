@@ -1,0 +1,79 @@
+From: Larry Woodman <lwoodman@redhat.com>
+Date: Thu, 11 Feb 2010 21:00:03 -0500
+Subject: [mm] fix BUG()s caused by the transparent hugepage patch
+Message-id: <1265922003.3221.3.camel@dhcp-100-19-198.bos.redhat.com>
+Patchwork-id: 23240
+O-Subject: [RHEL6 Patch] fix BUG()s caused by the transparent hugepage patch.
+Bugzilla: 556572
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+We encountered BUG()s on rhts running the Transparent Hugepage support
+patch.  The problem is pmd_trans_splitting() can be called in 2 places
+on non-x86_64 architectures(x86 and PPC64), yet its defined to call
+BUG() if CONFIG_TRANSPARENT_HUGEPAGE was not set in the config file in
+include/asm-generic/pgtable.h:
+
+#ifndef CONFIG_TRANSPARENT_HUGEPAGE
+...
+#define pmd_trans_splitting(pmd) ({ BUG(); 0; })
+...
+#endif
+
+and CONFIG_TRANSPARENT_HUGEPAGE is set only for x86_64 in mm/Kconfig.
+
+------------------------------------------------
+config TRANSPARENT_HUGEPAGE
+        bool "Transparent Hugepage support" if EMBEDDED
+        depends on X86_64
+        default y
+        help
+          Transparent Hugepages allows the kernel to use huge pages and
+          huge tlb transparently to the applications whenever possible.
+          This feature can improve computing performance to certain
+          applications by speeding up page faults during memory
+          allocation, by reducing the number of tlb misses and by
+speeding
+          up the pagetable walking.
+
+          If memory constrained on embedded, you may want to say N.
+
+The problematic calls to pmd_trans_splitting() are:
+
+1.) in arch/x86/mm/gup.c:gup_pmd_range() when the PMD has not been
+established on x86 since the code is shared with x86_64 and it also
+supports hugetlbfs.
+
+                if (pmd_none(pmd) || pmd_trans_splitting(pmd))
+                        return 0;
+
+2.) in mm/memory.c:__pte_alloc() on PPC64(and any other arch) when
+racing between threads of a multi-threaded processes results in calling
+pmd_trans_splitting() on one thread because the PMD already being
+established.
+
+        if (likely(pmd_none(*pmd))) {   /* Has another populated it ? */
+                mm->nr_ptes++;
+                pmd_populate(mm, pmd, new);
+                new = NULL;
+        } else if (unlikely(pmd_trans_splitting(*pmd)))
+                wait_split_huge_page = 1;
+
+The fix for this problem is to eliminate that BUG() in
+pmd_trans_splitting() since its legally used on other architectures and
+its protected by other VM_BUG_ON() and BUG() checks anyway.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/asm-generic/pgtable.h b/include/asm-generic/pgtable.h
+index f998eb0..b3510b6 100644
+--- a/include/asm-generic/pgtable.h
++++ b/include/asm-generic/pgtable.h
+@@ -468,7 +468,7 @@ extern void untrack_pfn_vma(struct vm_area_struct *vma, unsigned long pfn,
+ 
+ #ifndef CONFIG_TRANSPARENT_HUGEPAGE
+ #define pmd_trans_huge(pmd) 0
+-#define pmd_trans_splitting(pmd) ({ BUG(); 0; })
++#define pmd_trans_splitting(pmd) (0)
+ #ifndef __HAVE_ARCH_PMD_WRITE
+ #define pmd_write(pmd)	({ BUG(); 0; })
+ #endif /* __HAVE_ARCH_PMD_WRITE */

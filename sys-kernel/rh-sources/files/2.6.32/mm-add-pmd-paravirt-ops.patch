@@ -1,0 +1,107 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:04 -0500
+Subject: [mm] add pmd paravirt ops
+Message-id: <20100201152037.036342384@redhat.com>
+Patchwork-id: 23020
+O-Subject: [RHEL6 07/37] add pmd paravirt ops
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Paravirt ops pmd_update/pmd_update_defer/pmd_set_at. Not all might be necessary
+(vmware needs pmd_update, Xen needs set_pmd_at, nobody needs pmd_update_defer),
+but this is to keep full simmetry with pte paravirt ops, which looks cleaner
+and simpler from a common code POV.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Mel Gorman <mel@csn.ul.ie>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/paravirt.h b/arch/x86/include/asm/paravirt.h
+index 7b8e36d..6b3a9f1 100644
+--- a/arch/x86/include/asm/paravirt.h
++++ b/arch/x86/include/asm/paravirt.h
+@@ -455,6 +455,11 @@ static inline void pte_update(struct mm_struct *mm, unsigned long addr,
+ {
+ 	PVOP_VCALL3(pv_mmu_ops.pte_update, mm, addr, ptep);
+ }
++static inline void pmd_update(struct mm_struct *mm, unsigned long addr,
++			      pmd_t *pmdp)
++{
++	PVOP_VCALL3(pv_mmu_ops.pmd_update, mm, addr, pmdp);
++}
+ 
+ static inline void pte_update_defer(struct mm_struct *mm, unsigned long addr,
+ 				    pte_t *ptep)
+@@ -462,6 +467,12 @@ static inline void pte_update_defer(struct mm_struct *mm, unsigned long addr,
+ 	PVOP_VCALL3(pv_mmu_ops.pte_update_defer, mm, addr, ptep);
+ }
+ 
++static inline void pmd_update_defer(struct mm_struct *mm, unsigned long addr,
++				    pmd_t *pmdp)
++{
++	PVOP_VCALL3(pv_mmu_ops.pmd_update_defer, mm, addr, pmdp);
++}
++
+ static inline pte_t __pte(pteval_t val)
+ {
+ 	pteval_t ret;
+@@ -563,6 +574,18 @@ static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
+ 		PVOP_VCALL4(pv_mmu_ops.set_pte_at, mm, addr, ptep, pte.pte);
+ }
+ 
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++static inline void set_pmd_at(struct mm_struct *mm, unsigned long addr,
++			      pmd_t *pmdp, pmd_t pmd)
++{
++	if (sizeof(pmdval_t) > sizeof(long))
++		/* 5 arg words */
++		pv_mmu_ops.set_pmd_at(mm, addr, pmdp, pmd);
++	else
++		PVOP_VCALL4(pv_mmu_ops.set_pmd_at, mm, addr, pmdp, pmd.pmd);
++}
++#endif
++
+ static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
+ {
+ 	pmdval_t val = native_pmd_val(pmd);
+diff --git a/arch/x86/include/asm/paravirt_types.h b/arch/x86/include/asm/paravirt_types.h
+index dff6d04..190d4bc 100644
+--- a/arch/x86/include/asm/paravirt_types.h
++++ b/arch/x86/include/asm/paravirt_types.h
+@@ -269,10 +269,16 @@ struct pv_mmu_ops {
+ 	void (*set_pte_at)(struct mm_struct *mm, unsigned long addr,
+ 			   pte_t *ptep, pte_t pteval);
+ 	void (*set_pmd)(pmd_t *pmdp, pmd_t pmdval);
++	void (*set_pmd_at)(struct mm_struct *mm, unsigned long addr,
++			   pmd_t *pmdp, pmd_t pmdval);
+ 	void (*pte_update)(struct mm_struct *mm, unsigned long addr,
+ 			   pte_t *ptep);
+ 	void (*pte_update_defer)(struct mm_struct *mm,
+ 				 unsigned long addr, pte_t *ptep);
++	void (*pmd_update)(struct mm_struct *mm, unsigned long addr,
++			   pmd_t *pmdp);
++	void (*pmd_update_defer)(struct mm_struct *mm,
++				 unsigned long addr, pmd_t *pmdp);
+ 
+ 	pte_t (*ptep_modify_prot_start)(struct mm_struct *mm, unsigned long addr,
+ 					pte_t *ptep);
+diff --git a/arch/x86/kernel/paravirt.c b/arch/x86/kernel/paravirt.c
+index c2dda16..a4eb30c 100644
+--- a/arch/x86/kernel/paravirt.c
++++ b/arch/x86/kernel/paravirt.c
+@@ -425,8 +425,11 @@ struct pv_mmu_ops pv_mmu_ops = {
+ 	.set_pte = native_set_pte,
+ 	.set_pte_at = native_set_pte_at,
+ 	.set_pmd = native_set_pmd,
++	.set_pmd_at = native_set_pmd_at,
+ 	.pte_update = paravirt_nop,
+ 	.pte_update_defer = paravirt_nop,
++	.pmd_update = paravirt_nop,
++	.pmd_update_defer = paravirt_nop,
+ 
+ 	.ptep_modify_prot_start = __ptep_modify_prot_start,
+ 	.ptep_modify_prot_commit = __ptep_modify_prot_commit,

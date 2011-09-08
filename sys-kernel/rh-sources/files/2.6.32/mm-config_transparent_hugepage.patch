@@ -1,0 +1,41 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:08 -0500
+Subject: [mm] config_transparent_hugepage
+Message-id: <20100201152037.681871227@redhat.com>
+Patchwork-id: 23022
+O-Subject: [RHEL6 11/37] config_transparent_hugepage
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Add config option.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Mel Gorman <mel@csn.ul.ie>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/Kconfig b/mm/Kconfig
+index ee9f3e0..aeab17e 100644
+--- a/mm/Kconfig
++++ b/mm/Kconfig
+@@ -283,3 +283,17 @@ config NOMMU_INITIAL_TRIM_EXCESS
+ 	  of 1 says that all excess pages should be trimmed.
+ 
+ 	  See Documentation/nommu-mmap.txt for more information.
++
++config TRANSPARENT_HUGEPAGE
++	bool "Transparent Hugepage support" if EMBEDDED
++	depends on X86_64
++	default y
++	help
++	  Transparent Hugepages allows the kernel to use huge pages and
++	  huge tlb transparently to the applications whenever possible.
++	  This feature can improve computing performance to certain
++	  applications by speeding up page faults during memory
++	  allocation, by reducing the number of tlb misses and by speeding
++	  up the pagetable walking.
++
++	  If memory constrained on embedded, you may want to say N.

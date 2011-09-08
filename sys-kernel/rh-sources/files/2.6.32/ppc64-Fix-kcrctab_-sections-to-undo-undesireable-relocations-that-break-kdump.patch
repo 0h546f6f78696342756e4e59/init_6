@@ -1,0 +1,150 @@
+From: Neil Horman <nhorman@redhat.com>
+Date: Tue, 24 Nov 2009 16:27:39 -0500
+Subject: [ppc64] Fix kcrctab_ sections to undo undesireable relocations that break kdump
+Message-id: <20091124174546.GC32391@hmsreliant.think-freely.org>
+Patchwork-id: 21480
+O-Subject: Re: [RHEL 6 PATCH] ppc64: Fix kcrctab_* sections to undo
+	undesireable relocations that break kdump (bz 509012)
+Bugzilla: 509012
+
+Ok, This is going to be a bit long. Please feel free to skip to the end and
+procede to do what you will with this, but I think some explination is in order
+here, partially because I think its important to fully understand what we're
+trying to do here, but mostly because this bug has been an plague on my life for
+the last several weeks from which there has been no escape, and I want you all
+to appreciate the pain that this bug was :)
+
+So, I suppose it goes without saying, kdump was broken.  Specifically it was
+broken on ppc64 iseries systems.  The kernel would boot when we paniced, but
+module installs would all fail with ENOEXEC errnos returned from the load_module
+call.  I had tracked it down to a corrupted crc on one of the symbols the module
+was trying to resolve during load (as part of the modversion checking).  Looking
+closer we found:
+
+1) it was the crc table in the monolithic part of the kernel that was corrupt
+2) the crcs were all wrong in the crc table (the __kcrctab section)
+3) they weren't so much corrupt, but offset, i.e. all had a value added to them
+
+The offset value in all of the crcs was suspiciously equal to the load location
+that we specified in the crashkernel line.  i.e. a crashkernel=256M@35M led to
+each crc having 0x2300000 (35*1024*1024) added to it.
+
+As it happens, ppc64 implements CONFIG_RELOCATABLE differently than most other
+arches.  Unlike other arches, ppc64 uses the relocation sections emitted by the
+compiler when relocating the kernel.  While this is fine for most cases, the
+mechanism by which we implement CONFIG_MODVERSIONS doesn't really play well with
+the ppc64 RELOCATABLE implementation.  For each exported symbol,
+CONFIG_MODVERSIONS creates 2 symbols, __crc_##sym which is declared extern, and
+__kcrctab_##sym which is set equal to &__crc_##sym.  After the object file is
+built, genksyms is run on the corresponding source, which generates a linker
+script that defines all the __crc_##sym values for that file and assigns their
+address value to be the value of the crc for that symbol.  In that way, when we
+search the __kcrctab section for the above __kcrctab_##sym, the address they
+point to will be the crc of that symbol.  Unfortunately, because we are using
+the & operator, the compiler emits a relocation entry for the corresponding
+__kcrctab_##sym value, and so when we load a kdump kernel, the relocation code
+in ppc64 reloc_64.S adds the offset that we load the kdump kernel at to each
+__kcrctab_##sym symbol, and all our crcs go wrong.
+
+So, what to do about this.  Below is the solution I've come up with.  I realize
+it might be sub-optimal, but from what I've been able to tell, I'm fairly
+confident theres not a better way, at least not one that doesn't involve a major
+change to how CONFIG_MODVERSIONS works or how ppc64's CONFIG_RELOCATABLE is
+implemented, neither of which I think is wise at this development stage in
+RHEL6.  The patch below defines a symbol (reloc_start) at address 0 in the ppc64 kernel linker
+script and a arch specific define ARCH_USES_RELOC_ENTRIES.  Then in module.c if
+ARCH_USES_RELOC_ENTRIES is defined we 'adjust' all the crc pointers in the
+appropriate sections.  Because of the linker script, the &reloc_start is the
+offset that the relocation resolves to (0 in the normal kernel, or the actual
+offset of the kdump kernel otherwise).  When ARCH_USES_RELOC_ENTRIES is defined
+(currently only for ppc64) we do an early_initcall to adjust these crcs prior to
+having any modules get loaded.
+
+I've tested this fix on ibm-squad2-lp2.rhts.bos.redhat.com and I've confirmed
+that its produced a vmcore successfully.
+
+This needs to go upstream, but I'm posting it here first because this is
+blocking QA at the moment, and I think we need to handle that first.  If the
+upstream solution changes, I'll backport and back this out.  But I wrote this so
+that it would only affect the ppc64 kernel, so I think its reasonably safe.
+
+Fixes bz 509012
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/powerpc/include/asm/local.h b/arch/powerpc/include/asm/local.h
+index 84b457a..0b89933 100644
+--- a/arch/powerpc/include/asm/local.h
++++ b/arch/powerpc/include/asm/local.h
+@@ -4,6 +4,10 @@
+ #include <linux/percpu.h>
+ #include <asm/atomic.h>
+ 
++#define ARCH_USES_RELOC_ENTRIES
++
++extern unsigned long reloc_start;
++
+ typedef struct
+ {
+ 	atomic_long_t a;
+diff --git a/arch/powerpc/kernel/vmlinux.lds.S b/arch/powerpc/kernel/vmlinux.lds.S
+index 27735a7..b093b9c 100644
+--- a/arch/powerpc/kernel/vmlinux.lds.S
++++ b/arch/powerpc/kernel/vmlinux.lds.S
+@@ -38,6 +38,9 @@ jiffies = jiffies_64 + 4;
+ #endif
+ SECTIONS
+ {
++	. = 0;
++	reloc_start = .;
++	. = 0;
+ 	. = KERNELBASE;
+ 
+ /*
+diff --git a/kernel/module.c b/kernel/module.c
+index 5842a71..7560298 100644
+--- a/kernel/module.c
++++ b/kernel/module.c
+@@ -181,8 +181,11 @@ extern const struct kernel_symbol __stop___ksymtab_gpl_future[];
+ extern const struct kernel_symbol __start___ksymtab_gpl_future[];
+ extern const struct kernel_symbol __stop___ksymtab_gpl_future[];
+ extern const unsigned long __start___kcrctab[];
++extern const unsigned long __stop___kcrctab[];
+ extern const unsigned long __start___kcrctab_gpl[];
++extern const unsigned long __stop___kcrctab_gpl[];
+ extern const unsigned long __start___kcrctab_gpl_future[];
++extern const unsigned long __stop___kcrctab_gpl_future[];
+ #ifdef CONFIG_UNUSED_SYMBOLS
+ extern const struct kernel_symbol __start___ksymtab_unused[];
+ extern const struct kernel_symbol __stop___ksymtab_unused[];
+@@ -3147,3 +3150,30 @@ int module_get_iter_tracepoints(struct tracepoint_iter *iter)
+ 	return found;
+ }
+ #endif
++
++#ifdef ARCH_USES_RELOC_ENTRIES
++static __init int adjust_kcrctab(void)
++{
++	int i;
++	int count;
++	unsigned long  *crc ;
++
++	count = __stop___kcrctab - __start___kcrctab;
++	crc = (unsigned long *)__start___kcrctab;
++	for (i = 0; i < count; i++) {
++		crc[i] -= (unsigned long)&reloc_start;
++	}
++	count = __stop___kcrctab_gpl - __start___kcrctab_gpl;
++	crc = (unsigned long *)__start___kcrctab_gpl;
++	for (i = 0; i < count; i++) {
++		crc[i] -= (unsigned long)&reloc_start;
++	}
++	count = __stop___kcrctab_gpl_future - __start___kcrctab_gpl_future;
++	crc = (unsigned long *)__start___kcrctab_gpl_future;
++	for (i = 0; i< count; i++) {
++                crc[i] -= (unsigned long)&reloc_start;
++	}
++	return 0;
++}
++early_initcall(adjust_kcrctab);
++#endif

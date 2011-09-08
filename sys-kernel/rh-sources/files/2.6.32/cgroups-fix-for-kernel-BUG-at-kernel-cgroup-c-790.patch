@@ -1,0 +1,65 @@
+From: Dave Anderson <anderson@redhat.com>
+Date: Tue, 5 Jan 2010 17:08:24 -0500
+Subject: [cgroups] fix for "kernel BUG at kernel/cgroup.c:790"
+Message-id: <2144082585.2407601262711304815.JavaMail.root@zmail05.collab.prod.int.phx2.redhat.com>
+Patchwork-id: 22313
+O-Subject: [RHEL6 PATCH] cgroups regression: fix for "kernel BUG at
+	kernel/cgroup.c:790"
+Bugzilla: 547815
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+BZ #547815 - kernel BUG at kernel/cgroup.c:790
+https://bugzilla.redhat.com/show_bug.cgi?id=547815
+
+Description:
+
+  A 2.6.31-to-2.6.32 regression causes the LTP cgroup test suite
+  to generate a "kernel BUG at kernel/cgroup.c:790!" here:
+
+          /*
+           * if we're getting rid of the cgroup, refcount should ensure
+           * that there are no pidlists left.
+           */
+          BUG_ON(!list_empty(&cgrp->pidlists));
+
+  The cgroup pidlist rework in 2.6.32 leads to the BUG_ON(), which happens when
+  pidlist_array_load() calls cgroup_pidlist_find() to look for a pre-exiting
+  cgroup_pidlist.  If cgroup_pidlist_find() cannot find a matching entry, a new
+  cgroup_pidlist is allocated, and its use_count is set to 0.  But if a matching
+  cgroup_pidlist is found -- meaning that the cgroup directory file is
+  concurrently open by another task -- then that cgroup_pidlist's use_count gets
+  incremented.  Then the new or matching cgroup_pidlist is returned back to
+  pidlist_array_load(), where the cgroup_pidlist's use_count is incremented
+  regardless whether it's new or pre-existing, resulting in a double-increment
+  for pre-existing cgroup_pidlists.  This in turn prevents the cgroup_pidlist
+  from ever getting released by cgroup_release_pid_array().  Then when/if the
+  directory is subsquently removed, cgroup_diput() hits the BUG_ON() above when
+  it finds that the directory's cgroup is still populated with a cgroup_pidlist.
+
+  The patch simply removes the use_count increment when a matching cgroup_pidlist
+  is found by cgroup_pidlist_find().
+
+Test status:
+
+  Tested w/LTP cgroups test suite.
+
+Upstream status:
+
+  I posted the patch to LKML on 12/23:  http://lkml.org/lkml/2009/12/23/199
+  It was ACK'd by the cgroup's maintainers and has been added to the -mm tree.
+
+Signed-off-by: Dave Anderson <anderson@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/cgroup.c b/kernel/cgroup.c
+index 0249f4b..1fbcc74 100644
+--- a/kernel/cgroup.c
++++ b/kernel/cgroup.c
+@@ -2468,7 +2468,6 @@ static struct cgroup_pidlist *cgroup_pidlist_find(struct cgroup *cgrp,
+ 			/* make sure l doesn't vanish out from under us */
+ 			down_write(&l->mutex);
+ 			mutex_unlock(&cgrp->pidlist_mutex);
+-			l->use_count++;
+ 			return l;
+ 		}
+ 	}

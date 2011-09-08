@@ -1,0 +1,178 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 29 Jan 2010 09:34:38 -0500
+Subject: [s390x] cio: channel path vary operation has no effect
+Message-id: <1264757680-32133-2-git-send-email-brueckner@redhat.com>
+Patchwork-id: 22999
+O-Subject: [RHEL6 PATCH 1/3] [s390] cio: channel path vary operation has no
+	effect
+Bugzilla: 559612
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+Linux still uses channel paths which are varied offline by the
+"chchp -v 0" command, because the path masks which are changed by
+"chchp -v 0" are reset when internal I/O is performed.
+
+To solve this problem, prevent internal I/Os from resetting the
+vary path mask.
+
+Bugzilla
+--------
+BZ 559612
+https://bugzilla.redhat.com/show_bug.cgi?id=559612
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=d302e1a5dbe1677a495033a2d310656a55139cdf
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/cio/ccwreq.c b/drivers/s390/cio/ccwreq.c
+index 9509e38..7a28a30 100644
+--- a/drivers/s390/cio/ccwreq.c
++++ b/drivers/s390/cio/ccwreq.c
+@@ -49,7 +49,6 @@ static u16 ccwreq_next_path(struct ccw_device *cdev)
+  */
+ static void ccwreq_stop(struct ccw_device *cdev, int rc)
+ {
+-	struct subchannel *sch = to_subchannel(cdev->dev.parent);
+ 	struct ccw_request *req = &cdev->private->req;
+ 
+ 	if (req->done)
+@@ -57,7 +56,6 @@ static void ccwreq_stop(struct ccw_device *cdev, int rc)
+ 	req->done = 1;
+ 	ccw_device_set_timeout(cdev, 0);
+ 	memset(&cdev->private->irb, 0, sizeof(struct irb));
+-	sch->lpm = sch->schib.pmcw.pam;
+ 	if (rc && rc != -ENODEV && req->drc)
+ 		rc = req->drc;
+ 	req->callback(cdev, req->data, rc);
+@@ -80,7 +78,6 @@ static void ccwreq_do(struct ccw_device *cdev)
+ 			continue;
+ 		}
+ 		/* Perform start function. */
+-		sch->lpm = 0xff;
+ 		memset(&cdev->private->irb, 0, sizeof(struct irb));
+ 		rc = cio_start(sch, cp, (u8) req->mask);
+ 		if (rc == 0) {
+diff --git a/drivers/s390/cio/device_pgid.c b/drivers/s390/cio/device_pgid.c
+index aad188e..6facb54 100644
+--- a/drivers/s390/cio/device_pgid.c
++++ b/drivers/s390/cio/device_pgid.c
+@@ -142,7 +142,7 @@ static void spid_do(struct ccw_device *cdev)
+ 	u8 fn;
+ 
+ 	/* Use next available path that is not already in correct state. */
+-	req->lpm = lpm_adjust(req->lpm, sch->schib.pmcw.pam & ~sch->vpm);
++	req->lpm = lpm_adjust(req->lpm, cdev->private->pgid_todo_mask);
+ 	if (!req->lpm)
+ 		goto out_nopath;
+ 	/* Channel program setup. */
+@@ -254,15 +254,15 @@ static void pgid_analyze(struct ccw_device *cdev, struct pgid **p,
+ 	*p = first;
+ }
+ 
+-static u8 pgid_to_vpm(struct ccw_device *cdev)
++static u8 pgid_to_donepm(struct ccw_device *cdev)
+ {
+ 	struct subchannel *sch = to_subchannel(cdev->dev.parent);
+ 	struct pgid *pgid;
+ 	int i;
+ 	int lpm;
+-	u8 vpm = 0;
++	u8 donepm = 0;
+ 
+-	/* Set VPM bits for paths which are already in the target state. */
++	/* Set bits for paths which are already in the target state. */
+ 	for (i = 0; i < 8; i++) {
+ 		lpm = 0x80 >> i;
+ 		if ((cdev->private->pgid_valid_mask & lpm) == 0)
+@@ -282,10 +282,10 @@ static u8 pgid_to_vpm(struct ccw_device *cdev)
+ 			if (pgid->inf.ps.state3 != SNID_STATE3_SINGLE_PATH)
+ 				continue;
+ 		}
+-		vpm |= lpm;
++		donepm |= lpm;
+ 	}
+ 
+-	return vpm;
++	return donepm;
+ }
+ 
+ static void pgid_fill(struct ccw_device *cdev, struct pgid *pgid)
+@@ -307,6 +307,7 @@ static void snid_done(struct ccw_device *cdev, int rc)
+ 	int mismatch = 0;
+ 	int reserved = 0;
+ 	int reset = 0;
++	u8 donepm;
+ 
+ 	if (rc)
+ 		goto out;
+@@ -316,18 +317,20 @@ static void snid_done(struct ccw_device *cdev, int rc)
+ 	else if (mismatch)
+ 		rc = -EOPNOTSUPP;
+ 	else {
+-		sch->vpm = pgid_to_vpm(cdev);
++		donepm = pgid_to_donepm(cdev);
++		sch->vpm = donepm & sch->opm;
++		cdev->private->pgid_todo_mask &= ~donepm;
+ 		pgid_fill(cdev, pgid);
+ 	}
+ out:
+ 	CIO_MSG_EVENT(2, "snid: device 0.%x.%04x: rc=%d pvm=%02x vpm=%02x "
+-		      "mism=%d rsvd=%d reset=%d\n", id->ssid, id->devno, rc,
+-		      cdev->private->pgid_valid_mask, sch->vpm, mismatch,
+-		      reserved, reset);
++		      "todo=%02x mism=%d rsvd=%d reset=%d\n", id->ssid,
++		      id->devno, rc, cdev->private->pgid_valid_mask, sch->vpm,
++		      cdev->private->pgid_todo_mask, mismatch, reserved, reset);
+ 	switch (rc) {
+ 	case 0:
+ 		/* Anything left to do? */
+-		if (sch->vpm == sch->schib.pmcw.pam) {
++		if (cdev->private->pgid_todo_mask == 0) {
+ 			verify_done(cdev, sch->vpm == 0 ? -EACCES : 0);
+ 			return;
+ 		}
+@@ -411,6 +414,7 @@ static void verify_start(struct ccw_device *cdev)
+ 	struct ccw_dev_id *devid = &cdev->private->dev_id;
+ 
+ 	sch->vpm = 0;
++	sch->lpm = sch->schib.pmcw.pam;
+ 	/* Initialize request data. */
+ 	memset(req, 0, sizeof(*req));
+ 	req->timeout	= PGID_TIMEOUT;
+@@ -442,11 +446,14 @@ static void verify_start(struct ccw_device *cdev)
+  */
+ void ccw_device_verify_start(struct ccw_device *cdev)
+ {
++	struct subchannel *sch = to_subchannel(cdev->dev.parent);
++
+ 	CIO_TRACE_EVENT(4, "vrfy");
+ 	CIO_HEX_EVENT(4, &cdev->private->dev_id, sizeof(cdev->private->dev_id));
+ 	/* Initialize PGID data. */
+ 	memset(cdev->private->pgid, 0, sizeof(cdev->private->pgid));
+ 	cdev->private->pgid_valid_mask = 0;
++	cdev->private->pgid_todo_mask = sch->schib.pmcw.pam;
+ 	/*
+ 	 * Initialize pathgroup and multipath state with target values.
+ 	 * They may change in the course of path verification.
+diff --git a/drivers/s390/cio/io_sch.h b/drivers/s390/cio/io_sch.h
+index d72ae4c..b9ce712 100644
+--- a/drivers/s390/cio/io_sch.h
++++ b/drivers/s390/cio/io_sch.h
+@@ -150,6 +150,7 @@ struct ccw_device_private {
+ 	struct ccw_request req;		/* internal I/O request */
+ 	int iretry;
+ 	u8 pgid_valid_mask;		/* mask of valid PGIDs */
++	u8 pgid_todo_mask;		/* mask of PGIDs to be adjusted */
+ 	struct {
+ 		unsigned int fast:1;	/* post with "channel end" */
+ 		unsigned int repall:1;	/* report every interrupt status */

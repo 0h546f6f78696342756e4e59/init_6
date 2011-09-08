@@ -1,0 +1,84 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Fri, 15 Jan 2010 21:46:38 -0500
+Subject: [irq] Expose the irq_desc node as /proc/irq/*/node
+Message-id: <20100115213754.26747.81243.sendpatchset@dhcp-100-2-194.bos.redhat.com>
+Patchwork-id: 22584
+O-Subject: [RHEL6 PATCH] Expose the irq_desc node as /proc/irq/*/node
+Bugzilla: 555866
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+BZ555866 Expose the irq_desc node as /proc/irq/*/node.
+
+This patch was accepted by Andrew Morton but did not get pushed to 2.6.33
+in time so SGI is asking for an exception as this is needed to complete
+the FutureFeature BZ464201 IRQ Forwarding.  It is currently in
+http://userweb.kernel.org/~akpm/mmotm/ as
+kernel-irq-procc-expose-the-irq_desc-node-in-proc-irq.patch
+
+This file provides device hardware locality information for apps desiring
+to include hardware locality in irq mapping decisions.
+
+NOTE: this patch does not alter the functioning of the kernel except
+to provide information to user level processes so it is very safe.
+
+The patch applies cleanly and builds against 2.6.32-6.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/Documentation/filesystems/proc.txt b/Documentation/filesystems/proc.txt
+index 2c48f94..ed1cc6e 100644
+--- a/Documentation/filesystems/proc.txt
++++ b/Documentation/filesystems/proc.txt
+@@ -558,6 +558,10 @@ The default_smp_affinity mask applies to all non-active IRQs, which are the
+ IRQs which have not yet been allocated/activated, and hence which lack a
+ /proc/irq/[0-9]* directory.
+ 
++The node file on an SMP system shows the node to which the device using the IRQ
++reports itself as being attached.  This hardware locality information does not
++include information about any possible driver locality preference.
++
+ prof_cpu_mask specifies which CPUs are to be profiled by the system wide
+ profiler. Default value is ffffffff (all cpus).
+ 
+diff --git a/kernel/irq/proc.c b/kernel/irq/proc.c
+index 692363d..48d6f01 100644
+--- a/kernel/irq/proc.c
++++ b/kernel/irq/proc.c
+@@ -146,6 +146,26 @@ static const struct file_operations default_affinity_proc_fops = {
+ 	.release	= single_release,
+ 	.write		= default_affinity_write,
+ };
++
++static int irq_node_proc_show(struct seq_file *m, void *v)
++{
++	struct irq_desc *desc = irq_to_desc((long) m->private);
++
++	seq_printf(m, "%d\n", desc->node);
++	return 0;
++}
++
++static int irq_node_proc_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, irq_node_proc_show, PDE(inode)->data);
++}
++
++static const struct file_operations irq_node_proc_fops = {
++	.open		= irq_node_proc_open,
++	.read		= seq_read,
++	.llseek		= seq_lseek,
++	.release	= single_release,
++};
+ #endif
+ 
+ static int irq_spurious_read(char *page, char **start, off_t off,
+@@ -219,6 +239,9 @@ void register_irq_proc(unsigned int irq, struct irq_desc *desc)
+ 	/* create /proc/irq/<irq>/smp_affinity */
+ 	proc_create_data("smp_affinity", 0600, desc->dir,
+ 			 &irq_affinity_proc_fops, (void *)(long)irq);
++
++	proc_create_data("node", 0444, desc->dir,
++			 &irq_node_proc_fops, (void *)(long)irq);
+ #endif
+ 
+ 	entry = create_proc_entry("spurious", 0444, desc->dir);

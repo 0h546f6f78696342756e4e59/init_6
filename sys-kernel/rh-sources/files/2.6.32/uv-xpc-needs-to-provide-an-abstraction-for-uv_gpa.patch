@@ -1,0 +1,109 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Fri, 18 Dec 2009 22:26:37 -0500
+Subject: [uv] xpc needs to provide an abstraction for uv_gpa
+Message-id: <20091218171256.23145.40294.sendpatchset@localhost.localdomain>
+Patchwork-id: 22195
+O-Subject: [RHEL6 PATCH 1/6] uv: xpc needs to provide an abstraction for uv_gpa
+Bugzilla: 546695
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+commit 682128939f546e3a9cdd9fef392b932dd9c41a65
+Author: Robin Holt <holt@sgi.com>
+Date:   Tue Dec 15 16:47:53 2009 -0800
+
+    x86: uv: xpc needs to provide an abstraction for uv_gpa
+
+    Provide an SGI SN2/UV agnositic method for converting a global physical
+    address into a socket physical address.
+
+    Signed-off-by: Robin Holt <holt@sgi.com>
+    Cc: Jack Steiner <steiner@sgi.com>
+    Cc: Ingo Molnar <mingo@elte.hu>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/misc/sgi-xp/xp.h b/drivers/misc/sgi-xp/xp.h
+index 2275126..851b2f2 100644
+--- a/drivers/misc/sgi-xp/xp.h
++++ b/drivers/misc/sgi-xp/xp.h
+@@ -339,6 +339,7 @@ extern short xp_partition_id;
+ extern u8 xp_region_size;
+ 
+ extern unsigned long (*xp_pa) (void *);
++extern unsigned long (*xp_socket_pa) (unsigned long);
+ extern enum xp_retval (*xp_remote_memcpy) (unsigned long, const unsigned long,
+ 		       size_t);
+ extern int (*xp_cpu_to_nasid) (int);
+diff --git a/drivers/misc/sgi-xp/xp_main.c b/drivers/misc/sgi-xp/xp_main.c
+index 7896849..01be66d 100644
+--- a/drivers/misc/sgi-xp/xp_main.c
++++ b/drivers/misc/sgi-xp/xp_main.c
+@@ -44,6 +44,9 @@ EXPORT_SYMBOL_GPL(xp_region_size);
+ unsigned long (*xp_pa) (void *addr);
+ EXPORT_SYMBOL_GPL(xp_pa);
+ 
++unsigned long (*xp_socket_pa) (unsigned long gpa);
++EXPORT_SYMBOL_GPL(xp_socket_pa);
++
+ enum xp_retval (*xp_remote_memcpy) (unsigned long dst_gpa,
+ 				    const unsigned long src_gpa, size_t len);
+ EXPORT_SYMBOL_GPL(xp_remote_memcpy);
+diff --git a/drivers/misc/sgi-xp/xp_sn2.c b/drivers/misc/sgi-xp/xp_sn2.c
+index fb3ec9d..d8e463f 100644
+--- a/drivers/misc/sgi-xp/xp_sn2.c
++++ b/drivers/misc/sgi-xp/xp_sn2.c
+@@ -84,6 +84,15 @@ xp_pa_sn2(void *addr)
+ }
+ 
+ /*
++ * Convert a global physical to a socket physical address.
++ */
++static unsigned long
++xp_socket_pa_sn2(unsigned long gpa)
++{
++	return gpa;
++}
++
++/*
+  * Wrapper for bte_copy().
+  *
+  *	dst_pa - physical address of the destination of the transfer.
+@@ -162,6 +171,7 @@ xp_init_sn2(void)
+ 	xp_region_size = sn_region_size;
+ 
+ 	xp_pa = xp_pa_sn2;
++	xp_socket_pa = xp_socket_pa_sn2;
+ 	xp_remote_memcpy = xp_remote_memcpy_sn2;
+ 	xp_cpu_to_nasid = xp_cpu_to_nasid_sn2;
+ 	xp_expand_memprotect = xp_expand_memprotect_sn2;
+diff --git a/drivers/misc/sgi-xp/xp_uv.c b/drivers/misc/sgi-xp/xp_uv.c
+index d238576..1e61f8a 100644
+--- a/drivers/misc/sgi-xp/xp_uv.c
++++ b/drivers/misc/sgi-xp/xp_uv.c
+@@ -32,6 +32,15 @@ xp_pa_uv(void *addr)
+ 	return uv_gpa(addr);
+ }
+ 
++/*
++ * Convert a global physical to socket physical address.
++ */
++static unsigned long
++xp_socket_pa_uv(unsigned long gpa)
++{
++	return uv_gpa_to_soc_phys_ram(gpa);
++}
++
+ static enum xp_retval
+ xp_remote_memcpy_uv(unsigned long dst_gpa, const unsigned long src_gpa,
+ 		    size_t len)
+@@ -123,6 +132,7 @@ xp_init_uv(void)
+ 	xp_region_size = sn_region_size;
+ 
+ 	xp_pa = xp_pa_uv;
++	xp_socket_pa = xp_socket_pa_uv;
+ 	xp_remote_memcpy = xp_remote_memcpy_uv;
+ 	xp_cpu_to_nasid = xp_cpu_to_nasid_uv;
+ 	xp_expand_memprotect = xp_expand_memprotect_uv;

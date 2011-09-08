@@ -1,0 +1,44 @@
+From: Chris Wright <chrisw@sous-sol.org>
+Date: Mon, 8 Feb 2010 20:27:53 -0500
+Subject: [vhost] vhost-net: comment use of invalid fd when setting vhost backend
+Message-id: <20100208202753.GG17153@redhat.com>
+Patchwork-id: 23202
+O-Subject: [RHEL6 PATCH 6/8] vhost-net: comment use of invalid fd when
+	setting vhost backend
+Bugzilla: 562837
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+BZ#562837
+https://bugzilla.redhat.com/show_bug.cgi?id=562837
+
+Description
+This looks like an error case, but it's just a special case to shutdown
+the backend.  Clarify with a comment.
+
+Signed-off-by: Chris Wright <chrisw@redhat.com>
+
+Upstream Status of the patches
+This has been merged upstream in a single commit
+3a4d5c94e959359ece6d6b55045c3f046677f55c
+
+Brew build#: 2247495
+
+Test Status:
+it has been tested by customers (IBM), and in house on x86 and x86-64
+platforms.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/vhost/net.c b/drivers/vhost/net.c
+index 1aacd8c..51025a1 100644
+--- a/drivers/vhost/net.c
++++ b/drivers/vhost/net.c
+@@ -465,6 +465,7 @@ static struct socket *get_tun_socket(int fd)
+ static struct socket *get_socket(int fd)
+ {
+ 	struct socket *sock;
++	/* special case to disable backend */
+ 	if (fd == -1)
+ 		return NULL;
+ 	sock = get_raw_socket(fd);

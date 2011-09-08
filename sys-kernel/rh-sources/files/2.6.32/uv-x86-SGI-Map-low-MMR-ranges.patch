@@ -1,0 +1,55 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Thu, 17 Dec 2009 18:45:33 -0500
+Subject: [uv] x86 SGI: Map low MMR ranges
+Message-id: <20091217133152.25514.12217.sendpatchset@localhost.localdomain>
+Patchwork-id: 22095
+O-Subject: [RHEL6 PATCH 8/8] x86: SGI UV: Map low MMR ranges
+Bugzilla: 548181
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+commit 918bc960dc630b1a79c0d2991a81985812ff69f5
+Author: Jack Steiner <steiner@sgi.com>
+Date:   Wed Nov 25 10:20:19 2009 -0600
+
+    x86: SGI UV: Map low MMR ranges
+
+    Explicitly mmap the UV chipset MMR address ranges used to
+    access blade-local registers. Although these same MMRs are also
+    mmaped at higher addresses, the low range is more
+    convenient when accessing blade-local registers.
+
+    The low range addresses always alias to the local blade
+    regardless of the blade id.
+
+    Signed-off-by: Jack Steiner <steiner@sgi.com>
+    LKML-Reference: <20091125162018.GA25445@sgi.com>
+    Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/apic/x2apic_uv_x.c b/arch/x86/kernel/apic/x2apic_uv_x.c
+index 326c254..130c4b9 100644
+--- a/arch/x86/kernel/apic/x2apic_uv_x.c
++++ b/arch/x86/kernel/apic/x2apic_uv_x.c
+@@ -409,6 +409,12 @@ static __init void map_mmioh_high(int max_pnode)
+ 		map_high("MMIOH", mmioh.s.base, shift, max_pnode, map_uc);
+ }
+ 
++static __init void map_low_mmrs(void)
++{
++	init_extra_mapping_uc(UV_GLOBAL_MMR32_BASE, UV_GLOBAL_MMR32_SIZE);
++	init_extra_mapping_uc(UV_LOCAL_MMR_BASE, UV_LOCAL_MMR_SIZE);
++}
++
+ static __init void uv_rtc_init(void)
+ {
+ 	long status;
+@@ -550,6 +556,8 @@ void __init uv_system_init(void)
+ 	unsigned long mmr_base, present, paddr;
+ 	unsigned short pnode_mask;
+ 
++	map_low_mmrs();
++
+ 	m_n_config.v = uv_read_local_mmr(UVH_SI_ADDR_MAP_CONFIG);
+ 	m_val = m_n_config.s.m_skt;
+ 	n_val = m_n_config.s.n_skt;

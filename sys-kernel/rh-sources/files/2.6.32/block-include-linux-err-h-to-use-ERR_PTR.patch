@@ -1,0 +1,32 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:31 -0500
+Subject: [block] include linux/err.h to use ERR_PTR
+Message-id: <1260298712-12756-59-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21799
+O-Subject: [RHEL6 PATCH 58/59] block: include linux/err.h to use ERR_PTR
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit accee7854b378a8ab5995d8f5dc5d8abc3b3d23a
+Author: Stephen Rothwell <sfr@canb.auug.org.au>
+Date:   Mon Dec 7 19:29:39 2009 +1100
+
+    block: include linux/err.h to use ERR_PTR
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/blk-cgroup.c b/block/blk-cgroup.c
+index 3ad497f..1fa2654 100644
+--- a/block/blk-cgroup.c
++++ b/block/blk-cgroup.c
+@@ -14,6 +14,7 @@
+ #include <linux/seq_file.h>
+ #include <linux/kdev_t.h>
+ #include <linux/module.h>
++#include <linux/err.h>
+ #include "blk-cgroup.h"
+ 
+ static DEFINE_SPINLOCK(blkio_list_lock);

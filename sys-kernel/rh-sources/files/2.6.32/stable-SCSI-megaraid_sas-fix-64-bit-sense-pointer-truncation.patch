@@ -1,0 +1,51 @@
+From: Yang, Bo <Bo.Yang@lsi.com>
+Date: Tue, 6 Oct 2009 14:52:20 -0600
+Subject: [stable] SCSI: megaraid_sas: fix 64 bit sense pointer truncation
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 7b2519afa1abd1b9f63aa1e90879307842422dae upstream.
+
+The current sense pointer is cast to a u32 pointer, which can truncate
+on 64 bits.  Fix by using unsigned long instead.
+
+Signed-off-by Bo Yang<bo.yang@lsi.com>
+Signed-off-by: James Bottomley <James.Bottomley@suse.de>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/scsi/megaraid/megaraid_sas.c b/drivers/scsi/megaraid/megaraid_sas.c
+index 8a58927..e7220d2 100644
+--- a/drivers/scsi/megaraid/megaraid_sas.c
++++ b/drivers/scsi/megaraid/megaraid_sas.c
+@@ -3036,7 +3036,7 @@ megasas_mgmt_fw_ioctl(struct megasas_instance *instance,
+ 	int error = 0, i;
+ 	void *sense = NULL;
+ 	dma_addr_t sense_handle;
+-	u32 *sense_ptr;
++	unsigned long *sense_ptr;
+ 
+ 	memset(kbuff_arr, 0, sizeof(kbuff_arr));
+ 
+@@ -3113,7 +3113,7 @@ megasas_mgmt_fw_ioctl(struct megasas_instance *instance,
+ 		}
+ 
+ 		sense_ptr =
+-		    (u32 *) ((unsigned long)cmd->frame + ioc->sense_off);
++		(unsigned long *) ((unsigned long)cmd->frame + ioc->sense_off);
+ 		*sense_ptr = sense_handle;
+ 	}
+ 
+@@ -3144,8 +3144,8 @@ megasas_mgmt_fw_ioctl(struct megasas_instance *instance,
+ 		 * sense_ptr points to the location that has the user
+ 		 * sense buffer address
+ 		 */
+-		sense_ptr = (u32 *) ((unsigned long)ioc->frame.raw +
+-				     ioc->sense_off);
++		sense_ptr = (unsigned long *) ((unsigned long)ioc->frame.raw +
++				ioc->sense_off);
+ 
+ 		if (copy_to_user((void __user *)((unsigned long)(*sense_ptr)),
+ 				 sense, ioc->sense_len)) {

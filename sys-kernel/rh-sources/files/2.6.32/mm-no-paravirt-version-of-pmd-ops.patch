@@ -1,0 +1,40 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:05 -0500
+Subject: [mm] no paravirt version of pmd ops
+Message-id: <20100201152037.204425054@redhat.com>
+Patchwork-id: 23026
+O-Subject: [RHEL6 08/37] no paravirt version of pmd ops
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+No paravirt version of set_pmd_at/pmd_update/pmd_update_defer.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Mel Gorman <mel@csn.ul.ie>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/pgtable.h b/arch/x86/include/asm/pgtable.h
+index b9b8154..0e264ec 100644
+--- a/arch/x86/include/asm/pgtable.h
++++ b/arch/x86/include/asm/pgtable.h
+@@ -33,6 +33,7 @@ extern struct list_head pgd_list;
+ #else  /* !CONFIG_PARAVIRT */
+ #define set_pte(ptep, pte)		native_set_pte(ptep, pte)
+ #define set_pte_at(mm, addr, ptep, pte)	native_set_pte_at(mm, addr, ptep, pte)
++#define set_pmd_at(mm, addr, pmdp, pmd)	native_set_pmd_at(mm, addr, pmdp, pmd)
+ 
+ #define set_pte_atomic(ptep, pte)					\
+ 	native_set_pte_atomic(ptep, pte)
+@@ -57,6 +58,8 @@ extern struct list_head pgd_list;
+ 
+ #define pte_update(mm, addr, ptep)              do { } while (0)
+ #define pte_update_defer(mm, addr, ptep)        do { } while (0)
++#define pmd_update(mm, addr, ptep)              do { } while (0)
++#define pmd_update_defer(mm, addr, ptep)        do { } while (0)
+ 
+ #define pgd_val(x)	native_pgd_val(x)
+ #define __pgd(x)	native_make_pgd(x)

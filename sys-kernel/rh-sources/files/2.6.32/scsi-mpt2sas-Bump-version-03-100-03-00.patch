@@ -1,0 +1,30 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Sat, 19 Dec 2009 23:45:21 -0500
+Subject: [scsi] mpt2sas: Bump version 03.100.03.00
+Message-id: <20091219194500.5875.52941.sendpatchset@localhost.localdomain>
+Patchwork-id: 22241
+O-Subject: [RHEL6 20/20] bz478848 mpt2sas: Bump version 03.100.03.00
+Bugzilla: 470848
+RH-Acked-by: Rob Evers <revers@redhat.com>
+
+mpt2sas: Bump version 03.100.03.00
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_base.h b/drivers/scsi/mpt2sas/mpt2sas_base.h
+index eb51fe9..81737f3 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_base.h
++++ b/drivers/scsi/mpt2sas/mpt2sas_base.h
+@@ -69,9 +69,9 @@
+ #define MPT2SAS_DRIVER_NAME		"mpt2sas"
+ #define MPT2SAS_AUTHOR	"LSI Corporation <DL-MPTFusionLinux@lsi.com>"
+ #define MPT2SAS_DESCRIPTION	"LSI MPT Fusion SAS 2.0 Device Driver"
+-#define MPT2SAS_DRIVER_VERSION		"02.100.03.00"
+-#define MPT2SAS_MAJOR_VERSION		02
+-#define MPT2SAS_MINOR_VERSION		100
++#define MPT2SAS_DRIVER_VERSION		"03.101.03.00"
++#define MPT2SAS_MAJOR_VERSION		03
++#define MPT2SAS_MINOR_VERSION		101
+ #define MPT2SAS_BUILD_VERSION		03
+ #define MPT2SAS_RELEASE_VERSION		00
+ 

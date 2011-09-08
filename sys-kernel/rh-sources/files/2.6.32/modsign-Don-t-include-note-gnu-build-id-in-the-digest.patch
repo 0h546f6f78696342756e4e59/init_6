@@ -1,0 +1,56 @@
+From: David Howells <dhowells@redhat.com>
+Date: Wed, 11 Nov 2009 15:47:42 -0500
+Subject: [modsign] Don't include .note.gnu.build-id in the digest
+Message-id: <20091111154742.25423.91709.stgit@warthog.procyon.org.uk>
+Patchwork-id: 21365
+O-Subject: [PATCH 6/7] MODSIGN: Don't include .note.gnu.build-id in the digest
+Bugzilla: 517341
+
+Don't include the .note.gnu.build-id ELF note in the digest as it's altered by debugedit.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/module-verify-sig.c b/kernel/module-verify-sig.c
+index bae26bb..c093a41 100644
+--- a/kernel/module-verify-sig.c
++++ b/kernel/module-verify-sig.c
+@@ -212,6 +212,11 @@ int module_verify_signature(struct module_verify_data *mvdata,
+ 			continue;
+ 		}
+ 
++		/* ignore gcc's build ID section as it seems to get modified by
++		 * the build process */
++		if (strcmp(sh_name, ".note.gnu.build-id") == 0)
++			continue;
++
+ 		/* include allocatable loadable sections */
+ 		if (sh_type != SHT_NOBITS && sh_flags & SHF_ALLOC)
+ 			goto include_section;
+diff --git a/scripts/mod/mod-extract.c b/scripts/mod/mod-extract.c
+index 8b36a11..0922e3a 100644
+--- a/scripts/mod/mod-extract.c
++++ b/scripts/mod/mod-extract.c
+@@ -510,6 +510,11 @@ static void extract_elf64(void *buffer, size_t len, Elf64_Ehdr *hdr)
+ 			continue;
+ 		}
+ 
++		/* ignore gcc's build ID section as it seems to get modified by
++		 * the build process */
++		if (strcmp(sh_name, ".note.gnu.build-id") == 0)
++			continue;
++
+ 		/* include allocatable loadable sections */
+ 		if (sh_type != SHT_NOBITS && sh_flags & SHF_ALLOC)
+ 			goto include_section;
+@@ -861,6 +866,11 @@ static void extract_elf32(void *buffer, size_t len, Elf32_Ehdr *hdr)
+ 			continue;
+ 		}
+ 
++		/* ignore gcc's build ID section as it seems to get modified by
++		 * the build process */
++		if (strcmp(sh_name, ".note.gnu.build-id") == 0)
++			continue;
++
+ 		/* include allocatable loadable sections */
+ 		if (sh_type != SHT_NOBITS && sh_flags & SHF_ALLOC)
+ 			goto include_section;

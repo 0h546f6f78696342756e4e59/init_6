@@ -1,0 +1,42 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 21:03:27 -0500
+Subject: [nfs] nfs41: remove uneeded checks in callback processing
+Message-id: <4B67419F.3080809@RedHat.com>
+Patchwork-id: 23075
+O-Subject: [RHEL6] [PATCH 6/13] nfs41: remove uneeded checks in callback
+	processing
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit a9548c4a64f41419d4b3885792cf1001d6efc38d
+Author: Andy Adamson <andros@netapp.com>
+Date:   Thu Jan 14 17:45:06 2010 -0500
+
+    nfs41: remove uneeded checks in callback processing
+
+    All callback operations have arguments to decode and require processing.
+    The preprocess_nfs4X_op functions catch unsupported or illegal ops so
+    decode_args and process_op pointers are always non NULL.
+
+    Signed-off-by: Andy Adamson <andros@netapp.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/callback_xdr.c b/fs/nfs/callback_xdr.c
+index 11c80a4..18c2d83 100644
+--- a/fs/nfs/callback_xdr.c
++++ b/fs/nfs/callback_xdr.c
+@@ -630,9 +630,8 @@ static __be32 process_op(uint32_t minorversion, int nop,
+ 
+ 	maxlen = xdr_out->end - xdr_out->p;
+ 	if (maxlen > 0 && maxlen < PAGE_SIZE) {
+-		if (likely(op->decode_args != NULL))
+-			status = op->decode_args(rqstp, xdr_in, argp);
+-		if (likely(status == 0 && op->process_op != NULL))
++		status = op->decode_args(rqstp, xdr_in, argp);
++		if (likely(status == 0))
+ 			status = op->process_op(argp, resp);
+ 	} else
+ 		status = htonl(NFS4ERR_RESOURCE);

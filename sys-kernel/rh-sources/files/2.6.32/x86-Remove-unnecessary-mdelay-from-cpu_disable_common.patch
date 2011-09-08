@@ -1,0 +1,46 @@
+From: Peter Bogdanovic <pbogdano@redhat.com>
+Date: Mon, 25 Jan 2010 04:53:19 -0500
+Subject: [x86] Remove unnecessary mdelay() from cpu_disable_common()
+Message-id: <20100125044623.817.97080.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 22789
+O-Subject: [PATCH RHEL6 9/9 BZ 463633] x86: Remove unnecessary mdelay() from
+	cpu_disable_common()
+Bugzilla: 463633
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+x86: Remove unnecessary mdelay() from cpu_disable_common()
+
+6d20792e85187b27ae3d1b76678a2dd7025e8bc2
+
+fixup_irqs() already has a mdelay(). Remove the extra and
+unnecessary mdelay() from cpu_disable_common().
+
+Signed-off-by: Suresh Siddha <suresh.b.siddha@intel.com>
+Cc: Maciej W. Rozycki <macro@linux-mips.org>
+Cc: ebiederm@xmission.com
+Cc: garyhade@us.ibm.com
+LKML-Reference: <20091201233335.232177348@sbs-t61.sc.intel.com>
+Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+diff --git a/arch/x86/kernel/smpboot.c b/arch/x86/kernel/smpboot.c
+index 462d416..dcc38af 100644
+--- a/arch/x86/kernel/smpboot.c
++++ b/arch/x86/kernel/smpboot.c
+@@ -1265,16 +1265,7 @@ static void __ref remove_cpu_from_maps(int cpu)
+ void cpu_disable_common(void)
+ {
+ 	int cpu = smp_processor_id();
+-	/*
+-	 * HACK:
+-	 * Allow any queued timer interrupts to get serviced
+-	 * This is only a temporary solution until we cleanup
+-	 * fixup_irqs as we do for IA64.
+-	 */
+-	local_irq_enable();
+-	mdelay(1);
+ 
+-	local_irq_disable();
+ 	remove_siblinginfo(cpu);
+ 
+ 	/* It's now safe to remove this processor from the online map */

@@ -1,0 +1,101 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Thu, 14 Jan 2010 11:24:52 -0500
+Subject: [gfs] GFS2: Ensure uptodate inode size when using O_APPEND
+Message-id: <1263468292.2611.28.camel@localhost>
+Patchwork-id: 22509
+O-Subject: [RHEL6] GFS2: Ensure uptodate inode size when using O_APPEND (bz
+	#547639)
+Bugzilla: 547639
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+Hi,
+
+This fixes a race issue when using O_APPEND from multiple nodes. The
+bz is #547639 and has already been tested as part of RHEL5. The
+patch is from upstream (identical to the RHEL5 one)
+
+Steve.
+
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Tue, 8 Dec 2009 10:25:33 +0000 (+0000)
+Subject: GFS2: Ensure uptodate inode size when using O_APPEND
+X-Git-Tag: v2.6.33-rc4~14^2~3
+X-Git-Url: http://git.kernel.org/?p=linux%2Fkernel%2Fgit%2Ftorvalds%2Flinux-2.6.git;a=commitdiff_plain;h=56aa616a03feca630d5afce647367a5d8cfc67b8
+
+GFS2: Ensure uptodate inode size when using O_APPEND
+
+The VFS reads the inode size during generic_file_aio_write() but
+with no locking around it. In order to get the expected result
+from O_APPEND opens, this patch updated the inode size before
+calling generic_file_aio_write()
+
+There is of course still a race here, in that there is nothing to
+prevent another node coming in and extending the file in the
+mean time. On the other hand, when used with file locking this
+will ensure that the expected results are obtained.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+
+diff --git a/fs/gfs2/file.c b/fs/gfs2/file.c
+index 4eb308a..a6abbae 100644
+--- a/fs/gfs2/file.c
++++ b/fs/gfs2/file.c
+@@ -569,6 +569,40 @@ static int gfs2_fsync(struct file *file, struct dentry *dentry, int datasync)
+ 	return ret;
+ }
+ 
++/**
++ * gfs2_file_aio_write - Perform a write to a file
++ * @iocb: The io context
++ * @iov: The data to write
++ * @nr_segs: Number of @iov segments
++ * @pos: The file position
++ *
++ * We have to do a lock/unlock here to refresh the inode size for
++ * O_APPEND writes, otherwise we can land up writing at the wrong
++ * offset. There is still a race, but provided the app is using its
++ * own file locking, this will make O_APPEND work as expected.
++ *
++ */
++
++static ssize_t gfs2_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
++				   unsigned long nr_segs, loff_t pos)
++{
++	struct file *file = iocb->ki_filp;
++
++	if (file->f_flags & O_APPEND) {
++		struct dentry *dentry = file->f_dentry;
++		struct gfs2_inode *ip = GFS2_I(dentry->d_inode);
++		struct gfs2_holder gh;
++		int ret;
++
++		ret = gfs2_glock_nq_init(ip->i_gl, LM_ST_SHARED, 0, &gh);
++		if (ret)
++			return ret;
++		gfs2_glock_dq_uninit(&gh);
++	}
++
++	return generic_file_aio_write(iocb, iov, nr_segs, pos);
++}
++
+ #ifdef CONFIG_GFS2_FS_LOCKING_DLM
+ 
+ /**
+@@ -711,7 +745,7 @@ const struct file_operations gfs2_file_fops = {
+ 	.read		= do_sync_read,
+ 	.aio_read	= generic_file_aio_read,
+ 	.write		= do_sync_write,
+-	.aio_write	= generic_file_aio_write,
++	.aio_write	= gfs2_file_aio_write,
+ 	.unlocked_ioctl	= gfs2_ioctl,
+ 	.mmap		= gfs2_mmap,
+ 	.open		= gfs2_open,
+@@ -741,7 +775,7 @@ const struct file_operations gfs2_file_fops_nolock = {
+ 	.read		= do_sync_read,
+ 	.aio_read	= generic_file_aio_read,
+ 	.write		= do_sync_write,
+-	.aio_write	= generic_file_aio_write,
++	.aio_write	= gfs2_file_aio_write,
+ 	.unlocked_ioctl	= gfs2_ioctl,
+ 	.mmap		= gfs2_mmap,
+ 	.open		= gfs2_open,

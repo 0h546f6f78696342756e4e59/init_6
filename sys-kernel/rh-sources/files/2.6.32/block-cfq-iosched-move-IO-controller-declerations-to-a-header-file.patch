@@ -1,0 +1,64 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:24 -0500
+Subject: [block] cfq-iosched: move IO controller declerations to a header file
+Message-id: <1260298712-12756-52-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21797
+O-Subject: [RHEL6 PATCH 51/59] cfq-iosched: move IO controller declerations to a
+	header file
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit f2eecb91522686edf8199947b77f435a4031d92f
+Author: Jens Axboe <jens.axboe@oracle.com>
+Date:   Fri Dec 4 10:06:35 2009 +0100
+
+    cfq-iosched: move IO controller declerations to a header file
+
+    They should not be declared inside some other file that's not related
+    to CFQ.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/blk-cgroup.c b/block/blk-cgroup.c
+index 179ddfa..73a5525 100644
+--- a/block/blk-cgroup.c
++++ b/block/blk-cgroup.c
+@@ -14,9 +14,7 @@
+ #include <linux/seq_file.h>
+ #include <linux/kdev_t.h>
+ #include "blk-cgroup.h"
+-
+-extern void cfq_unlink_blkio_group(void *, struct blkio_group *);
+-extern void cfq_update_blkio_group_weight(struct blkio_group *, unsigned int);
++#include "cfq-iosched.h"
+ 
+ struct blkio_cgroup blkio_root_cgroup = { .weight = 2*BLKIO_WEIGHT_DEFAULT };
+ 
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index fb4265c..4f2c2cd 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -13,6 +13,7 @@
+ #include <linux/ioprio.h>
+ #include <linux/blktrace_api.h>
+ #include "blk-cgroup.h"
++#include "cfq-iosched.h"
+ 
+ /*
+  * tunables
+diff --git a/block/cfq-iosched.h b/block/cfq-iosched.h
+new file mode 100644
+index 0000000..ef7b479
+--- /dev/null
++++ b/block/cfq-iosched.h
+@@ -0,0 +1,7 @@
++#ifndef CFQ_IOSCHED_H
++#define CFQ_IOSCHED_H
++
++void cfq_unlink_blkio_group(void *, struct blkio_group *);
++void cfq_update_blkio_group_weight(struct blkio_group *, unsigned int);
++
++#endif

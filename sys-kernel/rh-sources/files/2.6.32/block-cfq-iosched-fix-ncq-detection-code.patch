@@ -1,0 +1,96 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:55 -0500
+Subject: [block] cfq-iosched: fix ncq detection code
+Message-id: <1260298712-12756-23-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21763
+O-Subject: [RHEL6 PATCH 22/59] cfq-iosched: fix ncq detection code
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit e459dd08f45d2aa68abb0c02f8ab045cf8a598b8
+Author: Corrado Zoccolo <czoccolo@gmail.com>
+Date:   Thu Nov 26 10:02:57 2009 +0100
+
+    cfq-iosched: fix ncq detection code
+
+    CFQ's detection of queueing devices initially assumes a queuing device
+    and detects if the queue depth reaches a certain threshold.
+    However, it will reconsider this choice periodically.
+
+    Unfortunately, if device is considered not queuing, CFQ will force a
+    unit queue depth for some workloads, thus defeating the detection logic.
+    This leads to poor performance on queuing hardware,
+    since the idle window remains enabled.
+
+    Given this premise, switching to hw_tag = 0 after we have proved at
+    least once that the device is NCQ capable is not a good choice.
+
+    The new detection code starts in an indeterminate state, in which CFQ behaves
+    as if hw_tag = 1, and then, if for a long observation period we never saw
+    large depth, we switch to hw_tag = 0, otherwise we stick to hw_tag = 1,
+    without reconsidering it again.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index a20a70e..cbd4232 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -190,8 +190,14 @@ struct cfq_data {
+ 	 */
+ 	int rq_queued;
+ 	int hw_tag;
+-	int hw_tag_samples;
+-	int rq_in_driver_peak;
++	/*
++	 * hw_tag can be
++	 * -1 => indeterminate, (cfq will behave as if NCQ is present, to allow better detection)
++	 *  1 => NCQ is present (hw_tag_est_depth is the estimated max depth)
++	 *  0 => no NCQ
++	 */
++	int hw_tag_est_depth;
++	unsigned int hw_tag_samples;
+ 
+ 	/*
+ 	 * idle window management
+@@ -2517,8 +2523,11 @@ static void cfq_update_hw_tag(struct cfq_data *cfqd)
+ {
+ 	struct cfq_queue *cfqq = cfqd->active_queue;
+ 
+-	if (rq_in_driver(cfqd) > cfqd->rq_in_driver_peak)
+-		cfqd->rq_in_driver_peak = rq_in_driver(cfqd);
++	if (rq_in_driver(cfqd) > cfqd->hw_tag_est_depth)
++		cfqd->hw_tag_est_depth = rq_in_driver(cfqd);
++
++	if (cfqd->hw_tag == 1)
++		return;
+ 
+ 	if (cfqd->rq_queued <= CFQ_HW_QUEUE_MIN &&
+ 	    rq_in_driver(cfqd) <= CFQ_HW_QUEUE_MIN)
+@@ -2537,13 +2546,10 @@ static void cfq_update_hw_tag(struct cfq_data *cfqd)
+ 	if (cfqd->hw_tag_samples++ < 50)
+ 		return;
+ 
+-	if (cfqd->rq_in_driver_peak >= CFQ_HW_QUEUE_MIN)
++	if (cfqd->hw_tag_est_depth >= CFQ_HW_QUEUE_MIN)
+ 		cfqd->hw_tag = 1;
+ 	else
+ 		cfqd->hw_tag = 0;
+-
+-	cfqd->hw_tag_samples = 0;
+-	cfqd->rq_in_driver_peak = 0;
+ }
+ 
+ static void cfq_completed_request(struct request_queue *q, struct request *rq)
+@@ -2950,7 +2956,7 @@ static void *cfq_init_queue(struct request_queue *q)
+ 	cfqd->cfq_slice_async_rq = cfq_slice_async_rq;
+ 	cfqd->cfq_slice_idle = cfq_slice_idle;
+ 	cfqd->cfq_latency = 1;
+-	cfqd->hw_tag = 1;
++	cfqd->hw_tag = -1;
+ 	cfqd->last_end_sync_rq = jiffies;
+ 	return cfqd;
+ }

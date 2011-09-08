@@ -1,0 +1,72 @@
+From: Jason Baron <jbaron@redhat.com>
+Date: Tue, 19 Jan 2010 22:35:27 -0500
+Subject: [perf] Allow for custom overflow handlers
+Message-id: <e8488cf649077a5e937e57e7dddc8b090c7a16cd.1263939115.git.jbaron@redhat.com>
+Patchwork-id: 22660
+O-Subject: [RHEL6 PATCH 4/9] - add kernel internal interface to perf counters v2
+	- add overflow handlers
+Bugzilla: 525517
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+RH-Acked-by: Dave Anderson <anderson@redhat.com>
+
+commit 453f19eea7dbad837425e9b07d84568d14898794
+
+    perf: Allow for custom overflow handlers
+
+    in-kernel perf users might wish to have custom actions on the
+    sample interrupt.
+
+    Signed-off-by: Peter Zijlstra <a.p.zijlstra@chello.nl>
+    Cc: Paul Mackerras <paulus@samba.org>
+    LKML-Reference: <20091120212508.222339539@chello.nl>
+    Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index d6182bc..14e22d6 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -545,6 +545,8 @@ struct perf_pending_entry {
+ 
+ typedef void (*perf_callback_t)(struct perf_event *, void *);
+ 
++struct perf_sample_data;
++
+ /**
+  * struct perf_event - performance event kernel representation:
+  */
+@@ -636,6 +638,10 @@ struct perf_event {
+ 	struct pid_namespace		*ns;
+ 	u64				id;
+ 
++	void (*overflow_handler)(struct perf_event *event,
++		int nmi, struct perf_sample_data *data,
++		struct pt_regs *regs);
++
+ 	perf_callback_t			callback;
+ #endif
+ };
+diff --git a/kernel/perf_event.c b/kernel/perf_event.c
+index 7bd2ca3..7e894bf 100644
+--- a/kernel/perf_event.c
++++ b/kernel/perf_event.c
+@@ -3701,7 +3701,10 @@ static int __perf_event_overflow(struct perf_event *event, int nmi,
+ 			perf_event_disable(event);
+ 	}
+ 
+-	perf_event_output(event, nmi, data, regs);
++	if (event->overflow_handler)
++		event->overflow_handler(event, nmi, data, regs);
++	else
++		perf_event_output(event, nmi, data, regs);
+ 	return ret;
+ }
+ 
+@@ -4720,6 +4723,8 @@ inherit_event(struct perf_event *parent_event,
+ 	if (parent_event->attr.freq)
+ 		child_event->hw.sample_period = parent_event->hw.sample_period;
+ 
++	child_event->overflow_handler = parent_event->overflow_handler;
++
+ 	/*
+ 	 * Link it up in the child's context:
+ 	 */

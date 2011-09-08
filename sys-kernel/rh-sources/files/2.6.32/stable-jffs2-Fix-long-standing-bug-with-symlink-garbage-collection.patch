@@ -1,0 +1,33 @@
+From: David Woodhouse <David.Woodhouse@intel.com>
+Date: Wed, 16 Dec 2009 03:27:20 +0000
+Subject: [stable] jffs2: Fix long-standing bug with symlink garbage collection.
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 2e16cfca6e17ae37ae21feca080a6f2eca9087dc upstream.
+
+Ever since jffs2_garbage_collect_metadata() was first half-written in
+February 2001, it's been broken on architectures where 'char' is signed.
+When garbage collecting a symlink with target length above 127, the payload
+length would end up negative, causing interesting and bad things to happen.
+
+Signed-off-by: David Woodhouse <David.Woodhouse@intel.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/fs/jffs2/gc.c b/fs/jffs2/gc.c
+index 090c556..3b6f2fa 100644
+--- a/fs/jffs2/gc.c
++++ b/fs/jffs2/gc.c
+@@ -700,7 +700,8 @@ static int jffs2_garbage_collect_metadata(struct jffs2_sb_info *c, struct jffs2_
+ 	struct jffs2_raw_inode ri;
+ 	struct jffs2_node_frag *last_frag;
+ 	union jffs2_device_node dev;
+-	char *mdata = NULL, mdatalen = 0;
++	char *mdata = NULL;
++	int mdatalen = 0;
+ 	uint32_t alloclen, ilen;
+ 	int ret;
+ 

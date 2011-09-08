@@ -1,0 +1,38 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Sat, 19 Dec 2009 02:34:13 -0500
+Subject: [x86] Remove enabling x2apic message for every CPU
+Message-id: <20091218212031.23706.91063.sendpatchset@localhost.localdomain>
+Patchwork-id: 22217
+O-Subject: [RHEL6 PATCH 8/9] x86: Remove enabling x2apic message for every CPU
+Bugzilla: 548840
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+commit 450b1e8dd10f41b5adad73f48ce8f6707d17c5c4
+Author: Mike Travis <travis@sgi.com>
+Date:   Fri Dec 11 08:08:50 2009 -0800
+
+    x86: Remove enabling x2apic message for every CPU
+
+    Print only once that the system is supporting x2apic mode.
+
+    Signed-off-by: Mike Travis <travis@sgi.com>
+    Acked-by: Cyrill Gorcunov <gorcunov@openvz.org>
+    LKML-Reference: <4B226E92.5080904@sgi.com>
+    Signed-off-by: H. Peter Anvin <hpa@zytor.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/apic/apic.c b/arch/x86/kernel/apic/apic.c
+index 894aa97..102c83f 100644
+--- a/arch/x86/kernel/apic/apic.c
++++ b/arch/x86/kernel/apic/apic.c
+@@ -1356,7 +1356,7 @@ void enable_x2apic(void)
+ 
+ 	rdmsr(MSR_IA32_APICBASE, msr, msr2);
+ 	if (!(msr & X2APIC_ENABLE)) {
+-		pr_info("Enabling x2apic\n");
++		printk_once(KERN_INFO "Enabling x2apic\n");
+ 		wrmsr(MSR_IA32_APICBASE, msr | X2APIC_ENABLE, 0);
+ 	}
+ }

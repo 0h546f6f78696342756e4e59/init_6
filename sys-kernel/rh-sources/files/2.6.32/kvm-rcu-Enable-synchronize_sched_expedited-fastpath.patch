@@ -1,0 +1,42 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:12:02 -0500
+Subject: [kvm] rcu: Enable synchronize_sched_expedited() fastpath
+Message-id: <20100114171427.915316164@amt.cnet>
+Patchwork-id: 22524
+O-Subject: [RHEL 6 KVM 14/27] rcu: Enable synchronize_sched_expedited() fastpath
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 956539b75921f561c0956c22d37320780e8b4ba1
+Author: Paul E. McKenney <paulmck@linux.vnet.ibm.com>
+Date:   Tue Nov 10 13:37:20 2009 -0800
+
+rcu: Enable synchronize_sched_expedited() fastpath
+
+This patch adds a counter increment to enable tasks to actually
+take the synchronize_sched_expedited() function's fastpath.
+
+Signed-off-by: Paul E. McKenney <paulmck@linux.vnet.ibm.com>
+LKML-Reference: <1257889042435-git-send-email->
+Signed-off-by: Ingo Molnar <mingo@elte.hu>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/sched.c b/kernel/sched.c
+index cef7379..5cbffde 100644
+--- a/kernel/sched.c
++++ b/kernel/sched.c
+@@ -10940,6 +10940,7 @@ void synchronize_sched_expedited(void)
+ 		spin_unlock_irqrestore(&rq->lock, flags);
+ 	}
+ 	rcu_expedited_state = RCU_EXPEDITED_STATE_IDLE;
++	synchronize_sched_expedited_count++;
+ 	mutex_unlock(&rcu_sched_expedited_mutex);
+ 	put_online_cpus();
+ 	if (need_full_sync)

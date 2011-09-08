@@ -1,0 +1,38 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Tue, 2 Feb 2010 12:12:28 -0500
+Subject: [nfs] nfsd41: Create the recovery entry for the NFSv4.1 client
+Message-id: <4B6816AC.5030301@RedHat.com>
+Patchwork-id: 23091
+O-Subject: [RHEL6] [PATCH 4/10] nfsd41: Create the recovery entry for the NFSv4.1
+	client
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 8b8aae4009349397fffe7bd38a8fa200c9a5bcad
+Author: Ricardo Labiaga <Ricardo.Labiaga@netapp.com>
+Date:   Fri Dec 11 19:10:48 2009 -0800
+
+    nfsd41: Create the recovery entry for the NFSv4.1 client
+
+    Signed-off-by: Ricardo Labiaga <Ricardo.Labiaga@netapp.com>
+    Signed-off-by: J. Bruce Fields <bfields@citi.umich.edu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfsd/nfs4state.c b/fs/nfsd/nfs4state.c
+index f19ed86..3a20c09 100644
+--- a/fs/nfsd/nfs4state.c
++++ b/fs/nfsd/nfs4state.c
+@@ -2480,8 +2480,10 @@ nfsd4_process_open2(struct svc_rqst *rqstp, struct svc_fh *current_fh, struct nf
+ 	}
+ 	memcpy(&open->op_stateid, &stp->st_stateid, sizeof(stateid_t));
+ 
+-	if (nfsd4_has_session(&resp->cstate))
++	if (nfsd4_has_session(&resp->cstate)) {
+ 		open->op_stateowner->so_confirmed = 1;
++		nfsd4_create_clid_dir(open->op_stateowner->so_client);
++	}
+ 
+ 	/*
+ 	* Attempt to hand out a delegation. No error return, because the

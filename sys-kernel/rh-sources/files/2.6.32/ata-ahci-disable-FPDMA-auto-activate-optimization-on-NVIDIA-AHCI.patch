@@ -1,0 +1,60 @@
+From: David Milburn <dmilburn@redhat.com>
+Date: Fri, 26 Feb 2010 17:30:57 -0500
+Subject: [ata] ahci: disable FPDMA auto-activate optimization on NVIDIA AHCI
+Message-id: <20100226173057.GA4264@dhcp-210.hsv.redhat.com>
+Patchwork-id: 23452
+O-Subject: [RHEL6 PATCH] ahci: disable FPDMA auto-activate optimization on
+	NVIDIA AHCI
+Bugzilla: 568815
+RH-Acked-by: Jeff Garzik <jgarzik@redhat.com>
+RH-Acked-by: Stefan Assmann <sassmann@redhat.com>
+
+AHCI controllers supporting NCQ should support DMA auto-activate
+which allows Data FIS to be transmitted without an explicit
+DMA activate FIS to be received from the device. But this is
+broken on some NVIDIA controllers leading to NCQ errors. I
+have compiled tested thru brew (ID 2285626), this will resolve
+BZ 568815, please review and ACK.
+
+Upstream commit:
+
+commit 453d3131ec7aab82eaaa8401a50522a337092aa8
+Author: Robert Hancock <hancockrwd@gmail.com>
+Date:   Tue Jan 26 22:33:23 2010 -0600
+
+    ahci: disable FPDMA auto-activate optimization on NVIDIA AHCI
+
+    Mike Cui reported that his system with an NVIDIA MCP79 (aka MCP7A)
+    chipset stopped working with 2.6.32. The problem appears to be that
+    2.6.32 now enables the FPDMA auto-activate optimization in the ahci
+    driver. The drive works fine with this enabled on an Intel AHCI so
+    this appears to be a chipset bug.  Since MCP79 is a fairly recent
+    NVIDIA chipset and we don't have any info on whether any other NVIDIA
+    chipsets have this issue, disable FPDMA AA optimization on all NVIDIA
+    AHCI controllers for now.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/ata/ahci.c b/drivers/ata/ahci.c
+index a3241a1..8257fea 100644
+--- a/drivers/ata/ahci.c
++++ b/drivers/ata/ahci.c
+@@ -3043,8 +3043,16 @@ static int ahci_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
+ 	ahci_save_initial_config(pdev, hpriv);
+ 
+ 	/* prepare host */
+-	if (hpriv->cap & HOST_CAP_NCQ)
+-		pi.flags |= ATA_FLAG_NCQ | ATA_FLAG_FPDMA_AA;
++	if (hpriv->cap & HOST_CAP_NCQ) {
++		pi.flags |= ATA_FLAG_NCQ;
++		/* Auto-activate optimization is supposed to be supported on
++		   all AHCI controllers indicating NCQ support, but it seems
++		   to be broken at least on some NVIDIA MCP79 chipsets.
++		   Until we get info on which NVIDIA chipsets don't have this
++		   issue, if any, disable AA on all NVIDIA AHCIs. */
++		if (pdev->vendor != PCI_VENDOR_ID_NVIDIA)
++			pi.flags |= ATA_FLAG_FPDMA_AA;
++	}
+ 
+ 	if (hpriv->cap & HOST_CAP_PMP)
+ 		pi.flags |= ATA_FLAG_PMP;

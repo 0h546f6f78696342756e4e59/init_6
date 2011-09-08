@@ -1,0 +1,212 @@
+From: Steve Best <sbest@redhat.com>
+Date: Wed, 13 Jan 2010 20:55:42 -0500
+Subject: [powerpc] cpu-allocation/deallocation process
+Message-id: <20100113204902.9285.16311.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 22502
+O-Subject: [PATCH RHEL6.0 BZ539318 v3 7/8] cpu-allocation/deallocation process
+Bugzilla: 539318
+RH-Acked-by: David Howells <dhowells@redhat.com>
+
+RHBZ#:
+======
+https://bugzilla.redhat.com/show_bug.cgi?id=539318
+
+Description:
+============
+Patch 7/8: cpu-allocation/deallocation process
+
+Currently the cpu-allocation/deallocation process comprises of two steps:
+
+From: Gautham R Shenoy <ego@in.ibm.com>
+
+- Set the indicators and to update the device tree with DLPAR node
+  information.
+
+- Online/offline the allocated/deallocated CPU.
+
+This is achieved by writing to the sysfs tunables "probe" during allocation
+and "release" during deallocation.
+
+At the sametime, the userspace can independently online/offline the CPUs of
+the system using the sysfs tunable "online".
+
+It is quite possible that when a userspace tool offlines a CPU
+for the purpose of deallocation and is in the process of updating the device
+tree, some other userspace tool could bring the CPU back online by writing to
+the "online" sysfs tunable thereby causing the deallocate process to fail.
+
+The solution to this is to serialize writes to the "probe/release" sysfs
+tunable with the writes to the "online" sysfs tunable.
+
+This patch employs a mutex to provide this serialization, which is a no-op on
+all architectures except PPC_PSERIES
+
+Signed-off-by: Gautham R Shenoy <ego@in.ibm.com>
+Acked-by: Vaidyanathan Srinivasan <svaidy@linux.vnet.ibm.com>
+
+Upstream Patch:
+http://lkml.org/lkml/2009/10/30/6
+
+Brew:
+=====
+Built on all platforms. All patches brewed together.
+https://brewweb.devel.redhat.com/taskinfo?taskID=2191854
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/powerpc/platforms/pseries/dlpar.c b/arch/powerpc/platforms/pseries/dlpar.c
+index 9ba9cab..6dd8826 100644
+--- a/arch/powerpc/platforms/pseries/dlpar.c
++++ b/arch/powerpc/platforms/pseries/dlpar.c
+@@ -440,6 +440,20 @@ int dlpar_release_drc(u32 drc_index)
+ 
+ #ifdef CONFIG_ARCH_CPU_PROBE_RELEASE
+ 
++static DEFINE_MUTEX(pseries_cpu_hotplug_mutex);
++
++void cpu_hotplug_driver_lock(void)
++__acquires(pseries_cpu_hotplug_mutex)
++{
++	mutex_lock(&pseries_cpu_hotplug_mutex);
++}
++
++void cpu_hotplug_driver_unlock(void)
++__releases(pseries_cpu_hotplug_mutex)
++{
++	mutex_unlock(&pseries_cpu_hotplug_mutex);
++}
++
+ static ssize_t dlpar_cpu_probe(const char *buf, size_t count)
+ {
+ 	struct device_node *dn;
+@@ -447,13 +461,18 @@ static ssize_t dlpar_cpu_probe(const char *buf, size_t count)
+ 	char *cpu_name;
+ 	int rc;
+ 
++	cpu_hotplug_driver_lock();
+ 	rc = strict_strtoul(buf, 0, &drc_index);
+-	if (rc)
+-		return -EINVAL;
++	if (rc) {
++		rc = -EINVAL;
++		goto out;
++	}
+ 
+ 	dn = dlpar_configure_connector(drc_index);
+-	if (!dn)
+-		return -EINVAL;
++	if (!dn) {
++		rc = -EINVAL;
++		goto out;
++	}
+ 
+ 	/* configure-connector reports cpus as living in the base
+ 	 * directory of the device tree.  CPUs actually live in the
+@@ -462,7 +481,8 @@ static ssize_t dlpar_cpu_probe(const char *buf, size_t count)
+ 	cpu_name = kasprintf(GFP_KERNEL, "/cpus%s", dn->full_name);
+ 	if (!cpu_name) {
+ 		dlpar_free_cc_nodes(dn);
+-		return -ENOMEM;
++		rc = -ENOMEM;
++		goto out;
+ 	}
+ 
+ 	kfree(dn->full_name);
+@@ -471,7 +491,8 @@ static ssize_t dlpar_cpu_probe(const char *buf, size_t count)
+ 	rc = dlpar_acquire_drc(drc_index);
+ 	if (rc) {
+ 		dlpar_free_cc_nodes(dn);
+-		return -EINVAL;
++		rc = -EINVAL;
++		goto out;
+ 	}
+ 
+ 	rc = dlpar_attach_node(dn);
+@@ -481,6 +502,8 @@ static ssize_t dlpar_cpu_probe(const char *buf, size_t count)
+ 	}
+ 
+ 	rc = online_node_cpus(dn);
++out:
++	cpu_hotplug_driver_unlock();
+ 
+ 	return rc ? rc : count;
+ }
+@@ -501,26 +524,30 @@ static ssize_t dlpar_cpu_release(const char *buf, size_t count)
+ 		return -EINVAL;
+ 	}
+ 
++	cpu_hotplug_driver_lock();
+ 	rc = offline_node_cpus(dn);
+ 	if (rc) {
+ 		of_node_put(dn);
+-		return -EINVAL;
++		rc = -EINVAL;
++		goto out;
+ 	}
+ 
+ 	rc = dlpar_release_drc(*drc_index);
+ 	if (rc) {
+ 		of_node_put(dn);
+-		return -EINVAL;
++		goto out;
+ 	}
+ 
+ 	rc = dlpar_detach_node(dn);
+ 	if (rc) {
+ 		dlpar_acquire_drc(*drc_index);
+-		return rc;
++		goto out;
+ 	}
+ 
+ 	of_node_put(dn);
+-	return count;
++out:
++	cpu_hotplug_driver_unlock();
++	return rc ? rc : count;
+ }
+ 
+ static int __init pseries_dlpar_init(void)
+diff --git a/drivers/base/cpu.c b/drivers/base/cpu.c
+index 7c03af7..27fd775 100644
+--- a/drivers/base/cpu.c
++++ b/drivers/base/cpu.c
+@@ -35,6 +35,7 @@ static ssize_t __ref store_online(struct sys_device *dev, struct sysdev_attribut
+ 	struct cpu *cpu = container_of(dev, struct cpu, sysdev);
+ 	ssize_t ret;
+ 
++	cpu_hotplug_driver_lock();
+ 	switch (buf[0]) {
+ 	case '0':
+ 		ret = cpu_down(cpu->sysdev.id);
+@@ -49,6 +50,7 @@ static ssize_t __ref store_online(struct sys_device *dev, struct sysdev_attribut
+ 	default:
+ 		ret = -EINVAL;
+ 	}
++	cpu_hotplug_driver_unlock();
+ 
+ 	if (ret >= 0)
+ 		ret = count;
+diff --git a/include/linux/cpu.h b/include/linux/cpu.h
+index c972f7c..e287863 100644
+--- a/include/linux/cpu.h
++++ b/include/linux/cpu.h
+@@ -117,6 +117,19 @@ extern void put_online_cpus(void);
+ #define unregister_hotcpu_notifier(nb)	unregister_cpu_notifier(nb)
+ int cpu_down(unsigned int cpu);
+ 
++#ifdef CONFIG_ARCH_CPU_PROBE_RELEASE
++extern void cpu_hotplug_driver_lock(void);
++extern void cpu_hotplug_driver_unlock(void);
++#else
++static inline void cpu_hotplug_driver_lock(void)
++{
++}
++
++static inline void cpu_hotplug_driver_unlock(void)
++{
++}
++#endif
++
+ #else		/* CONFIG_HOTPLUG_CPU */
+ 
+ #define get_online_cpus()	do { } while (0)

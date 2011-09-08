@@ -1,0 +1,139 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:27 -0500
+Subject: [block] blkio: Export some symbols from blkio as its user CFQ can be a module
+Message-id: <1260298712-12756-55-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21804
+O-Subject: [RHEL6 PATCH 54/59] blkio: Export some symbols from blkio as its user
+	CFQ can be a module
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit 9d6a986c0b276085f7944cd8ad65f4f82aff7536
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Fri Dec 4 10:36:41 2009 -0500
+
+    blkio: Export some symbols from blkio as its user CFQ can be a module
+
+    o blkio controller is inside the kernel and cfq makes use of interfaces
+      exported by blkio. CFQ can be a module too, hence export symbols used
+      by CFQ.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/blk-cgroup.c b/block/blk-cgroup.c
+index 73a5525..4d4a277 100644
+--- a/block/blk-cgroup.c
++++ b/block/blk-cgroup.c
+@@ -13,16 +13,33 @@
+ #include <linux/ioprio.h>
+ #include <linux/seq_file.h>
+ #include <linux/kdev_t.h>
++#include <linux/module.h>
+ #include "blk-cgroup.h"
+ #include "cfq-iosched.h"
+ 
+ struct blkio_cgroup blkio_root_cgroup = { .weight = 2*BLKIO_WEIGHT_DEFAULT };
++EXPORT_SYMBOL_GPL(blkio_root_cgroup);
++
++bool blkiocg_css_tryget(struct blkio_cgroup *blkcg)
++{
++	if (!css_tryget(&blkcg->css))
++		return false;
++	return true;
++}
++EXPORT_SYMBOL_GPL(blkiocg_css_tryget);
++
++void blkiocg_css_put(struct blkio_cgroup *blkcg)
++{
++	css_put(&blkcg->css);
++}
++EXPORT_SYMBOL_GPL(blkiocg_css_put);
+ 
+ struct blkio_cgroup *cgroup_to_blkio_cgroup(struct cgroup *cgroup)
+ {
+ 	return container_of(cgroup_subsys_state(cgroup, blkio_subsys_id),
+ 			    struct blkio_cgroup, css);
+ }
++EXPORT_SYMBOL_GPL(cgroup_to_blkio_cgroup);
+ 
+ void blkiocg_update_blkio_group_stats(struct blkio_group *blkg,
+ 			unsigned long time, unsigned long sectors)
+@@ -30,6 +47,7 @@ void blkiocg_update_blkio_group_stats(struct blkio_group *blkg,
+ 	blkg->time += time;
+ 	blkg->sectors += sectors;
+ }
++EXPORT_SYMBOL_GPL(blkiocg_update_blkio_group_stats);
+ 
+ void blkiocg_add_blkio_group(struct blkio_cgroup *blkcg,
+ 			struct blkio_group *blkg, void *key, dev_t dev)
+@@ -47,6 +65,7 @@ void blkiocg_add_blkio_group(struct blkio_cgroup *blkcg,
+ #endif
+ 	blkg->dev = dev;
+ }
++EXPORT_SYMBOL_GPL(blkiocg_add_blkio_group);
+ 
+ static void __blkiocg_del_blkio_group(struct blkio_group *blkg)
+ {
+@@ -81,6 +100,7 @@ out:
+ 	rcu_read_unlock();
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(blkiocg_del_blkio_group);
+ 
+ /* called under rcu_read_lock(). */
+ struct blkio_group *blkiocg_lookup_group(struct blkio_cgroup *blkcg, void *key)
+@@ -97,6 +117,7 @@ struct blkio_group *blkiocg_lookup_group(struct blkio_cgroup *blkcg, void *key)
+ 
+ 	return NULL;
+ }
++EXPORT_SYMBOL_GPL(blkiocg_lookup_group);
+ 
+ #define SHOW_FUNCTION(__VAR)						\
+ static u64 blkiocg_##__VAR##_read(struct cgroup *cgroup,		\
+@@ -166,6 +187,7 @@ void blkiocg_update_blkio_group_dequeue_stats(struct blkio_group *blkg,
+ {
+ 	blkg->dequeue += dequeue;
+ }
++EXPORT_SYMBOL_GPL(blkiocg_update_blkio_group_dequeue_stats);
+ #endif
+ 
+ struct cftype blkio_files[] = {
+diff --git a/block/blk-cgroup.h b/block/blk-cgroup.h
+index 257dc6a..4f89b96 100644
+--- a/block/blk-cgroup.h
++++ b/block/blk-cgroup.h
+@@ -43,6 +43,9 @@ struct blkio_group {
+ 	unsigned long sectors;
+ };
+ 
++extern bool blkiocg_css_tryget(struct blkio_cgroup *blkcg);
++extern void blkiocg_css_put(struct blkio_cgroup *blkcg);
++
+ #else
+ 
+ struct blkio_group {
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 3c38ac7..638d45c 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -960,7 +960,7 @@ cfq_find_alloc_cfqg(struct cfq_data *cfqd, struct cgroup *cgroup, int create)
+ 	unsigned int major, minor;
+ 
+ 	/* Do we need to take this reference */
+-	if (!css_tryget(&blkcg->css))
++	if (!blkiocg_css_tryget(blkcg))
+ 		return NULL;;
+ 
+ 	cfqg = cfqg_of_blkg(blkiocg_lookup_group(blkcg, key));
+@@ -993,7 +993,7 @@ cfq_find_alloc_cfqg(struct cfq_data *cfqd, struct cgroup *cgroup, int create)
+ 	hlist_add_head(&cfqg->cfqd_node, &cfqd->cfqg_list);
+ 
+ done:
+-	css_put(&blkcg->css);
++	blkiocg_css_put(blkcg);
+ 	return cfqg;
+ }
+ 

@@ -1,0 +1,50 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:37 -0500
+Subject: [Fedora] [sound] hda intel prealloc 4mb dmabuffer
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: hda_intel-prealloc-4mb-dmabuffer.patch
+
+This patch makes the snd_hda driver to pre-alloc 4MB of buffer instead
+of 64k.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/sound/pci/hda/hda_intel.c b/sound/pci/hda/hda_intel.c
+index 6517f58..3f02c70 100644
+--- a/sound/pci/hda/hda_intel.c
++++ b/sound/pci/hda/hda_intel.c
+@@ -1944,6 +1944,7 @@ azx_attach_pcm_stream(struct hda_bus *bus, struct hda_codec *codec,
+ 	struct azx_pcm *apcm;
+ 	int pcm_dev = cpcm->device;
+ 	int s, err;
++	size_t prealloc_min = 64*1024;	/* 64KB */
+ 
+ 	if (pcm_dev >= AZX_MAX_PCMS) {
+ 		snd_printk(KERN_ERR SFX "Invalid PCM device number %d\n",
+@@ -1977,10 +1978,21 @@ azx_attach_pcm_stream(struct hda_bus *bus, struct hda_codec *codec,
+ 		if (cpcm->stream[s].substreams)
+ 			snd_pcm_set_ops(pcm, s, &azx_pcm_ops);
+ 	}
++
+ 	/* buffer pre-allocation */
++
++	/* subtle, don't allocate a big buffer for modems...
++	 * also, don't just test 32BIT_MASK, since azx supports
++	 * 64-bit DMA in some cases.
++	 */
++	/* lennart wants a 2.2MB buffer for 2sec of 48khz */
++	if (pcm->dev_class == SNDRV_PCM_CLASS_GENERIC &&
++	    chip->pci->dma_mask >= DMA_32BIT_MASK)
++		prealloc_min = 4 * 1024 * 1024;	/* 4MB */
++
+ 	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV_SG,
+ 					      snd_dma_pci_data(chip->pci),
+-					      1024 * 64, 32 * 1024 * 1024);
++					      prealloc_min, 32 * 1024 * 1024);
+ 	return 0;
+ }
+ 

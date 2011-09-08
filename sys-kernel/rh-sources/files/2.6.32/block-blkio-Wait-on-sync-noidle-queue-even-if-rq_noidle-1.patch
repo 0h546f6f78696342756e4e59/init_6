@@ -1,0 +1,47 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:21 -0500
+Subject: [block] blkio: Wait on sync-noidle queue even if rq_noidle = 1
+Message-id: <1260298712-12756-49-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21798
+O-Subject: [RHEL6 PATCH 48/59] blkio: Wait on sync-noidle queue even if
+	rq_noidle = 1
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit c04645e592d4dd60c58def40c913699d4c806727
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Thu Dec 3 12:59:56 2009 -0500
+
+    blkio: Wait on sync-noidle queue even if rq_noidle = 1
+
+    o rq_noidle() is supposed to tell cfq that do not expect a request after this
+      one, hence don't idle. But this does not seem to work very well. For example
+      for direct random readers, rq_noidle = 1 but there is next request coming
+      after this. Not idling, leads to a group not getting its share even if
+      group_isolation=1.
+
+    o The right solution for this issue is to scan the higher layers and set
+      right flag (WRITE_SYNC or WRITE_ODIRECT). For the time being, this single
+      line fix helps. This should not have any significant impact when we are
+      not using cgroups. I will later figure out IO paths in higher layer and
+      fix it.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index c790b53..fb4265c 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -3313,7 +3313,8 @@ static void cfq_completed_request(struct request_queue *q, struct request *rq)
+ 			 * only if we processed at least one !rq_noidle request
+ 			 */
+ 			if (cfqd->serving_type == SYNC_WORKLOAD
+-			    || cfqd->noidle_tree_requires_idle)
++			    || cfqd->noidle_tree_requires_idle
++			    || cfqq->cfqg->nr_cfqq == 1)
+ 				cfq_arm_slice_timer(cfqd);
+ 		}
+ 	}

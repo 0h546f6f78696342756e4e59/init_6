@@ -1,0 +1,92 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:27 -0500
+Subject: [Fedora] [build] introduce AFTER_LINK variable
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6-makefile-after_link.patch
+
+In kernel builds for packaging systems, we want to do some magic diddling
+of linked binaries before they get embedded in load images. This means the
+vDSO images before they get embedded inside vmlinux, and the vmlinux image
+itself before it gets embedded inside bzImage or suchlike.
+
+In Fedora's RPM builds, we have been doing this with a kludge using an
+override for cmd_objcopy on the make command line. This is fragile at
+best, and broke down due to the excessive levels of make magic involved.
+
+I'm trying to find a relatively clean way of doing this. What I've come up
+with so far is maybe not so hot, but it's a start. This patch lets me set
+AFTER_LINK for the make run, to a command line to run right after these
+final links. For context, this is how I set it:
+
+# This override tweaks the kernel makefiles so that we run debugedit on an
+# object before embedding it. When we later run find-debuginfo.sh, it will
+# run debugedit again. The edits it does change the build ID bits embedded
+# in the stripped object, but repeating debugedit is a no-op. We do it
+# beforehand to get the proper final build ID bits into the embedded image.
+# This affects the vDSO images in vmlinux, and the vmlinux image in bzImage.
+export AFTER_LINK=\
+'sh -xc "/usr/lib/rpm/debugedit -b $$RPM_BUILD_DIR -d /usr/src/debug -i $@"'
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/Makefile b/Makefile
+index f5cdb72..dc01971 100644
+--- a/Makefile
++++ b/Makefile
+@@ -704,6 +704,10 @@ quiet_cmd_vmlinux__ ?= LD      $@
+       --start-group $(vmlinux-main) --end-group                  \
+       $(filter-out $(vmlinux-lds) $(vmlinux-init) $(vmlinux-main) vmlinux.o FORCE ,$^)
+ 
++ifdef AFTER_LINK
++cmd_vmlinux__ += ; $(AFTER_LINK)
++endif
++
+ # Generate new vmlinux version
+ quiet_cmd_vmlinux_version = GEN     .version
+       cmd_vmlinux_version = set -e;                     \
+diff --git a/arch/powerpc/kernel/vdso32/Makefile b/arch/powerpc/kernel/vdso32/Makefile
+index 51ead52..ad21273 100644
+--- a/arch/powerpc/kernel/vdso32/Makefile
++++ b/arch/powerpc/kernel/vdso32/Makefile
+@@ -41,7 +41,8 @@ $(obj-vdso32): %.o: %.S
+ 
+ # actual build commands
+ quiet_cmd_vdso32ld = VDSO32L $@
+-      cmd_vdso32ld = $(CROSS32CC) $(c_flags) -Wl,-T $^ -o $@
++      cmd_vdso32ld = $(CROSS32CC) $(c_flags) -Wl,-T $^ -o $@ \
++		     $(if $(AFTER_LINK),; $(AFTER_LINK))
+ quiet_cmd_vdso32as = VDSO32A $@
+       cmd_vdso32as = $(CROSS32CC) $(a_flags) -c -o $@ $<
+ 
+diff --git a/arch/powerpc/kernel/vdso64/Makefile b/arch/powerpc/kernel/vdso64/Makefile
+index 79da65d..f11c21b 100644
+--- a/arch/powerpc/kernel/vdso64/Makefile
++++ b/arch/powerpc/kernel/vdso64/Makefile
+@@ -36,7 +36,8 @@ $(obj-vdso64): %.o: %.S
+ 
+ # actual build commands
+ quiet_cmd_vdso64ld = VDSO64L $@
+-      cmd_vdso64ld = $(CC) $(c_flags) -Wl,-T $^ -o $@
++      cmd_vdso64ld = $(CC) $(c_flags) -Wl,-T $^ -o $@ \
++		     $(if $(AFTER_LINK),; $(AFTER_LINK))
+ quiet_cmd_vdso64as = VDSO64A $@
+       cmd_vdso64as = $(CC) $(a_flags) -c -o $@ $<
+ 
+diff --git a/arch/x86/vdso/Makefile b/arch/x86/vdso/Makefile
+index 6b4ffed..cbc3d05 100644
+--- a/arch/x86/vdso/Makefile
++++ b/arch/x86/vdso/Makefile
+@@ -120,7 +120,8 @@ $(obj)/vdso32-syms.lds: $(vdso32.so-y:%=$(obj)/vdso32-%-syms.lds) FORCE
+ quiet_cmd_vdso = VDSO    $@
+       cmd_vdso = $(CC) -nostdlib -o $@ \
+ 		       $(VDSO_LDFLAGS) $(VDSO_LDFLAGS_$(filter %.lds,$(^F))) \
+-		       -Wl,-T,$(filter %.lds,$^) $(filter %.o,$^)
++		       -Wl,-T,$(filter %.lds,$^) $(filter %.o,$^) \
++		 $(if $(AFTER_LINK),; $(AFTER_LINK))
+ 
+ VDSO_LDFLAGS = -fPIC -shared $(call cc-ldoption, -Wl$(comma)--hash-style=sysv)
+ GCOV_PROFILE := n

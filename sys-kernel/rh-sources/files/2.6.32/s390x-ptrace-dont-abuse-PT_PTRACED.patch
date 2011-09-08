@@ -1,0 +1,58 @@
+From: CAI Qian <caiqian@redhat.com>
+Date: Fri, 22 Jan 2010 05:05:08 -0500
+Subject: [s390x] ptrace: dont abuse PT_PTRACED
+Message-id: <1313876423.337581264136708465.JavaMail.root@zmail06.collab.prod.int.phx2.redhat.com>
+Patchwork-id: 22733
+O-Subject: [RHEL6.0 PATCH] [S390] ptrace: dont abuse PT_PTRACED
+Bugzilla: 552102
+RH-Acked-by: Roland McGrath <roland@redhat.com>
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+https://bugzilla.redhat.com/show_bug.cgi?id=552102
+
+Testing:
+Tested by me to fix the ptrace failure.
+
+Upstream status:
+Linus tree - ca633fd006486ed2c2d3b542283067aab61e6dc8
+
+Description:
+Nobody except ptrace itself should use task->ptrace or PT_PTRACED
+directly, change arch/s390/kernel/traps.c to use the helper.
+
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Acked-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Heiko Carstens <heiko.carstens@de.ibm.com>
+Signed-off-by: Martin Schwidefsky <schwidefsky@de.ibm.com>
+
+diff --git a/arch/s390/kernel/traps.c b/arch/s390/kernel/traps.c
+index c2e42cc..6e7ad63 100644
+--- a/arch/s390/kernel/traps.c
++++ b/arch/s390/kernel/traps.c
+@@ -18,7 +18,7 @@
+ #include <linux/kernel.h>
+ #include <linux/string.h>
+ #include <linux/errno.h>
+-#include <linux/ptrace.h>
++#include <linux/tracehook.h>
+ #include <linux/timer.h>
+ #include <linux/mm.h>
+ #include <linux/smp.h>
+@@ -382,7 +382,7 @@ void __kprobes do_single_step(struct pt_regs *regs)
+ 					SIGTRAP) == NOTIFY_STOP){
+ 		return;
+ 	}
+-	if ((current->ptrace & PT_PTRACED) != 0)
++	if (tracehook_consider_fatal_signal(current, SIGTRAP))
+ 		force_sig(SIGTRAP, current);
+ }
+ 
+@@ -483,7 +483,7 @@ static void illegal_op(struct pt_regs * regs, long interruption_code)
+ 		if (get_user(*((__u16 *) opcode), (__u16 __user *) location))
+ 			return;
+ 		if (*((__u16 *) opcode) == S390_BREAKPOINT_U16) {
+-			if (current->ptrace & PT_PTRACED)
++			if (tracehook_consider_fatal_signal(current, SIGTRAP))
+ 				force_sig(SIGTRAP, current);
+ 			else
+ 				signal = SIGILL;

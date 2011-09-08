@@ -1,0 +1,89 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Tue, 15 Dec 2009 17:46:56 -0500
+Subject: [s390] ctcm: suspend has to wait for outstanding I/O
+Message-id: <1260899216-12234-5-git-send-email-brueckner@redhat.com>
+Patchwork-id: 21977
+O-Subject: [RHEL6 PATCH 4/4] [s390] ctcm: suspend has to wait for outstanding I/O
+Bugzilla: 546633
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+After resume from hibernation, a ctcm device is ungrouped because
+during the suspend operation there was outstanding I/O on the device.
+CIO recognized this as an error and ungrouped the device.
+
+The solution is to wait for state transition to DEV_STATE_STOPPED which
+indicates all outstanding I/O has finished.
+
+Bugzilla
+--------
+BZ 546633
+https://bugzilla.redhat.com/show_bug.cgi?id=546633
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=1e1815be87e45ce512f998ab35e9554c25031f4d
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/net/ctcm_main.c b/drivers/s390/net/ctcm_main.c
+index c5b8387..1429321 100644
+--- a/drivers/s390/net/ctcm_main.c
++++ b/drivers/s390/net/ctcm_main.c
+@@ -1695,6 +1695,11 @@ static int ctcm_pm_suspend(struct ccwgroup_device *gdev)
+ 		return 0;
+ 	netif_device_detach(priv->channel[READ]->netdev);
+ 	ctcm_close(priv->channel[READ]->netdev);
++	if (!wait_event_timeout(priv->fsm->wait_q,
++	    fsm_getstate(priv->fsm) == DEV_STATE_STOPPED, CTCM_TIME_5_SEC)) {
++		netif_device_attach(priv->channel[READ]->netdev);
++		return -EBUSY;
++	}
+ 	ccw_device_set_offline(gdev->cdev[1]);
+ 	ccw_device_set_offline(gdev->cdev[0]);
+ 	return 0;
+diff --git a/drivers/s390/net/fsm.c b/drivers/s390/net/fsm.c
+index 2c1db80..cae48cb 100644
+--- a/drivers/s390/net/fsm.c
++++ b/drivers/s390/net/fsm.c
+@@ -27,6 +27,7 @@ init_fsm(char *name, const char **state_names, const char **event_names, int nr_
+ 		return NULL;
+ 	}
+ 	strlcpy(this->name, name, sizeof(this->name));
++	init_waitqueue_head(&this->wait_q);
+ 
+ 	f = kzalloc(sizeof(fsm), order);
+ 	if (f == NULL) {
+diff --git a/drivers/s390/net/fsm.h b/drivers/s390/net/fsm.h
+index af679c1..1e8b235 100644
+--- a/drivers/s390/net/fsm.h
++++ b/drivers/s390/net/fsm.h
+@@ -66,6 +66,7 @@ typedef struct fsm_instance_t {
+ 	char name[16];
+ 	void *userdata;
+ 	int userint;
++	wait_queue_head_t wait_q;
+ #if FSM_DEBUG_HISTORY
+ 	int         history_index;
+ 	int         history_size;
+@@ -197,6 +198,7 @@ fsm_newstate(fsm_instance *fi, int newstate)
+ 	printk(KERN_DEBUG "fsm(%s): New state %s\n", fi->name,
+ 		fi->f->state_names[newstate]);
+ #endif
++	wake_up(&fi->wait_q);
+ }
+ 
+ /**

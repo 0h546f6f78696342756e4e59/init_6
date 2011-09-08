@@ -1,0 +1,123 @@
+From: Don Zickus <dzickus@redhat.com>
+Date: Tue, 16 Feb 2010 21:12:56 -0500
+Subject: [x86] nmi_watchdog: enable by default on RHEL-6
+Message-id: <20100216211256.GS3062@redhat.com>
+Patchwork-id: 23300
+O-Subject: [RHEL-6 PATCH] [x86_64] nmi_watchdog: enable by default on RHEL-6
+Bugzilla: 523857
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+RH-Acked-by: Aristeu Rozanski <aris@redhat.com>
+RH-Acked-by: Dave Anderson <anderson@redhat.com>
+RH-Acked-by: Jon Masters <jcm@redhat.com>
+
+commit dd3a56c205b99ccdea3df5b44fa96a70f6c4e9d3
+Author: Don Zickus <dzickus@redhat.com>
+Date:   Tue Feb 16 16:03:09 2010 -0500
+
+    [x86_64] nmi_watchdog: enable by default on RHEL-6
+
+    bz 523857
+
+    Just like the other RHELs, enable nmi_watchdog on x86_64 on boot up.
+
+    This patch is RHEL specific.  I am working on changes that allow the
+    nmi_watchdog to be configurable and on by default upstream.  For now this
+    patch mimics what is in RHEL-5.
+
+    Tested using Aris's nmi_watchdog test in rhts.
+
+    Signed-off-by: Don Zickus <dzickus@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/nmi.h b/arch/x86/include/asm/nmi.h
+index 139d4c1..96d2b14 100644
+--- a/arch/x86/include/asm/nmi.h
++++ b/arch/x86/include/asm/nmi.h
+@@ -34,6 +34,7 @@ extern void cpu_nmi_set_wd_enabled(void);
+ 
+ extern atomic_t nmi_active;
+ extern unsigned int nmi_watchdog;
++#define NMI_DEFAULT     -1
+ #define NMI_NONE	0
+ #define NMI_IO_APIC	1
+ #define NMI_LOCAL_APIC	2
+@@ -43,6 +44,7 @@ struct ctl_table;
+ extern int proc_nmi_enabled(struct ctl_table *, int ,
+ 			void __user *, size_t *, loff_t *);
+ extern int unknown_nmi_panic;
++extern void nmi_watchdog_default(void);
+ 
+ void arch_trigger_all_cpu_backtrace(void);
+ #define arch_trigger_all_cpu_backtrace arch_trigger_all_cpu_backtrace
+diff --git a/arch/x86/kernel/apic/apic.c b/arch/x86/kernel/apic/apic.c
+index e76380c..7edd784 100644
+--- a/arch/x86/kernel/apic/apic.c
++++ b/arch/x86/kernel/apic/apic.c
+@@ -1334,6 +1334,7 @@ void __cpuinit end_local_APIC_setup(void)
+ 	}
+ #endif
+ 
++	nmi_watchdog_default();
+ 	setup_apic_nmi_watchdog(NULL);
+ 	apic_pm_activate();
+ }
+diff --git a/arch/x86/kernel/apic/io_apic.c b/arch/x86/kernel/apic/io_apic.c
+index da51db7..93797a8 100644
+--- a/arch/x86/kernel/apic/io_apic.c
++++ b/arch/x86/kernel/apic/io_apic.c
+@@ -2945,6 +2945,7 @@ static inline void __init check_timer(void)
+ 				unmask_IO_APIC_irq_desc(desc);
+ 		}
+ 		if (timer_irq_works()) {
++			nmi_watchdog_default();
+ 			if (nmi_watchdog == NMI_IO_APIC) {
+ 				setup_nmi();
+ 				enable_8259A_irq(0);
+@@ -2974,6 +2975,7 @@ static inline void __init check_timer(void)
+ 		if (timer_irq_works()) {
+ 			apic_printk(APIC_QUIET, KERN_INFO "....... works.\n");
+ 			timer_through_8259 = 1;
++			nmi_watchdog_default();
+ 			if (nmi_watchdog == NMI_IO_APIC) {
+ 				disable_8259A_irq(0);
+ 				setup_nmi();
+diff --git a/arch/x86/kernel/apic/nmi.c b/arch/x86/kernel/apic/nmi.c
+index d5b671d..6e5f306 100644
+--- a/arch/x86/kernel/apic/nmi.c
++++ b/arch/x86/kernel/apic/nmi.c
+@@ -50,7 +50,11 @@ static cpumask_t backtrace_mask __read_mostly;
+ atomic_t nmi_active = ATOMIC_INIT(0);		/* oprofile uses this */
+ EXPORT_SYMBOL(nmi_active);
+ 
++#ifdef CONFIG_X86_64
++unsigned int nmi_watchdog = NMI_DEFAULT;
++#else
+ unsigned int nmi_watchdog = NMI_NONE;
++#endif
+ EXPORT_SYMBOL(nmi_watchdog);
+ 
+ static int panic_on_timeout;
+@@ -59,6 +63,22 @@ static unsigned int nmi_hz = HZ;
+ static DEFINE_PER_CPU(short, wd_enabled);
+ static int endflag __initdata;
+ 
++#ifdef CONFIG_X86_64
++void __init nmi_watchdog_default(void)
++{
++        if (nmi_watchdog != NMI_DEFAULT)
++                return;
++        /* if not specified, probe it */
++        if (!lapic_watchdog_init(nmi_hz))
++                nmi_watchdog = NMI_LOCAL_APIC;
++        else
++                nmi_watchdog = NMI_IO_APIC;
++	atomic_inc(&nmi_active);
++}
++#else
++void __init nmi_watchdog_default(void) { return; }
++#endif
++
+ static inline unsigned int get_nmi_count(int cpu)
+ {
+ 	return per_cpu(irq_stat, cpu).__nmi_count;

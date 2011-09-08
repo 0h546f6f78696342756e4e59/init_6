@@ -1,0 +1,50 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:34:02 -0500
+Subject: [kvm] x86: disallow KVM_{SET, GET}_LAPIC without allocated in-kernel lapic
+Message-id: <20100112214155.648874300@amt.cnet>
+Patchwork-id: 22465
+O-Subject: [RHEL 6 KVM 13/20] KVM: x86: disallow KVM_{SET,
+	GET}_LAPIC without allocated in-kernel lapic
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit 2204ae3c96e9a1fed50f7ee19ce092e69d7dfe82
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Thu Oct 29 13:44:16 2009 -0200
+
+KVM: x86: disallow KVM_{SET,GET}_LAPIC without allocated in-kernel lapic
+
+Otherwise kvm might attempt to dereference a NULL pointer.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 20498b4..d0b52a3 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -1921,6 +1921,9 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
+ 
+ 	switch (ioctl) {
+ 	case KVM_GET_LAPIC: {
++		r = -EINVAL;
++		if (!vcpu->arch.apic)
++			goto out;
+ 		lapic = kzalloc(sizeof(struct kvm_lapic_state), GFP_KERNEL);
+ 
+ 		r = -ENOMEM;
+@@ -1936,6 +1939,9 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
+ 		break;
+ 	}
+ 	case KVM_SET_LAPIC: {
++		r = -EINVAL;
++		if (!vcpu->arch.apic)
++			goto out;
+ 		lapic = kmalloc(sizeof(struct kvm_lapic_state), GFP_KERNEL);
+ 		r = -ENOMEM;
+ 		if (!lapic)

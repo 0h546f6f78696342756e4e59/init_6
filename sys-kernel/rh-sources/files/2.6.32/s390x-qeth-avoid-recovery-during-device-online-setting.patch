@@ -1,0 +1,66 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Mon, 1 Mar 2010 08:14:23 -0500
+Subject: [s390x] qeth: avoid recovery during device online setting
+Message-id: <20100301081422.GA22186@redhat.com>
+Patchwork-id: 23456
+O-Subject: [RHEL6 PATCH 1/1] [s390] qeth: avoid recovery during device online
+	setting
+Bugzilla: 568781
+RH-Acked-by: David S. Miller <davem@redhat.com>
+
+Description
+-----------
+A kernel panic may occur while qeth recovery is running.
+
+If a qeth device is set online, several initialisation steps
+are performed. If a failure in one of these steps occurs,
+the qeth device is reset into DOWN state. If due to the
+failure a qeth recovery is scheduled and started in another
+thread, this might cause all kinds of conflicts, even a
+kernel panic.
+
+Forbid scheduling of a qeth recovery while online processing
+is performed till the card is in state SOFTSETUP.
+
+Bugzilla
+--------
+BZ 568781
+https://bugzilla.redhat.com/show_bug.cgi?id=568781
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.34.
+It is already queued in net-next:
+http://git.kernel.org/?p=linux/kernel/git/davem/net-next-2.6.git;a=commitdiff;h=84b66683dba002f4cce2aaf78bf45debfaf22795
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+
+diff --git a/drivers/s390/net/qeth_l2_main.c b/drivers/s390/net/qeth_l2_main.c
+index 076779d..eeb5bac 100644
+--- a/drivers/s390/net/qeth_l2_main.c
++++ b/drivers/s390/net/qeth_l2_main.c
+@@ -939,7 +939,6 @@ static int __qeth_l2_set_online(struct ccwgroup_device *gdev, int recovery_mode)
+ 	QETH_DBF_TEXT(SETUP, 2, "setonlin");
+ 	QETH_DBF_HEX(SETUP, 2, &card, sizeof(void *));
+ 
+-	qeth_set_allowed_threads(card, QETH_RECOVER_THREAD, 1);
+ 	recover_flag = card->state;
+ 	rc = ccw_device_set_online(CARD_RDEV(card));
+ 	if (rc) {
+diff --git a/drivers/s390/net/qeth_l3_main.c b/drivers/s390/net/qeth_l3_main.c
+index 37bb3b3..ddff380 100644
+--- a/drivers/s390/net/qeth_l3_main.c
++++ b/drivers/s390/net/qeth_l3_main.c
+@@ -3322,8 +3322,6 @@ static int __qeth_l3_set_online(struct ccwgroup_device *gdev, int recovery_mode)
+ 	QETH_DBF_TEXT(SETUP, 2, "setonlin");
+ 	QETH_DBF_HEX(SETUP, 2, &card, sizeof(void *));
+ 
+-	qeth_set_allowed_threads(card, QETH_RECOVER_THREAD, 1);
+-
+ 	recover_flag = card->state;
+ 	rc = ccw_device_set_online(CARD_RDEV(card));
+ 	if (rc) {

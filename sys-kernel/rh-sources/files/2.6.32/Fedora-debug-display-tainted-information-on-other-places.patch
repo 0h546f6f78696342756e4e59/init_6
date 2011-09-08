@@ -1,0 +1,93 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:34 -0500
+Subject: [Fedora] [debug] display tainted information on other places
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6-debug-taint-vm.patch
+
+Adding print_tainted() calls on warn_slowpath_common() and on some VM
+functions.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/panic.c b/kernel/panic.c
+index 96b45d0..ebb099b 100644
+--- a/kernel/panic.c
++++ b/kernel/panic.c
+@@ -200,6 +200,7 @@ const char *print_tainted(void)
+ 
+ 	return buf;
+ }
++EXPORT_SYMBOL(print_tainted);
+ 
+ int test_taint(unsigned flag)
+ {
+@@ -352,7 +353,8 @@ static void warn_slowpath_common(const char *file, int line, void *caller, struc
+ 	const char *board;
+ 
+ 	printk(KERN_WARNING "------------[ cut here ]------------\n");
+-	printk(KERN_WARNING "WARNING: at %s:%d %pS()\n", file, line, caller);
++	printk(KERN_WARNING "WARNING: at %s:%d %pS() (%s)\n",
++		file, line, caller, print_tainted());
+ 	board = dmi_get_system_info(DMI_PRODUCT_NAME);
+ 	if (board)
+ 		printk(KERN_WARNING "Hardware name: %s\n", board);
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index 2bc2ac6..d2b2c73 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -263,9 +263,10 @@ static void bad_page(struct page *page)
+ 	printk(KERN_ALERT "BUG: Bad page state in process %s  pfn:%05lx\n",
+ 		current->comm, page_to_pfn(page));
+ 	printk(KERN_ALERT
+-		"page:%p flags:%p count:%d mapcount:%d mapping:%p index:%lx\n",
++		"page:%p flags:%p count:%d mapcount:%d mapping:%p ",
+ 		page, (void *)page->flags, page_count(page),
+-		page_mapcount(page), page->mapping, page->index);
++		page_mapcount(page), page->mapping);
++	printk(KERN_CONT "index:%lx (%s)\n", page->index, print_tainted());
+ 
+ 	dump_stack();
+ out:
+diff --git a/mm/slab.c b/mm/slab.c
+index 7dfa481..5fc3a17 100644
+--- a/mm/slab.c
++++ b/mm/slab.c
+@@ -1803,8 +1803,8 @@ static void check_poison_obj(struct kmem_cache *cachep, void *objp)
+ 			/* Print header */
+ 			if (lines == 0) {
+ 				printk(KERN_ERR
+-					"Slab corruption: %s start=%p, len=%d\n",
+-					cachep->name, realobj, size);
++					"Slab corruption (%s): %s start=%p, len=%d\n",
++					print_tainted(), cachep->name, realobj, size);
+ 				print_objinfo(cachep, objp, 0);
+ 			}
+ 			/* Hexdump the affected line */
+@@ -2902,8 +2902,8 @@ static void check_slabp(struct kmem_cache *cachep, struct slab *slabp)
+ 	if (entries != cachep->num - slabp->inuse) {
+ bad:
+ 		printk(KERN_ERR "slab: Internal list corruption detected in "
+-				"cache '%s'(%d), slabp %p(%d). Hexdump:\n",
+-			cachep->name, cachep->num, slabp, slabp->inuse);
++				"cache '%s'(%d), slabp %p(%d). Tainted(%s). Hexdump:\n",
++			cachep->name, cachep->num, slabp, slabp->inuse, print_tainted());
+ 		for (i = 0;
+ 		     i < sizeof(*slabp) + cachep->num * sizeof(kmem_bufctl_t);
+ 		     i++) {
+diff --git a/mm/slub.c b/mm/slub.c
+index 4996fc7..beb6448 100644
+--- a/mm/slub.c
++++ b/mm/slub.c
+@@ -440,7 +440,7 @@ static void slab_bug(struct kmem_cache *s, char *fmt, ...)
+ 	va_end(args);
+ 	printk(KERN_ERR "========================================"
+ 			"=====================================\n");
+-	printk(KERN_ERR "BUG %s: %s\n", s->name, buf);
++	printk(KERN_ERR "BUG %s (%s): %s\n", s->name, print_tainted(), buf);
+ 	printk(KERN_ERR "----------------------------------------"
+ 			"-------------------------------------\n\n");
+ }

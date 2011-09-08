@@ -1,0 +1,70 @@
+From: Larry Woodman <lwoodman@redhat.com>
+Date: Fri, 18 Dec 2009 16:34:44 -0500
+Subject: [mm] Add file page mm tracepoints.
+Message-id: <1261154086-15637-4-git-send-email-lwoodman@redhat.com>
+Patchwork-id: 22148
+O-Subject: [RHEL6 Patch 3/5] Add file page mm tracepoints.
+Bugzilla: 523093
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+This patch adds the mm tracepoints to the actual filemap page code.
+Its used to monitor filemap faults, pageouts, refaults, maps and unmaps.
+
+Fixes BZ 523093.
+
+Signed-off-by: Larry Woodman <lwoodman@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/filemap.c b/mm/filemap.c
+index ef169f3..4dc22a0 100644
+--- a/mm/filemap.c
++++ b/mm/filemap.c
+@@ -34,6 +34,7 @@
+ #include <linux/hardirq.h> /* for BUG_ON(!in_atomic()) only */
+ #include <linux/memcontrol.h>
+ #include <linux/mm_inline.h> /* for page_is_file_cache() */
++#include <trace/events/kmem.h>
+ #include "internal.h"
+ 
+ /*
+@@ -1560,6 +1561,8 @@ retry_find:
+ 
+ 	ra->prev_pos = (loff_t)offset << PAGE_CACHE_SHIFT;
+ 	vmf->page = page;
++	trace_mm_filemap_fault(vma->vm_mm, (unsigned long)vmf->virtual_address,
++				vmf->flags&FAULT_FLAG_NONLINEAR);
+ 	return ret | VM_FAULT_LOCKED;
+ 
+ no_cached_page:
+diff --git a/mm/memory.c b/mm/memory.c
+index f0af5d7..21c90b7 100644
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -873,6 +873,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
+ 				    likely(!VM_SequentialReadHint(vma)))
+ 					mark_page_accessed(page);
+ 				file_rss--;
++				trace_mm_filemap_userunmap(mm, addr);
+ 			}
+ 			page_remove_rmap(page);
+ 			if (unlikely(page_mapcount(page) < 0))
+@@ -2165,6 +2166,7 @@ gotten:
+ 			if (!PageAnon(old_page)) {
+ 				dec_mm_counter(mm, file_rss);
+ 				inc_mm_counter(mm, anon_rss);
++				trace_mm_filemap_cow(mm, address);
+ 			}
+ 		} else {
+ 			inc_mm_counter(mm, anon_rss);
+diff --git a/mm/rmap.c b/mm/rmap.c
+index ee3206e..6d220a6 100644
+--- a/mm/rmap.c
++++ b/mm/rmap.c
+@@ -1072,6 +1072,7 @@ static int try_to_unmap_file(struct page *page, enum ttu_flags flags)
+ 		ret = try_to_unmap_one(page, vma, address, flags);
+ 		if (ret != SWAP_AGAIN || !page_mapped(page))
+ 			goto out;
++		trace_mm_filemap_unmap(vma->vm_mm, vma->vm_start+page->index);
+ 	}
+ 
+ 	if (list_empty(&mapping->i_mmap_nonlinear))

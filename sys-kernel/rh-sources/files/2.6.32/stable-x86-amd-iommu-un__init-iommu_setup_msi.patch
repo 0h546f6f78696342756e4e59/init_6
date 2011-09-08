@@ -1,0 +1,30 @@
+From: Joerg Roedel <joerg.roedel@amd.com>
+Date: Mon, 23 Nov 2009 12:45:25 +0100
+Subject: [stable] x86/amd-iommu: un__init iommu_setup_msi
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 9f800de38b05d84809e89f16671d636a140eede7 upstream.
+
+This function may be called on the resume path and can not
+be dropped after booting.
+
+Signed-off-by: Joerg Roedel <joerg.roedel@amd.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/arch/x86/kernel/amd_iommu_init.c b/arch/x86/kernel/amd_iommu_init.c
+index c20001e..e0b3130 100644
+--- a/arch/x86/kernel/amd_iommu_init.c
++++ b/arch/x86/kernel/amd_iommu_init.c
+@@ -925,7 +925,7 @@ static int __init init_iommu_all(struct acpi_table_header *table)
+  *
+  ****************************************************************************/
+ 
+-static int __init iommu_setup_msi(struct amd_iommu *iommu)
++static int iommu_setup_msi(struct amd_iommu *iommu)
+ {
+ 	int r;
+ 

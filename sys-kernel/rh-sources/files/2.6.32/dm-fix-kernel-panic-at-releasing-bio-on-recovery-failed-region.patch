@@ -1,0 +1,67 @@
+From: Takahiro Yasui <tyasui@redhat.com>
+Date: Thu, 4 Feb 2010 21:23:33 -0500
+Subject: [dm] fix kernel panic at releasing bio on recovery failed region
+Message-id: <4B6B3AD5.8030706@redhat.com>
+Patchwork-id: 23132
+O-Subject: [RHEL6 PATCH] fix kernel panic at releasing bio on	recovery failed
+	region
+Bugzilla: 557934
+RH-Acked-by: Mikulas Patocka <mpatocka@redhat.com>
+
+BZ#:
+----
+  https://bugzilla.redhat.com/show_bug.cgi?id=557934
+
+Description:
+-----------
+Fix kernel panic when bio on a recovery failed region is released.
+
+When recovery process of a region failed, dm_rh_recovery_end() function
+changes the state of the region from DM_RH_RECOVERING to DM_RH_NOSYNC.
+When recovery_complete() is executed between dm_rh_update_states() and
+do_writes() in do_mirror(), bios are processed with the region state,
+DM_RH_NOSYNC. However, the region data is freed without checking its
+pending count when dm_rh_update_states() is called next time.
+
+When bios are finished by mirror_end_io(), __rh_lookup() in dm_rh_dec()
+returns NULL even though a valid return value are expected.
+
+This patch removes the state change of the recovery failed region
+from DM_RH_RECOVERING to DM_RH_NOSYNC in dm_rh_recovery_end().
+
+Upstream status:
+----------------
+  In maintainer's tree for linux-next
+  http://www.kernel.org/pub/linux/kernel/people/agk/patches/2.6/
+  editing/dm-raid1-fix-null-pointer-dereference-in-suspend.patch
+
+Test status:
+------------
+  Patch was tested with kernel-2.6.33-rc1, and confirmed that no
+  kernel panic happens when dmsetup suspend is executed.
+
+Appreciate your review.
+
+Thanks,
+Takahiro Yasui
+
+Signed-off-by: Takahiro Yasui <tyasui@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/md/dm-region-hash.c b/drivers/md/dm-region-hash.c
+index 62f37f1..40aeace 100644
+--- a/drivers/md/dm-region-hash.c
++++ b/drivers/md/dm-region-hash.c
+@@ -663,10 +663,9 @@ void dm_rh_recovery_end(struct dm_region *reg, int success)
+ 	spin_lock_irq(&rh->region_lock);
+ 	if (success)
+ 		list_add(&reg->list, &reg->rh->recovered_regions);
+-	else {
+-		reg->state = DM_RH_NOSYNC;
++	else
+ 		list_add(&reg->list, &reg->rh->failed_recovered_regions);
+-	}
++
+ 	spin_unlock_irq(&rh->region_lock);
+ 
+ 	rh->wakeup_workers(rh->context);

@@ -1,0 +1,34 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Fri, 11 Dec 2009 16:46:05 -0500
+Subject: [gfs2] only show nobarrier option on /proc/mounts when the option is active
+Message-id: <1260549965.14393.86.camel@localhost.localdomain>
+Patchwork-id: 21886
+O-Subject: [RHEL6] [02/02] GFS2: add barrier/nobarrier mount options (bz #546665)
+Bugzilla: 546665
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+>From cdcfde62dac64c86ff34e483c595d568a252c433 Mon Sep 17 00:00:00 2001
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Fri, 30 Oct 2009 10:48:53 +0000
+Subject: GFS2: Display nobarrier option in /proc/mounts
+
+Since the default is barriers on, this only displays the
+nobarrier option when that is active.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/super.c b/fs/gfs2/super.c
+index 5e4b314..c282ad4 100644
+--- a/fs/gfs2/super.c
++++ b/fs/gfs2/super.c
+@@ -1336,6 +1336,9 @@ static int gfs2_show_options(struct seq_file *s, struct vfsmount *mnt)
+ 		}
+ 		seq_printf(s, ",errors=%s", state);
+ 	}
++	if (test_bit(SDF_NOBARRIERS, &sdp->sd_flags))
++		seq_printf(s, ",nobarrier");
++
+ 	return 0;
+ }
+ 

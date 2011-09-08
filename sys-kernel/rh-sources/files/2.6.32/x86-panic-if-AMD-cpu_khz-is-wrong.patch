@@ -1,0 +1,35 @@
+From: Prarit Bhargava <prarit@redhat.com>
+Date: Tue, 24 Nov 2009 20:00:54 -0500
+Subject: [x86] panic if AMD cpu_khz is wrong
+Message-id: <4B0C3B76.70605@redhat.com>
+Patchwork-id: 21483
+O-Subject: Re: [RHEL6 PATCH] panic if AMD cpu_khz is wrong
+Bugzilla: 523468
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Christopher Lalancette <clalance@redhat.com>
+
+Forward port of RHEL5 commit 46a408abe5074fef9f8c0334b7bbfc6448a18f23.
+
+Enterprise systems should just stop booting before something really bad
+happens.
+
+Resolves BZ 523468.
+
+Successfully compiled by me.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/tsc.c b/arch/x86/kernel/tsc.c
+index cd982f4..c9d9a55 100644
+--- a/arch/x86/kernel/tsc.c
++++ b/arch/x86/kernel/tsc.c
+@@ -874,8 +874,7 @@ static unsigned long __init calibrate_cpu(void)
+ 			break;
+ 	no_ctr_free = (i == 4);
+ 	if (no_ctr_free) {
+-		WARN(1, KERN_WARNING "Warning: AMD perfctrs busy ... "
+-		     "cpu_khz value may be incorrect.\n");
++		panic("AMD perfctrs busy... cpu_khz value may be incorrect.\n");
+ 		i = 3;
+ 		rdmsrl(MSR_K7_EVNTSEL3, evntsel3);
+ 		wrmsrl(MSR_K7_EVNTSEL3, 0);

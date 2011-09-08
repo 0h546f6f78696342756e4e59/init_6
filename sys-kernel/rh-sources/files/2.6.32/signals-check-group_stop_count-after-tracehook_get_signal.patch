@@ -1,0 +1,54 @@
+From: Roland McGrath <roland@redhat.com>
+Date: Fri, 18 Dec 2009 10:23:46 -0500
+Subject: [signals] check ->group_stop_count after tracehook_get_signal()
+Message-id: <d9ab245b4c306aa71c82847afcf8c19e65fe9e75.1261131466.git.roland@redhat.com>
+Patchwork-id: 22110
+O-Subject: [RHEL6.0 PATCH 09/16] signals: check ->group_stop_count after
+	tracehook_get_signal()
+Bugzilla: 549491
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+From: Oleg Nesterov <oleg@redhat.com>
+
+Move the call to do_signal_stop() down, after tracehook call.  This makes
+->group_stop_count condition visible to tracers before do_signal_stop()
+will participate in this group-stop.
+
+Currently the patch has no effect, tracehook_get_signal() always returns 0.
+
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Acked-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+(cherry picked from commit 1be53963b0519bd3681749a9bed8b83aeb005cca)
+
+Signed-off-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/signal.c b/kernel/signal.c
+index 6705320..7098c71 100644
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -1807,11 +1807,6 @@ relock:
+ 
+ 	for (;;) {
+ 		struct k_sigaction *ka;
+-
+-		if (unlikely(signal->group_stop_count > 0) &&
+-		    do_signal_stop(0))
+-			goto relock;
+-
+ 		/*
+ 		 * Tracing can induce an artifical signal and choose sigaction.
+ 		 * The return value in @signr determines the default action,
+@@ -1823,6 +1818,10 @@ relock:
+ 		if (unlikely(signr != 0))
+ 			ka = return_ka;
+ 		else {
++			if (unlikely(signal->group_stop_count > 0) &&
++			    do_signal_stop(0))
++				goto relock;
++
+ 			signr = dequeue_signal(current, &current->blocked,
+ 					       info);
+ 

@@ -1,0 +1,276 @@
+From: Mauro Carvalho Chehab <mchehab@redhat.com>
+Date: Wed, 6 Jan 2010 12:44:02 -0500
+Subject: [serial] 8250: add support for DTR/DSR hardware flow control
+Message-id: <4B448592.7030803@redhat.com>
+Patchwork-id: 22323
+O-Subject: [RHEL6] BZ#523848: 8250: add support for DTR/DSR hardware flow control
+Bugzilla: 523848
+RH-Acked-by: Aristeu Rozanski <aris@redhat.com>
+
+Backports a RHEL5 patch from: Aristeu Rozanski <arozansk@redhat.com>
+This patch is needed to support a certain serial printer that has small buffer
+and needs DTR/DSR flow control in order to work.
+
+v1: patch ported to RHEL6 Alpha3
+v2: patch ported to RHEL6 kernel-2.6.32-4.el6
+
+Signed-off-by: Mauro Carvalho Chehab <mchehab@redhat.com>
+
+I don't have such hardware, so I can't test the patch to see if the printer is
+properly working.
+
+Aris,
+Could you please test it with the serial printer? I think you have access to one
+of those printers at the office.
+
+After having it properly tested, I'll try to re-submit it again upstream.
+
+
+diff --git a/drivers/serial/8250.c b/drivers/serial/8250.c
+index d84c6f2..3f5a1e5 100644
+--- a/drivers/serial/8250.c
++++ b/drivers/serial/8250.c
+@@ -1507,7 +1507,7 @@ static unsigned int check_modem_status(struct uart_8250_port *up)
+ 		if (status & UART_MSR_TERI)
+ 			up->port.icount.rng++;
+ 		if (status & UART_MSR_DDSR)
+-			up->port.icount.dsr++;
++			uart_handle_dsr_change(&up->port, status & UART_MSR_DSR);
+ 		if (status & UART_MSR_DDCD)
+ 			uart_handle_dcd_change(&up->port, status & UART_MSR_DCD);
+ 		if (status & UART_MSR_DCTS)
+@@ -1878,9 +1878,16 @@ static void wait_for_xmitr(struct uart_8250_port *up, int bits)
+ 		unsigned int tmout;
+ 		for (tmout = 1000000; tmout; tmout--) {
+ 			unsigned int msr = serial_in(up, UART_MSR);
++
+ 			up->msr_saved_flags |= msr & MSR_SAVE_FLAGS;
+-			if (msr & UART_MSR_CTS)
++
++			if ((up->port.flags & ASYNC_CTS_FLOW) &&
++			    (msr & UART_MSR_CTS))
+ 				break;
++			else if ((up->port.flags & UIF_DSR_FLOW) &&
++				 (msr & UART_MSR_DSR))
++				break;
++
+ 			udelay(1);
+ 			touch_nmi_watchdog();
+ 		}
+diff --git a/drivers/serial/serial_core.c b/drivers/serial/serial_core.c
+index dcc7244..1e1164f 100644
+--- a/drivers/serial/serial_core.c
++++ b/drivers/serial/serial_core.c
+@@ -194,6 +194,13 @@ static int uart_startup(struct uart_state *state, int init_hw)
+ 			spin_unlock_irq(&uport->lock);
+ 		}
+ 
++		if (port->flags & UIF_DSR_FLOW) {
++			spin_lock_irq(&uport->lock);
++			if (!(uport->ops->get_mctrl(uport) & TIOCM_DSR))
++				port->tty->hw_stopped = 1;
++			spin_unlock_irq(&port->lock);
++		}
++
+ 		set_bit(ASYNCB_INITIALIZED, &port->flags);
+ 
+ 		clear_bit(TTY_IO_ERROR, &port->tty->flags);
+@@ -448,6 +455,11 @@ uart_change_speed(struct uart_state *state, struct ktermios *old_termios)
+ 	else
+ 		clear_bit(ASYNCB_CTS_FLOW, &port->flags);
+ 
++	if (termios->c_cflag & CDTRDSR)
++		port->flags |= UIF_DSR_FLOW;
++	else
++		port->flags &= ~UIF_DSR_FLOW;
++
+ 	if (termios->c_cflag & CLOCAL)
+ 		clear_bit(ASYNCB_CHECK_CD, &port->flags);
+ 	else
+@@ -611,6 +623,8 @@ static void uart_throttle(struct tty_struct *tty)
+ 
+ 	if (tty->termios->c_cflag & CRTSCTS)
+ 		uart_clear_mctrl(state->uart_port, TIOCM_RTS);
++	if (tty->termios->c_cflag & CDTRDSR)
++		uart_clear_mctrl(state->uart_port, TIOCM_DTR);
+ }
+ 
+ static void uart_unthrottle(struct tty_struct *tty)
+@@ -627,6 +641,8 @@ static void uart_unthrottle(struct tty_struct *tty)
+ 
+ 	if (tty->termios->c_cflag & CRTSCTS)
+ 		uart_set_mctrl(port, TIOCM_RTS);
++	if (tty->termios->c_cflag & CDTRDSR)
++		uart_set_mctrl(port, TIOCM_DTR);
+ }
+ 
+ static int uart_get_info(struct uart_state *state,
+@@ -1224,6 +1240,9 @@ static void uart_set_termios(struct tty_struct *tty,
+ 		if (!(cflag & CRTSCTS) ||
+ 		    !test_bit(TTY_THROTTLED, &tty->flags))
+ 			mask |= TIOCM_RTS;
++		if (!(cflag & CDTRDSR) ||
++		    !test_bit(TTY_THROTTLED, &tty->flags))
++			mask &= ~TIOCM_DTR;
+ 		uart_set_mctrl(state->uart_port, mask);
+ 	}
+ 
+@@ -1244,6 +1263,24 @@ static void uart_set_termios(struct tty_struct *tty,
+ 		}
+ 		spin_unlock_irqrestore(&state->uart_port->lock, flags);
+ 	}
++
++	/* Handle turning off CDTRDSR */
++	if ((old_termios->c_cflag & CDTRDSR) && !(cflag & CDTRDSR)) {
++		spin_lock_irqsave(&state->uart_port->lock, flags);
++		tty->hw_stopped = 0;
++		__uart_start(tty);
++		spin_unlock_irqrestore(&state->uart_port->lock, flags);
++	}
++
++	if (!(old_termios->c_cflag & CDTRDSR) && (cflag & CDTRDSR)) {
++		spin_lock_irqsave(&state->uart_port->lock, flags);
++		if (!(state->uart_port->ops->get_mctrl(state->uart_port) & TIOCM_DSR)) {
++			tty->hw_stopped = 1;
++			state->uart_port->ops->stop_tx(state->uart_port);
++		}
++		spin_unlock_irqrestore(&state->uart_port->lock, flags);
++	}
++
+ #if 0
+ 	/*
+ 	 * No need to wake up processes in open wait, since they
+@@ -1526,7 +1563,8 @@ uart_block_til_ready(struct file *filp, struct uart_state *state)
+ 		 * not set RTS here - we want to make sure we catch
+ 		 * the data from the modem.
+ 		 */
+-		if (port->tty->termios->c_cflag & CBAUD)
++		if (port->tty->termios->c_cflag & CBAUD &&
++		    !(port->tty->termios->c_cflag & CDTRDSR))
+ 			uart_set_mctrl(uport, TIOCM_DTR);
+ 
+ 		/*
+@@ -1953,6 +1991,8 @@ uart_set_options(struct uart_port *port, struct console *co,
+ 
+ 	if (flow == 'r')
+ 		termios.c_cflag |= CRTSCTS;
++	if (flow == 'd')
++		termios.c_cflag |= CDTRDSR;
+ 
+ 	/*
+ 	 * some uarts on other side don't support no flow control.
+diff --git a/include/asm-generic/termbits.h b/include/asm-generic/termbits.h
+index 1c9773d..deae7cc 100644
+--- a/include/asm-generic/termbits.h
++++ b/include/asm-generic/termbits.h
+@@ -157,6 +157,7 @@ struct ktermios {
+ #define  B3500000 0010016
+ #define  B4000000 0010017
+ #define CIBAUD	  002003600000	/* input baud rate */
++#define CDTRDSR	  004000000000	/* DTR/DSR flow control */
+ #define CMSPAR	  010000000000	/* mark or space (stick) parity */
+ #define CRTSCTS	  020000000000	/* flow control */
+ 
+diff --git a/include/linux/serial_core.h b/include/linux/serial_core.h
+index db532ce..880f45c 100644
+--- a/include/linux/serial_core.h
++++ b/include/linux/serial_core.h
+@@ -315,6 +315,7 @@ struct uart_port {
+ #define UPF_MAGIC_MULTIPLIER	((__force upf_t) (1 << 16))
+ #define UPF_CONS_FLOW		((__force upf_t) (1 << 23))
+ #define UPF_SHARE_IRQ		((__force upf_t) (1 << 24))
++#define UIF_DSR_FLOW		((__force upf_t) (1 << 25))
+ /* The exact UART type is known and should not be probed.  */
+ #define UPF_FIXED_TYPE		((__force upf_t) (1 << 27))
+ #define UPF_BOOT_AUTOCONF	((__force upf_t) (1 << 28))
+@@ -505,34 +506,50 @@ uart_handle_dcd_change(struct uart_port *uport, unsigned int status)
+ }
+ 
+ /**
+- *	uart_handle_cts_change - handle a change of clear-to-send state
++ *	uart_handle_flow_control_change - handle a change of CTS or DSR
+  *	@uport: uart_port structure for the open port
+- *	@status: new clear to send status, nonzero if active
++ *	@status: new CTS/DTR status, nonzero if active
+  */
+ static inline void
+-uart_handle_cts_change(struct uart_port *uport, unsigned int status)
++uart_handle_flow_control_change(struct uart_port *uport, unsigned int status)
+ {
+ 	struct tty_port *port = &uport->state->port;
+ 	struct tty_struct *tty = port->tty;
+ 
+-	uport->icount.cts++;
+-
+-	if (port->flags & ASYNC_CTS_FLOW) {
+-		if (tty->hw_stopped) {
+-			if (status) {
+-				tty->hw_stopped = 0;
+-				uport->ops->start_tx(uport);
+-				uart_write_wakeup(uport);
+-			}
+-		} else {
+-			if (!status) {
+-				tty->hw_stopped = 1;
+-				uport->ops->stop_tx(uport);
+-			}
++	if (tty->hw_stopped) {
++		if (status) {
++			tty->hw_stopped = 0;
++			uport->ops->start_tx(uport);
++			uart_write_wakeup(uport);
++		}
++	} else {
++		if (!status) {
++			tty->hw_stopped = 1;
++			uport->ops->stop_tx(uport);
+ 		}
+ 	}
+ }
+ 
++static inline void
++uart_handle_cts_change(struct uart_port *uport, unsigned int status)
++{
++	struct tty_port *port = &uport->state->port;
++
++	uport->icount.cts++;
++	if (port->flags & ASYNC_CTS_FLOW)
++		uart_handle_flow_control_change(uport, status);
++}
++
++static inline void
++uart_handle_dsr_change(struct uart_port *uport, unsigned int status)
++{
++	struct tty_port *port = &uport->state->port;
++
++	uport->icount.dsr++;
++	if (port->flags & UIF_DSR_FLOW)
++		uart_handle_flow_control_change(uport, status);
++}
++
+ #include <linux/tty_flip.h>
+ 
+ static inline void
+@@ -556,7 +573,7 @@ uart_insert_char(struct uart_port *port, unsigned int status,
+  *	UART_ENABLE_MS - determine if port should enable modem status irqs
+  */
+ #define UART_ENABLE_MS(port,cflag)	((port)->flags & UPF_HARDPPS_CD || \
+-					 (cflag) & CRTSCTS || \
++					 (cflag) & (CRTSCTS | CDTRDSR) || \
+ 					 !((cflag) & CLOCAL))
+ 
+ #endif
+diff --git a/include/linux/termios.h b/include/linux/termios.h
+index 2acd0c1..4d56459 100644
+--- a/include/linux/termios.h
++++ b/include/linux/termios.h
+@@ -19,4 +19,9 @@ struct termiox
+ #define	DTRXOFF		0x0004		/* DTR flow control on input */
+ #define DSRXON		0x0008		/* DCD flow control on output */
+ 
++#ifndef CDTRDSR
++#warning This architecture should implement CDTRDSR
++#define CDTRDSR 0 /* remove this when all architectures have a definition */
++#endif
++
+ #endif

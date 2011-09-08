@@ -1,0 +1,44 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Thu, 17 Dec 2009 18:44:53 -0500
+Subject: [uv] x86: SGI UV: Fix BAU initialization
+Message-id: <20091217133111.25514.1299.sendpatchset@localhost.localdomain>
+Patchwork-id: 22088
+O-Subject: [RHEL6 PATCH 1/8] x86: SGI UV: Fix BAU initialization
+Bugzilla: 548181
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+commit e38e2af1c57c3eb5211331a5b4fcaae0c4a2a918
+Author: Cliff Wickman <cpw@sgi.com>
+Date:   Thu Nov 19 17:12:43 2009 -0600
+
+    x86: SGI UV: Fix BAU initialization
+
+    A memory mapped register that affects the SGI UV Broadcast
+    Assist Unit's interrupt handling may sometimes be unintialized.
+
+    Remove the condition on its initialization, as that condition
+    can be randomly satisfied by a hardware reset.
+
+    Signed-off-by: Cliff Wickman <cpw@sgi.com>
+    Cc: <stable@kernel.org>
+    LKML-Reference: <E1NBGB9-0005nU-Dp@eag09.americas.sgi.com>
+    Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/tlb_uv.c b/arch/x86/kernel/tlb_uv.c
+index 1740c85..364d015 100644
+--- a/arch/x86/kernel/tlb_uv.c
++++ b/arch/x86/kernel/tlb_uv.c
+@@ -817,10 +817,8 @@ static int __init uv_init_blade(int blade)
+ 	 */
+ 	apicid = blade_to_first_apicid(blade);
+ 	pa = uv_read_global_mmr64(pnode, UVH_BAU_DATA_CONFIG);
+-	if ((pa & 0xff) != UV_BAU_MESSAGE) {
+-		uv_write_global_mmr64(pnode, UVH_BAU_DATA_CONFIG,
++	uv_write_global_mmr64(pnode, UVH_BAU_DATA_CONFIG,
+ 				      ((apicid << 32) | UV_BAU_MESSAGE));
+-	}
+ 	return 0;
+ }
+ 

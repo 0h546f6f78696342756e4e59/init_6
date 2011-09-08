@@ -1,0 +1,45 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 18 Jan 2010 13:30:58 -0500
+Subject: [nfs] nfsd: make sure data is on disk before calling ->fsync
+Message-id: <4B546292.3000106@RedHat.com>
+Patchwork-id: 22621
+O-Subject: [RHEL6] [PATCH 1/7] NFS server and client 2.6.33 bugfixes.
+Bugzilla: 437715
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 7211a4e859ad070b28545c06e0a6cb60b3b8aa31
+Author: Christoph Hellwig <hch@lst.de>
+Date:   Fri Dec 25 17:44:45 2009 +0100
+
+    nfsd: make sure data is on disk before calling ->fsync
+
+    nfsd is not using vfs_fsync, so I missed it when changing the calling
+    convention during the 2.6.32 window.  This patch fixes it to not only
+    start the data writeout, but also wait for it to complete before calling
+    into ->fsync.
+
+    Signed-off-by: Christoph Hellwig <hch@lst.de>
+    Cc: stable@kernel.org
+    Signed-off-by: J. Bruce Fields <bfields@citi.umich.edu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfsd/vfs.c b/fs/nfsd/vfs.c
+index e3ef3ec..d5fe17c 100644
+--- a/fs/nfsd/vfs.c
++++ b/fs/nfsd/vfs.c
+@@ -782,12 +782,9 @@ static inline int nfsd_dosync(struct file *filp, struct dentry *dp,
+ 	int (*fsync) (struct file *, struct dentry *, int);
+ 	int err;
+ 
+-	err = filemap_fdatawrite(inode->i_mapping);
++	err = filemap_write_and_wait(inode->i_mapping);
+ 	if (err == 0 && fop && (fsync = fop->fsync))
+ 		err = fsync(filp, dp, 0);
+-	if (err == 0)
+-		err = filemap_fdatawait(inode->i_mapping);
+-
+ 	return err;
+ }
+ 

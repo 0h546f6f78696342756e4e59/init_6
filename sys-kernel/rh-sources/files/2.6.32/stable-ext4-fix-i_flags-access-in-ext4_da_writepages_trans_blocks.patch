@@ -1,0 +1,32 @@
+From: Julia Lawall <julia@diku.dk>
+Date: Sun, 15 Nov 2009 15:30:58 -0500
+Subject: [stable] ext4: fix i_flags access in ext4_da_writepages_trans_blocks()
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+(cherry picked from commit 30c6e07a92ea4cb87160d32ffa9bce172576ae4c)
+
+We need to be testing the i_flags field in the ext4 specific portion
+of the inode, instead of the (confusingly aliased) i_flags field in
+the generic struct inode.
+
+Signed-off-by: Julia Lawall <julia@diku.dk>
+Signed-off-by: "Theodore Ts'o" <tytso@mit.edu>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/fs/ext4/inode.c b/fs/ext4/inode.c
+index 07c74d3..a1d0fab 100644
+--- a/fs/ext4/inode.c
++++ b/fs/ext4/inode.c
+@@ -2788,7 +2788,7 @@ static int ext4_da_writepages_trans_blocks(struct inode *inode)
+ 	 * number of contiguous block. So we will limit
+ 	 * number of contiguous block to a sane value
+ 	 */
+-	if (!(inode->i_flags & EXT4_EXTENTS_FL) &&
++	if (!(EXT4_I(inode)->i_flags & EXT4_EXTENTS_FL) &&
+ 	    (max_blocks > EXT4_MAX_TRANS_DATA))
+ 		max_blocks = EXT4_MAX_TRANS_DATA;
+ 

@@ -1,0 +1,249 @@
+From: John Villalovos <jvillalo@redhat.com>
+Date: Thu, 4 Mar 2010 16:49:33 -0500
+Subject: [x86] Intel Cougar Point chipset support
+Message-id: <20100304164932.GA15509@linuxjohn.usersys.redhat.com>
+Patchwork-id: 23486
+O-Subject: [RHEL6 BZ560077] Intel Cougar Point chipset support
+Bugzilla: 560077
+RH-Acked-by: David Milburn <dmilburn@redhat.com>
+
+Intel Cougar Point PCH (Platform Controller Hub) support for SATA, USB,
+HD Audio, and I2C(SMBUS)
+https://bugzilla.redhat.com/show_bug.cgi?id=560077
+
+This adds support for the upcoming Intel Cougar Point chipset.  It is a
+faithful backport of upstream and all patches applied without any massaging
+needed.  Two of the five patches are in Linus' kernel tree.  The other three
+patches are in the linux-next tree.
+
+Brew build:
+https://brewweb.devel.redhat.com/taskinfo?taskID=2294647
+
+Testing:
+I do NOT have a Cougar Point chipset system yet.  I did install this on an
+Emerald Ridge and didn't notice any issues in my testing.
+
+I did a couple of RHTS test passes:
+http://rhts.redhat.com/cgi-bin/rhts/jobs.cgi?id=130029
+http://rhts.redhat.com/cgi-bin/rhts/jobs.cgi?id=129658
+
+I believe the failures that occurred are unrelated to my patch.
+
+Backport of the following commits:
+Upstream commit 93da6202264ce1256b04db8008a43882ae62d060
+Upstream Author: Seth Heasley <seth.heasley@intel.com>
+Upstream Date:   Tue Jan 12 16:56:37 2010 -0800
+
+        x86/PCI: irq and pci_ids patch for Intel Cougar Point DeviceIDs
+
+        This patch adds the Intel Cougar Point (PCH) LPC and SMBus Controller DeviceIDs.
+
+Upstream commit 498d49a4d39745b23463c84f1df772a45696c894 (linux-next tree)
+Upstream Author: Seth Heasley <seth.heasley@intel.com>
+Upstream Date:   Tue Jan 12 17:00:18 2010 -0800
+http://git.kernel.org/?p=linux/kernel/git/next/linux-next.git;a=commitdiff;h=498d49a4d39745b23463c84f1df772a45696c894
+
+        ahci: AHCI and RAID mode SATA patch for Intel Cougar Point DeviceIDs
+
+Upstream commit f1fda9986b899ae52717f17fed83a194a5de9af8 (linux-next tree)
+Upstream Author: Seth Heasley <seth.heasley@intel.com>
+Upstream Date:   Tue Jan 12 17:01:28 2010 -0800
+http://git.kernel.org/?p=linux/kernel/git/next/linux-next.git;a=commitdiff;h=f1fda9986b899ae52717f17fed83a194a5de9af8
+
+        ata_piix: IDE Mode SATA patch for Intel Cougar Point DeviceIDs
+
+Upstream commit 32679f95cac3b1bdf27dce8b5273e06af186fd91
+Upstream Author: Seth Heasley <seth.heasley@intel.com>
+Upstream Date:   Mon Feb 22 17:31:09 2010 -0800
+
+        ALSA: hda - enable snoop for Intel Cougar Point
+
+        This patch enables snoop, eliminating static during playback.
+        This patch supersedes the previous Cougar Point audio patch.
+
+Upstream commit 34697ca506060e75454892519219a1785656bc8f (linux-next tree)
+Upstream Author: Seth Heasley <seth.heasley@intel.com>
+Upstream Date:   Tue Feb 23 09:56:55 2010 +1100
+http://git.kernel.org/?p=linux/kernel/git/next/linux-next.git;a=commitdiff;h=34697ca506060e75454892519219a1785656bc8f
+
+        i2c-i801: Add Intel Cougar Point device IDs
+
+        Add the Intel Cougar Point (PCH) SMBus controller device IDs.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/Documentation/i2c/busses/i2c-i801 b/Documentation/i2c/busses/i2c-i801
+index 81c0c59..e1bb5b2 100644
+--- a/Documentation/i2c/busses/i2c-i801
++++ b/Documentation/i2c/busses/i2c-i801
+@@ -15,7 +15,8 @@ Supported adapters:
+   * Intel 82801I (ICH9)
+   * Intel EP80579 (Tolapai)
+   * Intel 82801JI (ICH10)
+-  * Intel PCH
++  * Intel 3400/5 Series (PCH)
++  * Intel Cougar Point (PCH)
+    Datasheets: Publicly available at the Intel website
+ 
+ Authors: 
+diff --git a/arch/x86/pci/irq.c b/arch/x86/pci/irq.c
+index 0696d50..b02f6d8 100644
+--- a/arch/x86/pci/irq.c
++++ b/arch/x86/pci/irq.c
+@@ -590,6 +590,8 @@ static __init int intel_router_probe(struct irq_router *r, struct pci_dev *route
+ 	case PCI_DEVICE_ID_INTEL_ICH10_1:
+ 	case PCI_DEVICE_ID_INTEL_ICH10_2:
+ 	case PCI_DEVICE_ID_INTEL_ICH10_3:
++	case PCI_DEVICE_ID_INTEL_CPT_LPC1:
++	case PCI_DEVICE_ID_INTEL_CPT_LPC2:
+ 		r->name = "PIIX/ICH";
+ 		r->get = pirq_piix_get;
+ 		r->set = pirq_piix_set;
+diff --git a/drivers/ata/ahci.c b/drivers/ata/ahci.c
+index 8257fea..adcede9 100644
+--- a/drivers/ata/ahci.c
++++ b/drivers/ata/ahci.c
+@@ -560,6 +560,12 @@ static const struct pci_device_id ahci_pci_tbl[] = {
+ 	{ PCI_VDEVICE(INTEL, 0x3b2b), board_ahci }, /* PCH RAID */
+ 	{ PCI_VDEVICE(INTEL, 0x3b2c), board_ahci }, /* PCH RAID */
+ 	{ PCI_VDEVICE(INTEL, 0x3b2f), board_ahci }, /* PCH AHCI */
++	{ PCI_VDEVICE(INTEL, 0x1c02), board_ahci }, /* CPT AHCI */
++	{ PCI_VDEVICE(INTEL, 0x1c03), board_ahci }, /* CPT AHCI */
++	{ PCI_VDEVICE(INTEL, 0x1c04), board_ahci }, /* CPT RAID */
++	{ PCI_VDEVICE(INTEL, 0x1c05), board_ahci }, /* CPT RAID */
++	{ PCI_VDEVICE(INTEL, 0x1c06), board_ahci }, /* CPT RAID */
++	{ PCI_VDEVICE(INTEL, 0x1c07), board_ahci }, /* CPT RAID */
+ 
+ 	/* JMicron 360/1/3/5/6, match class to avoid IDE function */
+ 	{ PCI_VENDOR_ID_JMICRON, PCI_ANY_ID, PCI_ANY_ID, PCI_ANY_ID,
+diff --git a/drivers/ata/ata_piix.c b/drivers/ata/ata_piix.c
+index 9ac4e37..0aa3924 100644
+--- a/drivers/ata/ata_piix.c
++++ b/drivers/ata/ata_piix.c
+@@ -291,6 +291,14 @@ static const struct pci_device_id piix_pci_tbl[] = {
+ 	{ 0x8086, 0x3b2d, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich8_2port_sata },
+ 	/* SATA Controller IDE (PCH) */
+ 	{ 0x8086, 0x3b2e, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich8_sata },
++	/* SATA Controller IDE (CPT) */
++	{ 0x8086, 0x1c00, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich8_sata },
++	/* SATA Controller IDE (CPT) */
++	{ 0x8086, 0x1c01, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich8_sata },
++	/* SATA Controller IDE (CPT) */
++	{ 0x8086, 0x1c08, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich8_2port_sata },
++	/* SATA Controller IDE (CPT) */
++	{ 0x8086, 0x1c09, PCI_ANY_ID, PCI_ANY_ID, 0, 0, ich8_2port_sata },
+ 	{ }	/* terminate list */
+ };
+ 
+diff --git a/drivers/i2c/busses/Kconfig b/drivers/i2c/busses/Kconfig
+index e8fe7f1..2dd2ce9 100644
+--- a/drivers/i2c/busses/Kconfig
++++ b/drivers/i2c/busses/Kconfig
+@@ -77,7 +77,7 @@ config I2C_AMD8111
+ 	  will be called i2c-amd8111.
+ 
+ config I2C_I801
+-	tristate "Intel 82801 (ICH)"
++	tristate "Intel 82801 (ICH/PCH)"
+ 	depends on PCI
+ 	help
+ 	  If you say yes to this option, support will be included for the Intel
+@@ -97,7 +97,8 @@ config I2C_I801
+ 	    ICH9
+ 	    Tolapai
+ 	    ICH10
+-	    PCH
++	    3400/5 Series (PCH)
++	    Cougar Point (PCH)
+ 
+ 	  This driver can also be built as a module.  If so, the module
+ 	  will be called i2c-i801.
+diff --git a/drivers/i2c/busses/i2c-i801.c b/drivers/i2c/busses/i2c-i801.c
+index 55edcfe..01169d9 100644
+--- a/drivers/i2c/busses/i2c-i801.c
++++ b/drivers/i2c/busses/i2c-i801.c
+@@ -41,7 +41,8 @@
+   Tolapai               0x5032     32     hard     yes     yes     yes
+   ICH10                 0x3a30     32     hard     yes     yes     yes
+   ICH10                 0x3a60     32     hard     yes     yes     yes
+-  PCH                   0x3b30     32     hard     yes     yes     yes
++  3400/5 Series (PCH)   0x3b30     32     hard     yes     yes     yes
++  Cougar Point (PCH)    0x1c22     32     hard     yes     yes     yes
+ 
+   Features supported by this driver:
+   Software PEC                     no
+@@ -578,6 +579,7 @@ static struct pci_device_id i801_ids[] = {
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_ICH10_4) },
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_ICH10_5) },
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_PCH_SMBUS) },
++	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CPT_SMBUS) },
+ 	{ 0, }
+ };
+ 
+@@ -707,6 +709,7 @@ static int __devinit i801_probe(struct pci_dev *dev, const struct pci_device_id
+ 	case PCI_DEVICE_ID_INTEL_ICH10_4:
+ 	case PCI_DEVICE_ID_INTEL_ICH10_5:
+ 	case PCI_DEVICE_ID_INTEL_PCH_SMBUS:
++	case PCI_DEVICE_ID_INTEL_CPT_SMBUS:
+ 		i801_features |= FEATURE_I2C_BLOCK_READ;
+ 		/* fall through */
+ 	case PCI_DEVICE_ID_INTEL_82801DB_3:
+diff --git a/include/linux/pci_ids.h b/include/linux/pci_ids.h
+index 84cf1f3..22f1e40 100644
+--- a/include/linux/pci_ids.h
++++ b/include/linux/pci_ids.h
+@@ -2398,6 +2398,9 @@
+ #define PCI_DEVICE_ID_INTEL_82840_HB	0x1a21
+ #define PCI_DEVICE_ID_INTEL_82845_HB	0x1a30
+ #define PCI_DEVICE_ID_INTEL_IOAT	0x1a38
++#define PCI_DEVICE_ID_INTEL_CPT_SMBUS	0x1c22
++#define PCI_DEVICE_ID_INTEL_CPT_LPC1	0x1c42
++#define PCI_DEVICE_ID_INTEL_CPT_LPC2	0x1c43
+ #define PCI_DEVICE_ID_INTEL_82801AA_0	0x2410
+ #define PCI_DEVICE_ID_INTEL_82801AA_1	0x2411
+ #define PCI_DEVICE_ID_INTEL_82801AA_3	0x2413
+diff --git a/sound/pci/hda/hda_intel.c b/sound/pci/hda/hda_intel.c
+index d719618..44f3949 100644
+--- a/sound/pci/hda/hda_intel.c
++++ b/sound/pci/hda/hda_intel.c
+@@ -449,6 +449,7 @@ struct azx {
+ /* driver types */
+ enum {
+ 	AZX_DRIVER_ICH,
++	AZX_DRIVER_PCH,
+ 	AZX_DRIVER_SCH,
+ 	AZX_DRIVER_ATI,
+ 	AZX_DRIVER_ATIHDMI,
+@@ -463,6 +464,7 @@ enum {
+ 
+ static char *driver_short_names[] __devinitdata = {
+ 	[AZX_DRIVER_ICH] = "HDA Intel",
++	[AZX_DRIVER_PCH] = "HDA Intel PCH",
+ 	[AZX_DRIVER_SCH] = "HDA Intel MID",
+ 	[AZX_DRIVER_ATI] = "HDA ATI SB",
+ 	[AZX_DRIVER_ATIHDMI] = "HDA ATI HDMI",
+@@ -1051,6 +1053,7 @@ static void azx_init_pci(struct azx *chip)
+ 				0x01, NVIDIA_HDA_ENABLE_COHBIT);
+ 		break;
+ 	case AZX_DRIVER_SCH:
++	case AZX_DRIVER_PCH:
+ 		pci_read_config_word(chip->pci, INTEL_SCH_HDA_DEVC, &snoop);
+ 		if (snoop & INTEL_SCH_HDA_DEVC_NOSNOOP) {
+ 			pci_write_config_word(chip->pci, INTEL_SCH_HDA_DEVC,
+@@ -2399,6 +2402,7 @@ static int __devinit azx_create(struct snd_card *card, struct pci_dev *pci,
+ 	if (bdl_pos_adj[dev] < 0) {
+ 		switch (chip->driver_type) {
+ 		case AZX_DRIVER_ICH:
++		case AZX_DRIVER_PCH:
+ 			bdl_pos_adj[dev] = 1;
+ 			break;
+ 		default:
+@@ -2678,7 +2682,7 @@ static struct pci_device_id azx_ids[] = {
+ 	/* PCH */
+ 	{ PCI_DEVICE(0x8086, 0x3b56), .driver_data = AZX_DRIVER_ICH },
+ 	/* CPT */
+-	{ PCI_DEVICE(0x8086, 0x1c20), .driver_data = AZX_DRIVER_ICH },
++	{ PCI_DEVICE(0x8086, 0x1c20), .driver_data = AZX_DRIVER_PCH },
+ 	/* SCH */
+ 	{ PCI_DEVICE(0x8086, 0x811b), .driver_data = AZX_DRIVER_SCH },
+ 	/* ATI SB 450/600 */

@@ -1,0 +1,113 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Thu, 17 Dec 2009 17:42:30 -0500
+Subject: [scsi] cciss: remove pci-ids
+Message-id: <20091217174227.3444.73616.sendpatchset@localhost.localdomain>
+Patchwork-id: 22085
+O-Subject: [RHEL6 2/2] bz464649 cciss: remove pci-ids
+Bugzilla: 464649
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+This is for bz#464649
+
+This patch comes from HP. hpsa is a new
+driver which should be used in the future instead
+of cciss for the newer(not older than 4 years)
+HP controllers. The older cciss will still be
+used for the older cards.
+
+Almost the whole driver is now in scsi-misc tree,
+there are some minor differences from last days.
+The chances are good it will made it into 2.6.33
+It is important for us to use this driver in RHEL6,
+because of the long term upstream support.
+
+I've tested this only slightly on an unsupported
+older controller (it worked) and on one newer one.
+We hope the main testing will come from HP.
+
+First patch contains the new driver - hpsa,
+the second one removes pci-id's from the cciss driver.
+There is on controller left behind - it's the P400i
+we don't know yet which driver should handle that board.
+I'm working with HP on that and will come later with
+a patch.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/block/cciss.c b/drivers/block/cciss.c
+index 92b1263..91bf056 100644
+--- a/drivers/block/cciss.c
++++ b/drivers/block/cciss.c
+@@ -68,12 +68,6 @@ MODULE_SUPPORTED_DEVICE("HP SA5i SA5i+ SA532 SA5300 SA5312 SA641 SA642 SA6400"
+ MODULE_VERSION("3.6.20");
+ MODULE_LICENSE("GPL");
+ 
+-static int cciss_allow_hpsa;
+-module_param(cciss_allow_hpsa, int, S_IRUGO|S_IWUSR);
+-MODULE_PARM_DESC(cciss_allow_hpsa,
+-	"Prevent cciss driver from accessing hardware known to be "
+-	" supported by the hpsa driver");
+-
+ #include "cciss_cmd.h"
+ #include "cciss.h"
+ #include <linux/cciss_ioctl.h>
+@@ -90,23 +84,12 @@ static const struct pci_device_id cciss_pci_device_id[] = {
+ 	{PCI_VENDOR_ID_COMPAQ, PCI_DEVICE_ID_COMPAQ_CISSC, 0x0E11, 0x409C},
+ 	{PCI_VENDOR_ID_COMPAQ, PCI_DEVICE_ID_COMPAQ_CISSC, 0x0E11, 0x409D},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSA,     0x103C, 0x3225},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3223},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3234},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3235},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3211},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3212},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3213},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3214},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3215},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3237},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x323D},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3241},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3243},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3245},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3247},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3249},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x324A},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x324B},
+ 	{0,}
+ };
+ 
+@@ -127,25 +110,12 @@ static struct board_type products[] = {
+ 	{0x409D0E11, "Smart Array 6400 EM", &SA5_access},
+ 	{0x40910E11, "Smart Array 6i", &SA5_access},
+ 	{0x3225103C, "Smart Array P600", &SA5_access},
+-	{0x3235103C, "Smart Array P400i", &SA5_access},
+ 	{0x3211103C, "Smart Array E200i", &SA5_access},
+ 	{0x3212103C, "Smart Array E200", &SA5_access},
+ 	{0x3213103C, "Smart Array E200i", &SA5_access},
+ 	{0x3214103C, "Smart Array E200i", &SA5_access},
+ 	{0x3215103C, "Smart Array E200i", &SA5_access},
+ 	{0x3237103C, "Smart Array E500", &SA5_access},
+-/* controllers below this line are also supported by the hpsa driver. */
+-#define HPSA_BOUNDARY 0x3223103C
+-	{0x3223103C, "Smart Array P800", &SA5_access},
+-	{0x3234103C, "Smart Array P400", &SA5_access},
+-	{0x323D103C, "Smart Array P700m", &SA5_access},
+-	{0x3241103C, "Smart Array P212", &SA5_access},
+-	{0x3243103C, "Smart Array P410", &SA5_access},
+-	{0x3245103C, "Smart Array P410i", &SA5_access},
+-	{0x3247103C, "Smart Array P411", &SA5_access},
+-	{0x3249103C, "Smart Array P812", &SA5_access},
+-	{0x324A103C, "Smart Array P712m", &SA5_access},
+-	{0x324B103C, "Smart Array P711m", &SA5_access},
+ };
+ 
+ /* How long to wait (in milliseconds) for board to go into simple mode */
+@@ -3767,9 +3737,6 @@ static int __devinit cciss_pci_init(ctlr_info_t *c, struct pci_dev *pdev)
+ 		    subsystem_vendor_id);
+ 
+ 	for (i = 0; i < ARRAY_SIZE(products); i++) {
+-		/* Stand aside for hpsa driver on request */
+-		if (cciss_allow_hpsa && products[i].board_id == HPSA_BOUNDARY)
+-			return -ENODEV;
+ 		if (board_id == products[i].board_id)
+ 			break;
+ 	}

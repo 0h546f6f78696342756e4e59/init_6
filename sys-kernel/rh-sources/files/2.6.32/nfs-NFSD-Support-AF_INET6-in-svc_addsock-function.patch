@@ -1,0 +1,38 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Tue, 2 Feb 2010 12:15:18 -0500
+Subject: [nfs] NFSD: Support AF_INET6 in svc_addsock() function
+Message-id: <4B681756.3020208@RedHat.com>
+Patchwork-id: 23094
+O-Subject: [RHEL6] [PATCH 7/10] NFSD: Support AF_INET6 in svc_addsock() function
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 205ba42308729f4f41f21d314a4435e7de5c9a2e
+Author: Aime Le Rouzic <aime.le-rouzic@bull.net>
+Date:   Tue Jan 26 14:03:56 2010 -0500
+
+    NFSD: Support AF_INET6 in svc_addsock() function
+
+    Relax the address family check at the top of svc_addsock() to allow AF_INET6
+    listener sockets to be specified via /proc/fs/nfsd/portlist.
+
+    Signed-off-by: Aime Le Rouzic <aime.le-rouzic@bull.net>
+    Signed-off-by: Chuck Lever <chuck.lever@oracle.com>
+    Signed-off-by: J. Bruce Fields <bfields@citi.umich.edu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/net/sunrpc/svcsock.c b/net/sunrpc/svcsock.c
+index 1c246a4..a280c22 100644
+--- a/net/sunrpc/svcsock.c
++++ b/net/sunrpc/svcsock.c
+@@ -1357,7 +1357,7 @@ int svc_addsock(struct svc_serv *serv, const int fd, char *name_return,
+ 
+ 	if (!so)
+ 		return err;
+-	if (so->sk->sk_family != AF_INET)
++	if ((so->sk->sk_family != PF_INET) && (so->sk->sk_family != PF_INET6))
+ 		err =  -EAFNOSUPPORT;
+ 	else if (so->sk->sk_protocol != IPPROTO_TCP &&
+ 	    so->sk->sk_protocol != IPPROTO_UDP)

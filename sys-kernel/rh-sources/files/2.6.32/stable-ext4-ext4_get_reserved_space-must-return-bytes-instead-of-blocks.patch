@@ -1,0 +1,30 @@
+From: Dmitry Monakhov <dmonakhov@openvz.org>
+Date: Tue, 8 Dec 2009 22:41:52 -0500
+Subject: [stable] ext4: ext4_get_reserved_space() must return bytes instead of blocks
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+(cherry picked from commit 8aa6790f876e81f5a2211fe1711a5fe3fe2d7b20)
+
+Signed-off-by: Dmitry Monakhov <dmonakhov@openvz.org>
+Reviewed-by: Eric Sandeen <sandeen@redhat.com>
+Acked-by: Mingming Cao <cmm@us.ibm.com>
+Signed-off-by: "Theodore Ts'o" <tytso@mit.edu>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/fs/ext4/inode.c b/fs/ext4/inode.c
+index 9c5c449..9ef9d44 100644
+--- a/fs/ext4/inode.c
++++ b/fs/ext4/inode.c
+@@ -1052,7 +1052,7 @@ qsize_t ext4_get_reserved_space(struct inode *inode)
+ 		EXT4_I(inode)->i_reserved_meta_blocks;
+ 	spin_unlock(&EXT4_I(inode)->i_block_reservation_lock);
+ 
+-	return total;
++	return (total << inode->i_blkbits);
+ }
+ /*
+  * Calculate the number of metadata blocks need to reserve

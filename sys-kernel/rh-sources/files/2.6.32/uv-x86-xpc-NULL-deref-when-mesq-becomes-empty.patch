@@ -1,0 +1,49 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Fri, 18 Dec 2009 22:26:49 -0500
+Subject: [uv] x86: xpc NULL deref when mesq becomes empty
+Message-id: <20091218171308.23145.69590.sendpatchset@localhost.localdomain>
+Patchwork-id: 22197
+O-Subject: [RHEL6 PATCH 3/6] x86: uv: xpc NULL deref when mesq becomes empty
+Bugzilla: 546695
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+commit 15b87d67ff3dc042bee42f991858d6b121b3b3ca
+Author: Robin Holt <holt@sgi.com>
+Date:   Tue Dec 15 16:47:57 2009 -0800
+
+    x86: uv: xpc NULL deref when mesq becomes empty
+
+    Under heavy load conditions, our set of xpc messages may become exhausted.
+     The code handles this correctly with the exception of the management code
+    which hits a NULL pointer dereference.
+
+    Signed-off-by: Robin Holt <holt@sgi.com>
+    Cc: Jack Steiner <steiner@sgi.com>
+    Cc: Ingo Molnar <mingo@elte.hu>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/misc/sgi-xp/xpc_uv.c b/drivers/misc/sgi-xp/xpc_uv.c
+index bbf0e2e..19bd7b0 100644
+--- a/drivers/misc/sgi-xp/xpc_uv.c
++++ b/drivers/misc/sgi-xp/xpc_uv.c
+@@ -949,11 +949,13 @@ xpc_get_fifo_entry_uv(struct xpc_fifo_head_uv *head)
+ 		head->first = first->next;
+ 		if (head->first == NULL)
+ 			head->last = NULL;
++
++		head->n_entries--;
++		BUG_ON(head->n_entries < 0);
++
++		first->next = NULL;
+ 	}
+-	head->n_entries--;
+-	BUG_ON(head->n_entries < 0);
+ 	spin_unlock_irqrestore(&head->lock, irq_flags);
+-	first->next = NULL;
+ 	return first;
+ }
+ 

@@ -1,0 +1,30 @@
+From: Heinz Mauelshagen <heinzm@redhat.com>
+Date: Fri, 18 Dec 2009 19:28:45 -0500
+Subject: [dm] dm-raid45: export missing dm_rh_inc
+Message-id: <1261164525-20103-1-git-send-email-heinzm@redhat.com>
+Patchwork-id: 22167
+O-Subject: [RHEL6.0 PATCH 1/1] dm-raid45: export missing dm_rh_inc
+Bugzilla: 552329
+RH-Acked-by: Bryn M. Reeves <bmr@redhat.com>
+
+From: Heinz Mauelshagen <heinzm@redhat.com>
+
+Forgot to export symbol used by dm-raid45 target.
+
+Apply on top of "[RHEL6.0 PATCH 1/1] dm-raid45: add raid45 target".
+
+Signed-off-by: Heinz Mauelshagen <heinzm@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/md/dm-region-hash.c b/drivers/md/dm-region-hash.c
+index 78845bd..62f37f1 100644
+--- a/drivers/md/dm-region-hash.c
++++ b/drivers/md/dm-region-hash.c
+@@ -519,6 +519,7 @@ void dm_rh_inc(struct dm_region_hash *rh, region_t region)
+ 
+ 	read_unlock(&rh->hash_lock);
+ }
++EXPORT_SYMBOL_GPL(dm_rh_inc);
+ 
+ void dm_rh_inc_pending(struct dm_region_hash *rh, struct bio_list *bios)
+ {

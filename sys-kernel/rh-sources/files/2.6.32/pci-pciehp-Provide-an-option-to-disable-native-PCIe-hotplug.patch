@@ -1,0 +1,55 @@
+From: Matthew Garrett <mjg@redhat.com>
+Date: Mon, 14 Dec 2009 18:42:18 -0500
+Subject: [pci] pciehp: Provide an option to disable native PCIe hotplug
+Message-id: <1260816138-25149-2-git-send-email-mjg@redhat.com>
+Patchwork-id: 21928
+O-Subject: [PATCH 2/2] RHEL 6 pciehp: Provide an option to disable native PCIe
+	hotplug
+Bugzilla: 517050
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+While the previous configuration changes should work correctly for all
+hardware, some customers may have their own preferences for the PCIe
+hotplug mechanism. This patch (not submitted upstream) provides support
+for the native mechanism to be disabled by passing the "pciehp.disable=1"
+kernel agument. I'm not aware of any technical grounds for this to be
+required, but people seem to have very strong feelings on this subject
+for no obvious reason.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/pci/hotplug/pciehp_core.c b/drivers/pci/hotplug/pciehp_core.c
+index bc23471..d3c6d04 100644
+--- a/drivers/pci/hotplug/pciehp_core.c
++++ b/drivers/pci/hotplug/pciehp_core.c
+@@ -41,6 +41,7 @@ int pciehp_debug;
+ int pciehp_poll_mode;
+ int pciehp_poll_time;
+ int pciehp_force;
++int pciehp_disable;
+ struct workqueue_struct *pciehp_wq;
+ 
+ #define DRIVER_VERSION	"0.4"
+@@ -55,10 +56,12 @@ module_param(pciehp_debug, bool, 0644);
+ module_param(pciehp_poll_mode, bool, 0644);
+ module_param(pciehp_poll_time, int, 0644);
+ module_param(pciehp_force, bool, 0644);
++module_param(pciehp_disable, bool, 0644);
+ MODULE_PARM_DESC(pciehp_debug, "Debugging mode enabled or not");
+ MODULE_PARM_DESC(pciehp_poll_mode, "Using polling mechanism for hot-plug events or not");
+ MODULE_PARM_DESC(pciehp_poll_time, "Polling mechanism frequency, in seconds");
+ MODULE_PARM_DESC(pciehp_force, "Force pciehp, even if _OSC and OSHP are missing");
++MODULE_PARM_DESC(pciehp_disable, "Disable pciehp, even if the firmware supports it");
+ 
+ #define PCIE_MODULE_NAME "pciehp"
+ 
+@@ -289,6 +292,9 @@ static int pciehp_probe(struct pcie_device *dev)
+ 	u8 value;
+ 	struct pci_dev *pdev = dev->port;
+ 
++	if (pciehp_disable)
++		goto err_out_none;
++
+ 	if (pciehp_force)
+ 		dev_info(&dev->device,
+ 			 "Bypassing BIOS check for pciehp use on %s\n",

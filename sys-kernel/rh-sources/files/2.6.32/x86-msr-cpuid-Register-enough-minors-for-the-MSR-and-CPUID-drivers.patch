@@ -1,0 +1,84 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Thu, 21 Jan 2010 21:47:56 -0500
+Subject: [x86] msr/cpuid: Register enough minors for the MSR and CPUID drivers
+Message-id: <20100121163310.23854.16011.sendpatchset@sgi-xe250-01.lab.bos.redhat.com>
+Patchwork-id: 22697
+O-Subject: [RHEL6 PATCH] x86,
+	msr/cpuid: Register enough minors for the MSR and CPUID drivers
+Bugzilla: 557554
+
+BZ#557554: x86, msr/cpuid: Register enough minors for the MSR and CPUID drivers
+First Post
+
+This applies cleanly and builds against 2.6.32-9.
+Except for a couple of offset corrections this is patch:
+
+commit 0b962d473af32ec334df271b54ff4973cb2b4c73
+Author: H. Peter Anvin <hpa@zytor.com>
+Date:   Tue Dec 15 15:13:07 2009 -0800
+
+    x86, msr/cpuid: Register enough minors for the MSR and CPUID drivers
+
+    register_chrdev() hardcodes registering 256 minors, presumably to
+    avoid breaking old drivers.  However, we need to register enough
+    minors so that we have all possible CPUs.
+
+    checkpatch warns on this patch, but the patch is correct: NR_CPUS here
+    is a static *upper bound* on the *maximum CPU index* (not *number of
+    CPUs!*) and that is what we want.
+
+    Reported-and-tested-by: Russ Anderson <rja@sgi.com>
+    Cc: Tejun Heo <tj@kernel.org>
+    Cc: Alan Cox <alan@lxorguk.ukuu.org.uk>
+    Cc: Takashi Iwai <tiwai@suse.de>
+    Cc: Alexander Viro <viro@zeniv.linux.org.uk>
+    Signed-off-by: H. Peter Anvin <hpa@zytor.com>
+    LKML-Reference: <tip-*@git.kernel.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/cpuid.c b/arch/x86/kernel/cpuid.c
+index 6a52d4b..f8590c5 100644
+--- a/arch/x86/kernel/cpuid.c
++++ b/arch/x86/kernel/cpuid.c
+@@ -192,7 +192,8 @@ static int __init cpuid_init(void)
+ 	int i, err = 0;
+ 	i = 0;
+ 
+-	if (register_chrdev(CPUID_MAJOR, "cpu/cpuid", &cpuid_fops)) {
++	if (__register_chrdev(CPUID_MAJOR, 0, NR_CPUS,
++			      "cpu/cpuid", &cpuid_fops)) {
+ 		printk(KERN_ERR "cpuid: unable to get major %d for cpuid\n",
+ 		       CPUID_MAJOR);
+ 		err = -EBUSY;
+@@ -221,7 +222,7 @@ out_class:
+ 	}
+ 	class_destroy(cpuid_class);
+ out_chrdev:
+-	unregister_chrdev(CPUID_MAJOR, "cpu/cpuid");
++	__unregister_chrdev(CPUID_MAJOR, 0, NR_CPUS, "cpu/cpuid");
+ out:
+ 	return err;
+ }
+diff --git a/arch/x86/kernel/msr.c b/arch/x86/kernel/msr.c
+index 6a3cefc..b42e63b 100644
+--- a/arch/x86/kernel/msr.c
++++ b/arch/x86/kernel/msr.c
+@@ -251,7 +251,7 @@ static int __init msr_init(void)
+ 	int i, err = 0;
+ 	i = 0;
+ 
+-	if (register_chrdev(MSR_MAJOR, "cpu/msr", &msr_fops)) {
++	if (__register_chrdev(MSR_MAJOR, 0, NR_CPUS, "cpu/msr", &msr_fops)) {
+ 		printk(KERN_ERR "msr: unable to get major %d for msr\n",
+ 		       MSR_MAJOR);
+ 		err = -EBUSY;
+@@ -279,7 +279,7 @@ out_class:
+ 		msr_device_destroy(i);
+ 	class_destroy(msr_class);
+ out_chrdev:
+-	unregister_chrdev(MSR_MAJOR, "cpu/msr");
++	__unregister_chrdev(MSR_MAJOR, 0, NR_CPUS, "cpu/msr");
+ out:
+ 	return err;
+ }

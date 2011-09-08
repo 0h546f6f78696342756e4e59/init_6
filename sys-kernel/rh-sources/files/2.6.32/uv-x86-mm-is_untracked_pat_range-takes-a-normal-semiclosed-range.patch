@@ -1,0 +1,74 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Thu, 14 Jan 2010 21:49:14 -0500
+Subject: [uv] x86, mm: is_untracked_pat_range() takes a normal semiclosed range
+Message-id: <20100114214021.22817.44336.sendpatchset@dhcp-100-2-194.bos.redhat.com>
+Patchwork-id: 22555
+O-Subject: [RHEL6 PATCH 3/7] x86,
+	mm: is_untracked_pat_range() takes a normal semiclosed range
+Bugzilla: 548524
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+commit 8a27138924f64d2f30c1022f909f74480046bc3f
+Author: H. Peter Anvin <hpa@zytor.com>
+Date:   Mon Nov 23 14:49:20 2009 -0800
+
+    x86, mm: is_untracked_pat_range() takes a normal semiclosed range
+
+    is_untracked_pat_range() -- like its components, is_ISA_range() and
+    is_GRU_range(), takes a normal semiclosed interval (>=, <) whereas the
+    PAT code called it as if it took a closed range (>=, <=).  Fix.
+
+    Although this is a bug, I believe it is non-manifest, simply because
+    none of the callers will call this with non-page-aligned addresses.
+
+    Signed-off-by: H. Peter Anvin <hpa@zytor.com>
+    Acked-by: Thomas Gleixner <tglx@linutronix.de>
+    Acked-by: Suresh Siddha <suresh.b.siddha@intel.com>
+    LKML-Reference: <20091119202341.GA4420@sgi.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/pgtable.h b/arch/x86/include/asm/pgtable.h
+index 1de2094..a34c785 100644
+--- a/arch/x86/include/asm/pgtable.h
++++ b/arch/x86/include/asm/pgtable.h
+@@ -274,7 +274,7 @@ static inline int is_new_memtype_allowed(u64 paddr, unsigned long size,
+ 	/*
+ 	 * PAT type is always WB for untracked ranges, so no need to check.
+ 	 */
+-	if (x86_platform.is_untracked_pat_range(paddr, paddr + size - 1))
++	if (x86_platform.is_untracked_pat_range(paddr, paddr + size))
+ 		return 1;
+ 
+ 	/*
+diff --git a/arch/x86/mm/pat.c b/arch/x86/mm/pat.c
+index 38a66ef..b5bc08c 100644
+--- a/arch/x86/mm/pat.c
++++ b/arch/x86/mm/pat.c
+@@ -394,7 +394,7 @@ int reserve_memtype(u64 start, u64 end, unsigned long req_type,
+ 	}
+ 
+ 	/* Low ISA region is always mapped WB in page table. No need to track */
+-	if (x86_platform.is_untracked_pat_range(start, end - 1)) {
++	if (x86_platform.is_untracked_pat_range(start, end)) {
+ 		if (new_type)
+ 			*new_type = _PAGE_CACHE_WB;
+ 		return 0;
+@@ -505,7 +505,7 @@ int free_memtype(u64 start, u64 end)
+ 		return 0;
+ 
+ 	/* Low ISA region is always mapped WB. No need to track */
+-	if (x86_platform.is_untracked_pat_range(start, end - 1))
++	if (x86_platform.is_untracked_pat_range(start, end))
+ 		return 0;
+ 
+ 	is_range_ram = pat_pagerange_is_ram(start, end);
+@@ -588,7 +588,7 @@ static unsigned long lookup_memtype(u64 paddr)
+ 	int rettype = _PAGE_CACHE_WB;
+ 	struct memtype *entry;
+ 
+-	if (x86_platform.is_untracked_pat_range(paddr, paddr + PAGE_SIZE - 1))
++	if (x86_platform.is_untracked_pat_range(paddr, paddr + PAGE_SIZE))
+ 		return rettype;
+ 
+ 	if (pat_pagerange_is_ram(paddr, paddr + PAGE_SIZE)) {

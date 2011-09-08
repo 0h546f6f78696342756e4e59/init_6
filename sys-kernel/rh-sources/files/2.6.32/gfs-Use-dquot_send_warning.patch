@@ -1,0 +1,66 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Wed, 20 Jan 2010 10:20:18 -0500
+Subject: [gfs] Use dquot_send_warning()
+Message-id: <1263982818.2528.8.camel@localhost>
+Patchwork-id: 22672
+O-Subject: [RHEL6] GFS2: Add quota netlink support (bz #557057) [2/2]
+Bugzilla: 557057
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+RH-Acked-by: Abhijith Das <adas@redhat.com>
+
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Mon, 28 Sep 2009 11:49:15 +0000 (+0100)
+Subject: GFS2: Use dquot_send_warning()
+X-Git-Tag: v2.6.33-rc1~410^2~10
+X-Git-Url: http://git.engineering.redhat.com/?p=linux-2.6.git;a=commitdiff_plain;h=2ec4650526c5a94d96bb760001fe0685b15988de
+
+GFS2: Use dquot_send_warning()
+
+This adds support to GFS2 to send quota warnings via netlink.
+Also it removes a stray \r which was left over from when the
+code used to print warnings on the console.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+
+diff --git a/fs/gfs2/quota.c b/fs/gfs2/quota.c
+index ad070f9..e3bf6ea 100644
+--- a/fs/gfs2/quota.c
++++ b/fs/gfs2/quota.c
+@@ -47,6 +47,7 @@
+ #include <linux/gfs2_ondisk.h>
+ #include <linux/kthread.h>
+ #include <linux/freezer.h>
++#include <linux/quota.h>
+ #include <linux/dqblk_xfs.h>
+ 
+ #include "gfs2.h"
+@@ -1001,7 +1002,7 @@ static int print_message(struct gfs2_quota_data *qd, char *type)
+ {
+ 	struct gfs2_sbd *sdp = qd->qd_gl->gl_sbd;
+ 
+-	printk(KERN_INFO "GFS2: fsid=%s: quota %s for %s %u\r\n",
++	printk(KERN_INFO "GFS2: fsid=%s: quota %s for %s %u\n",
+ 	       sdp->sd_fsname, type,
+ 	       (test_bit(QDF_USER, &qd->qd_flags)) ? "user" : "group",
+ 	       qd->qd_id);
+@@ -1038,6 +1039,10 @@ int gfs2_quota_check(struct gfs2_inode *ip, u32 uid, u32 gid)
+ 
+ 		if (be64_to_cpu(qd->qd_qb.qb_limit) && (s64)be64_to_cpu(qd->qd_qb.qb_limit) < value) {
+ 			print_message(qd, "exceeded");
++			quota_send_warning(test_bit(QDF_USER, &qd->qd_flags) ?
++					   USRQUOTA : GRPQUOTA, qd->qd_id,
++					   sdp->sd_vfs->s_dev, QUOTA_NL_BHARDWARN);
++
+ 			error = -EDQUOT;
+ 			break;
+ 		} else if (be64_to_cpu(qd->qd_qb.qb_warn) &&
+@@ -1045,6 +1050,9 @@ int gfs2_quota_check(struct gfs2_inode *ip, u32 uid, u32 gid)
+ 			   time_after_eq(jiffies, qd->qd_last_warn +
+ 					 gfs2_tune_get(sdp,
+ 						gt_quota_warn_period) * HZ)) {
++			quota_send_warning(test_bit(QDF_USER, &qd->qd_flags) ?
++					   USRQUOTA : GRPQUOTA, qd->qd_id,
++					   sdp->sd_vfs->s_dev, QUOTA_NL_BSOFTWARN);
+ 			error = print_message(qd, "warning");
+ 			qd->qd_last_warn = jiffies;
+ 		}

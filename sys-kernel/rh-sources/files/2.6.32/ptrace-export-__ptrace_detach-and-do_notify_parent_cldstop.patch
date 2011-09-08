@@ -1,0 +1,90 @@
+From: Roland McGrath <roland@redhat.com>
+Date: Fri, 18 Dec 2009 10:23:50 -0500
+Subject: [ptrace] export __ptrace_detach() and do_notify_parent_cldstop()
+Message-id: <47369ec9f817651f4802c4ab197851f0e004fe21.1261131466.git.roland@redhat.com>
+Patchwork-id: 22117
+O-Subject: [RHEL6.0 PATCH 13/16] export __ptrace_detach() and
+	do_notify_parent_cldstop()
+Bugzilla: 549491
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+From: Oleg Nesterov <oleg@redhat.com>
+
+Export __ptrace_detach() and do_notify_parent_cldstop() for
+ptrace-utrace.
+
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Signed-off-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/ptrace.h b/include/linux/ptrace.h
+index 56f2d63..4802e2a 100644
+--- a/include/linux/ptrace.h
++++ b/include/linux/ptrace.h
+@@ -85,6 +85,7 @@ extern int ptrace_traceme(void);
+ extern int ptrace_readdata(struct task_struct *tsk, unsigned long src, char __user *dst, int len);
+ extern int ptrace_writedata(struct task_struct *tsk, char __user *src, unsigned long dst, int len);
+ extern int ptrace_attach(struct task_struct *tsk);
++extern bool __ptrace_detach(struct task_struct *tracer, struct task_struct *tracee);
+ extern int ptrace_detach(struct task_struct *, unsigned int);
+ extern void ptrace_disable(struct task_struct *);
+ extern int ptrace_check_attach(struct task_struct *task, int kill);
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 0bce489..1b46108 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1300,9 +1300,9 @@ struct task_struct {
+ 	unsigned long stack_canary;
+ #endif
+ 
+-	/* 
++	/*
+ 	 * pointers to (original) parent process, youngest child, younger sibling,
+-	 * older sibling, respectively.  (p->father can be replaced with 
++	 * older sibling, respectively.  (p->father can be replaced with
+ 	 * p->real_parent->pid)
+ 	 */
+ 	struct task_struct *real_parent; /* real parent process */
+@@ -2051,7 +2051,7 @@ static inline int dequeue_signal_lock(struct task_struct *tsk, sigset_t *mask, s
+ 	spin_unlock_irqrestore(&tsk->sighand->siglock, flags);
+ 
+ 	return ret;
+-}	
++}
+ 
+ extern void block_all_signals(int (*notifier)(void *priv), void *priv,
+ 			      sigset_t *mask);
+@@ -2067,6 +2067,7 @@ extern int kill_pgrp(struct pid *pid, int sig, int priv);
+ extern int kill_pid(struct pid *pid, int sig, int priv);
+ extern int kill_proc_info(int, struct siginfo *, pid_t);
+ extern int do_notify_parent(struct task_struct *, int);
++extern void do_notify_parent_cldstop(struct task_struct *, int);
+ extern void __wake_up_parent(struct task_struct *p, struct task_struct *parent);
+ extern void force_sig(int, struct task_struct *);
+ extern void force_sig_specific(int, struct task_struct *);
+diff --git a/kernel/ptrace.c b/kernel/ptrace.c
+index 23bd09c..b7c1d32 100644
+--- a/kernel/ptrace.c
++++ b/kernel/ptrace.c
+@@ -271,7 +271,7 @@ static int ignoring_children(struct sighand_struct *sigh)
+  * reap it now, in that case we must also wake up sub-threads sleeping in
+  * do_wait().
+  */
+-static bool __ptrace_detach(struct task_struct *tracer, struct task_struct *p)
++bool __ptrace_detach(struct task_struct *tracer, struct task_struct *p)
+ {
+ 	__ptrace_unlink(p);
+ 
+diff --git a/kernel/signal.c b/kernel/signal.c
+index c32be9f..9908335 100644
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -1461,7 +1461,7 @@ int do_notify_parent(struct task_struct *tsk, int sig)
+ 	return ret;
+ }
+ 
+-static void do_notify_parent_cldstop(struct task_struct *tsk, int why)
++void do_notify_parent_cldstop(struct task_struct *tsk, int why)
+ {
+ 	struct siginfo info;
+ 	unsigned long flags;

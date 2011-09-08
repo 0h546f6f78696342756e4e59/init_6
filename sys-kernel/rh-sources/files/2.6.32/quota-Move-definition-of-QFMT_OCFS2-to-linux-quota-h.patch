@@ -1,0 +1,48 @@
+From: Jerome Marchand <jmarchan@redhat.com>
+Date: Fri, 18 Dec 2009 17:09:11 -0500
+Subject: [quota] Move definition of QFMT_OCFS2 to linux/quota.h
+Message-id: <4B2BB737.307@redhat.com>
+Patchwork-id: 22154
+O-Subject: [RHEL6 Patch 1/4] quota: Move definition of QFMT_OCFS2 to
+	linux/quota.h
+Bugzilla: 546311
+RH-Acked-by: Anton Arapov <Anton@redhat.com>
+RH-Acked-by: Eric Sandeen <sandeen@redhat.com>
+
+Bugzilla:
+https://bugzilla.redhat.com/show_bug.cgi?id=546311
+
+git commit: 30673930051e5203d0b826b8b8f2454cab453b94
+
+Move definition of this constant to linux/quota.h so that it
+cannot clash with other format IDs.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/ocfs2/quota.h b/fs/ocfs2/quota.h
+index e5df9d1..123bc52 100644
+--- a/fs/ocfs2/quota.h
++++ b/fs/ocfs2/quota.h
+@@ -17,10 +17,6 @@
+ 
+ #include "ocfs2.h"
+ 
+-/* Common stuff */
+-/* id number of quota format */
+-#define QFMT_OCFS2 3
+-
+ /*
+  * In-memory structures
+  */
+diff --git a/include/linux/quota.h b/include/linux/quota.h
+index 78c4889..4ff3191 100644
+--- a/include/linux/quota.h
++++ b/include/linux/quota.h
+@@ -73,6 +73,7 @@
+ /* Quota format type IDs */
+ #define	QFMT_VFS_OLD 1
+ #define	QFMT_VFS_V0 2
++#define QFMT_OCFS2 3
+ 
+ /* Size of block in which space limits are passed through the quota
+  * interface */

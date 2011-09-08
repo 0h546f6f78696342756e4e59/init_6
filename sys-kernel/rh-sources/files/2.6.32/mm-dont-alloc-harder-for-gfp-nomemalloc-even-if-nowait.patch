@@ -1,0 +1,35 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:24 -0500
+Subject: [mm] dont alloc harder for gfp nomemalloc even if nowait
+Message-id: <20100201152040.198156184@redhat.com>
+Patchwork-id: 23035
+O-Subject: [RHEL6 27/37] dont alloc harder for gfp nomemalloc even if nowait
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Not worth throwing away the precious reserved free memory pool for allocations
+that can fail gracefully (either through mempool or because they're transhuge
+allocations later falling back to 4k allocations).
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index ec9b70d..86aa0af 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -1762,7 +1762,11 @@ gfp_to_alloc_flags(gfp_t gfp_mask)
+ 	 */
+ 	alloc_flags |= (gfp_mask & __GFP_HIGH);
+ 
+-	if (!wait) {
++	/*
++	 * Not worth trying to allocate harder for __GFP_NOMEMALLOC
++	 * even if it can't schedule.
++	 */
++	if (!wait && !(gfp_mask & __GFP_NOMEMALLOC)) {
+ 		alloc_flags |= ALLOC_HARDER;
+ 		/*
+ 		 * Ignore cpuset if GFP_ATOMIC (!wait) rather than fail alloc.

@@ -1,0 +1,52 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Fri, 18 Dec 2009 22:27:06 -0500
+Subject: [uv] XPC: pass nasid instead of nid to gru_create_message_queue
+Message-id: <20091218171325.23145.95889.sendpatchset@localhost.localdomain>
+Patchwork-id: 22200
+O-Subject: [RHEL6 PATCH 6/6] UV - XPC: pass nasid instead of nid to
+	gru_create_message_queue
+Bugzilla: 546695
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+commit 57e6d258b1e41cd7ceb26fa43ce116939d8440b1
+Author: Robin Holt <holt@sgi.com>
+Date:   Tue Dec 15 16:48:00 2009 -0800
+
+    UV - XPC: pass nasid instead of nid to gru_create_message_queue
+
+    Currently, the UV xpc code is passing nid to the gru_create_message_queue
+    instead of nasid as it expects.
+
+    Signed-off-by: Robin Holt <holt@sgi.com>
+    Signed-off-by: Jack Steiner <steiner@sgi.com>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/misc/sgi-xp/xpc_uv.c b/drivers/misc/sgi-xp/xpc_uv.c
+index d2f4e91..8725d5e 100644
+--- a/drivers/misc/sgi-xp/xpc_uv.c
++++ b/drivers/misc/sgi-xp/xpc_uv.c
+@@ -207,6 +207,7 @@ xpc_create_gru_mq_uv(unsigned int mq_size, int cpu, char *irq_name,
+ 	enum xp_retval xp_ret;
+ 	int ret;
+ 	int nid;
++	int nasid;
+ 	int pg_order;
+ 	struct page *page;
+ 	struct xpc_gru_mq_uv *mq;
+@@ -262,9 +263,11 @@ xpc_create_gru_mq_uv(unsigned int mq_size, int cpu, char *irq_name,
+ 		goto out_5;
+ 	}
+ 
++	nasid = UV_PNODE_TO_NASID(uv_cpu_to_pnode(cpu));
++
+ 	mmr_value = (struct uv_IO_APIC_route_entry *)&mq->mmr_value;
+ 	ret = gru_create_message_queue(mq->gru_mq_desc, mq->address, mq_size,
+-				       nid, mmr_value->vector, mmr_value->dest);
++				     nasid, mmr_value->vector, mmr_value->dest);
+ 	if (ret != 0) {
+ 		dev_err(xpc_part, "gru_create_message_queue() returned "
+ 			"error=%d\n", ret);

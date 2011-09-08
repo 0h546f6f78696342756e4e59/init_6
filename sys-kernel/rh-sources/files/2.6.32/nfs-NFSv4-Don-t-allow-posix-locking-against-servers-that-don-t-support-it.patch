@@ -1,0 +1,61 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 20:50:07 -0500
+Subject: [nfs] NFSv4: Don't allow posix locking against servers that don't support it
+Message-id: <4B673E7F.9050700@RedHat.com>
+Patchwork-id: 23066
+O-Subject: [RHEL6] [PATCH 6/8] NFSv4: Don't allow posix locking against servers
+	that don't support it
+Bugzilla: 560784
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 8e469ebd6dc32cbaf620e134d79f740bf0ebab79
+Author: Trond Myklebust <Trond.Myklebust@netapp.com>
+Date:   Tue Jan 26 15:42:30 2010 -0500
+
+    NFSv4: Don't allow posix locking against servers that don't support it
+
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+    Cc: stable@kernel.org
+    Reviewed-by: Chuck Lever <chuck.lever@oracle.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/nfs4_fs.h b/fs/nfs/nfs4_fs.h
+index cd93dfc..5a4aa41 100644
+--- a/fs/nfs/nfs4_fs.h
++++ b/fs/nfs/nfs4_fs.h
+@@ -147,6 +147,7 @@ enum {
+ 	NFS_O_RDWR_STATE,		/* OPEN stateid has read/write state */
+ 	NFS_STATE_RECLAIM_REBOOT,	/* OPEN stateid server rebooted */
+ 	NFS_STATE_RECLAIM_NOGRACE,	/* OPEN stateid needs to recover state */
++	NFS_STATE_POSIX_LOCKS,		/* Posix locks are supported */
+ };
+ 
+ struct nfs4_state {
+diff --git a/fs/nfs/nfs4proc.c b/fs/nfs/nfs4proc.c
+index f41fca8..55a563f 100644
+--- a/fs/nfs/nfs4proc.c
++++ b/fs/nfs/nfs4proc.c
+@@ -1658,6 +1658,8 @@ static int _nfs4_do_open(struct inode *dir, struct path *path, fmode_t fmode, in
+ 	status = PTR_ERR(state);
+ 	if (IS_ERR(state))
+ 		goto err_opendata_put;
++	if ((opendata->o_res.rflags & NFS4_OPEN_RESULT_LOCKTYPE_POSIX) != 0)
++		set_bit(NFS_STATE_POSIX_LOCKS, &state->flags);
+ 	nfs4_opendata_put(opendata);
+ 	nfs4_put_state_owner(sp);
+ 	*res = state;
+@@ -4200,8 +4202,11 @@ static int _nfs4_proc_setlk(struct nfs4_state *state, int cmd, struct file_lock
+ {
+ 	struct nfs_inode *nfsi = NFS_I(state->inode);
+ 	unsigned char fl_flags = request->fl_flags;
+-	int status;
++	int status = -ENOLCK;
+ 
++	if ((fl_flags & FL_POSIX) &&
++			!test_bit(NFS_STATE_POSIX_LOCKS, &state->flags))
++		goto out;
+ 	/* Is this a delegated open? */
+ 	status = nfs4_set_lock_state(state, request);
+ 	if (status != 0)

@@ -1,0 +1,126 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 29 Jan 2010 09:34:40 -0500
+Subject: [s390x] dasd: Fix null pointer in s390dbf and discipline checking
+Message-id: <1264757680-32133-4-git-send-email-brueckner@redhat.com>
+Patchwork-id: 23001
+O-Subject: [RHEL6 PATCH 3/3] [s390] dasd: Fix null pointer in s390dbf and
+	discipline checking
+Bugzilla: 559615
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+Some debug messages in s390 debug feature might lead to a kernel panic.
+The device structure referenced by some debug feature calls is NULL.
+Also correct discipline checking that could lead to a kernel panic, too.
+
+The solution is to use another debug feature call without requiring the
+device structure and check if discipline function is available before
+using it.
+
+Bugzilla
+--------
+BZ 559615
+https://bugzilla.redhat.com/show_bug.cgi?id=559615
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=294001a80c9810e2fe27aaaad7df8be12a103065
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/block/dasd.c b/drivers/s390/block/dasd.c
+index 8ce5bfb..95f5526 100644
+--- a/drivers/s390/block/dasd.c
++++ b/drivers/s390/block/dasd.c
+@@ -1004,8 +1004,8 @@ static void dasd_handle_killed_request(struct ccw_device *cdev,
+ 	if (device == NULL ||
+ 	    device != dasd_device_from_cdev_locked(cdev) ||
+ 	    strncmp(device->discipline->ebcname, (char *) &cqr->magic, 4)) {
+-		DBF_DEV_EVENT(DBF_DEBUG, device, "invalid device in request: "
+-			      "bus_id %s", dev_name(&cdev->dev));
++		DBF_EVENT_DEVID(DBF_DEBUG, cdev, "%s",
++				"invalid device in request");
+ 		return;
+ 	}
+ 
+@@ -1078,8 +1078,8 @@ void dasd_int_handler(struct ccw_device *cdev, unsigned long intparm,
+ 	device = (struct dasd_device *) cqr->startdev;
+ 	if (!device ||
+ 	    strncmp(device->discipline->ebcname, (char *) &cqr->magic, 4)) {
+-		DBF_DEV_EVENT(DBF_DEBUG, device, "invalid device in request: "
+-			      "bus_id %s", dev_name(&cdev->dev));
++		DBF_EVENT_DEVID(DBF_DEBUG, cdev, "%s",
++				"invalid device in request");
+ 		return;
+ 	}
+ 
+diff --git a/drivers/s390/block/dasd_eckd.c b/drivers/s390/block/dasd_eckd.c
+index dfb55ec..b216f8b 100644
+--- a/drivers/s390/block/dasd_eckd.c
++++ b/drivers/s390/block/dasd_eckd.c
+@@ -2992,7 +2992,7 @@ static void dasd_eckd_dump_sense_ccw(struct dasd_device *device,
+ 	len += sprintf(page + len, KERN_ERR PRINTK_HEADER
+ 		       " in req: %p CS: 0x%02X DS: 0x%02X CC: 0x%02X RC: %d\n",
+ 		       req, scsw_cstat(&irb->scsw), scsw_dstat(&irb->scsw),
+-		       scsw_cc(&irb->scsw), req->intrc);
++		       scsw_cc(&irb->scsw), req ? req->intrc : 0);
+ 	len += sprintf(page + len, KERN_ERR PRINTK_HEADER
+ 		       " device %s: Failing CCW: %p\n",
+ 		       dev_name(&device->cdev->dev),
+diff --git a/drivers/s390/block/dasd_ioctl.c b/drivers/s390/block/dasd_ioctl.c
+index f756a1b..a5354b8 100644
+--- a/drivers/s390/block/dasd_ioctl.c
++++ b/drivers/s390/block/dasd_ioctl.c
+@@ -260,7 +260,7 @@ static int dasd_ioctl_information(struct dasd_block *block,
+ 	struct ccw_dev_id dev_id;
+ 
+ 	base = block->base;
+-	if (!base->discipline->fill_info)
++	if (!base->discipline || !base->discipline->fill_info)
+ 		return -EINVAL;
+ 
+ 	dasd_info = kzalloc(sizeof(struct dasd_information2_t), GFP_KERNEL);
+@@ -303,10 +303,7 @@ static int dasd_ioctl_information(struct dasd_block *block,
+ 	dasd_info->features |=
+ 		((base->features & DASD_FEATURE_READONLY) != 0);
+ 
+-	if (base->discipline)
+-		memcpy(dasd_info->type, base->discipline->name, 4);
+-	else
+-		memcpy(dasd_info->type, "none", 4);
++	memcpy(dasd_info->type, base->discipline->name, 4);
+ 
+ 	if (block->request_queue->request_fn) {
+ 		struct list_head *l;
+diff --git a/drivers/s390/block/dasd_proc.c b/drivers/s390/block/dasd_proc.c
+index 654daa3..f9d7d38 100644
+--- a/drivers/s390/block/dasd_proc.c
++++ b/drivers/s390/block/dasd_proc.c
+@@ -71,7 +71,7 @@ dasd_devices_show(struct seq_file *m, void *v)
+ 	/* Print device number. */
+ 	seq_printf(m, "%s", dev_name(&device->cdev->dev));
+ 	/* Print discipline string. */
+-	if (device != NULL && device->discipline != NULL)
++	if (device->discipline != NULL)
+ 		seq_printf(m, "(%s)", device->discipline->name);
+ 	else
+ 		seq_printf(m, "(none)");
+@@ -91,10 +91,7 @@ dasd_devices_show(struct seq_file *m, void *v)
+ 	substr = (device->features & DASD_FEATURE_READONLY) ? "(ro)" : " ";
+ 	seq_printf(m, "%4s: ", substr);
+ 	/* Print device status information. */
+-	switch ((device != NULL) ? device->state : -1) {
+-	case -1:
+-		seq_printf(m, "unknown");
+-		break;
++	switch (device->state) {
+ 	case DASD_STATE_NEW:
+ 		seq_printf(m, "new");
+ 		break;

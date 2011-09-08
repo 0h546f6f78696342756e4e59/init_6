@@ -1,0 +1,70 @@
+From: Michael S. Tsirkin <mst@redhat.com>
+Date: Tue, 15 Dec 2009 17:39:03 -0500
+Subject: [virt] vhost: add missing architectures
+Message-id: <20091215173903.GF25437@redhat.com>
+Patchwork-id: 21974
+O-Subject: [RHEL6 PATCH 5/5] vhost: add missing architectures
+Bugzilla: 540389
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Mark McLoughlin <markmc@redhat.com>
+
+BZ#540389
+https://bugzilla.redhat.com/show_bug.cgi?id=540389
+
+Description
+vhost is completely portable, but Kconfig include was missing for all
+architectures besides x86.  Add the relevant Kconfig includes to all
+architectures that support virtualization.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+Upstream Status of the patch
+This patch is not yet upstream, but it is obvious
+and very safe, so I am pretty sure it will be applied
+by 2.6.33.
+
+Brew build#: 2151565
+
+Test Status:
+Build tested with brew.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/ia64/kvm/Kconfig b/arch/ia64/kvm/Kconfig
+index ef3e7be..01c7579 100644
+--- a/arch/ia64/kvm/Kconfig
++++ b/arch/ia64/kvm/Kconfig
+@@ -47,6 +47,7 @@ config KVM_INTEL
+ 	  Provides support for KVM on Itanium 2 processors equipped with the VT
+ 	  extensions.
+ 
++source drivers/vhost/Kconfig
+ source drivers/virtio/Kconfig
+ 
+ endif # VIRTUALIZATION
+diff --git a/arch/powerpc/kvm/Kconfig b/arch/powerpc/kvm/Kconfig
+index c299268..a1b4c5d 100644
+--- a/arch/powerpc/kvm/Kconfig
++++ b/arch/powerpc/kvm/Kconfig
+@@ -58,6 +58,7 @@ config KVM_E500
+ 
+ 	  If unsure, say N.
+ 
++source drivers/vhost/Kconfig
+ source drivers/virtio/Kconfig
+ 
+ endif # VIRTUALIZATION
+diff --git a/arch/s390/kvm/Kconfig b/arch/s390/kvm/Kconfig
+index bf164fc..6be6aea 100644
+--- a/arch/s390/kvm/Kconfig
++++ b/arch/s390/kvm/Kconfig
+@@ -36,6 +36,7 @@ config KVM
+ 
+ # OK, it's a little counter-intuitive to do this, but it puts it neatly under
+ # the virtualization menu.
++source drivers/vhost/Kconfig
+ source drivers/virtio/Kconfig
+ 
+ endif # VIRTUALIZATION

@@ -1,0 +1,29 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:19 -0500
+Subject: [mm] clear_huge_page fix
+Message-id: <20100201152039.384342918@redhat.com>
+Patchwork-id: 23030
+O-Subject: [RHEL6 22/37] clear_huge_page fix
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+sz is in bytes, MAX_ORDER_NR_PAGES is in pages.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/hugetlb.c b/mm/hugetlb.c
+index 5d7601b..96a67c4 100644
+--- a/mm/hugetlb.c
++++ b/mm/hugetlb.c
+@@ -401,7 +401,7 @@ static void clear_huge_page(struct page *page,
+ {
+ 	int i;
+ 
+-	if (unlikely(sz > MAX_ORDER_NR_PAGES)) {
++	if (unlikely(sz/PAGE_SIZE > MAX_ORDER_NR_PAGES)) {
+ 		clear_gigantic_page(page, addr, sz);
+ 		return;
+ 	}

@@ -1,0 +1,27 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:32 -0500
+Subject: [Fedora] [acpi] Disable brightness switch by default
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6-defaults-acpi-video.patch
+
+This patch makes the brightness switch disabled by default
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/acpi/video.c b/drivers/acpi/video.c
+index 05dff63..6fa959d 100644
+--- a/drivers/acpi/video.c
++++ b/drivers/acpi/video.c
+@@ -75,7 +75,7 @@ MODULE_AUTHOR("Bruno Ducrot");
+ MODULE_DESCRIPTION("ACPI Video Driver");
+ MODULE_LICENSE("GPL");
+ 
+-static int brightness_switch_enabled = 1;
++static int brightness_switch_enabled = 0;
+ module_param(brightness_switch_enabled, bool, 0644);
+ 
+ static int register_count = 0;

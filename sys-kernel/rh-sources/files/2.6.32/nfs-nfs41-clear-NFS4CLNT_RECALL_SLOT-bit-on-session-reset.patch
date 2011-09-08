@@ -1,0 +1,52 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 21:09:01 -0500
+Subject: [nfs] nfs41: clear NFS4CLNT_RECALL_SLOT bit on session reset
+Message-id: <4B6742ED.8050401@RedHat.com>
+Patchwork-id: 23081
+O-Subject: [RHEL6] [PATCH 12/13] nfs41: clear NFS4CLNT_RECALL_SLOT bit on session
+	reset
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit b750e7207a169d1a926d15537f8ba1aaed591d69
+Author: Andy Adamson <andros@netapp.com>
+Date:   Thu Jan 21 14:54:13 2010 -0500
+
+    nfs41: clear NFS4CLNT_RECALL_SLOT bit on session reset
+
+    Signed-off-by: Andy Adamson <andros@netapp.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/nfs4state.c b/fs/nfs/nfs4state.c
+index 8c93f87..efd9bf6 100644
+--- a/fs/nfs/nfs4state.c
++++ b/fs/nfs/nfs4state.c
+@@ -1291,17 +1291,17 @@ static int nfs4_reset_session(struct nfs_client *clp)
+ 
+ 	memset(clp->cl_session->sess_id.data, 0, NFS4_MAX_SESSIONID_LEN);
+ 	status = nfs4_proc_create_session(clp);
+-	if (status)
++	if (status) {
+ 		status = nfs4_recovery_handle_error(clp, status);
++		goto out;
++	}
++	/* create_session negotiated new slot table */
++	clear_bit(NFS4CLNT_RECALL_SLOT, &clp->cl_state);
+ 
+-out:
+-	/*
+-	 * Let the state manager reestablish state
+-	 */
+-	if (!test_bit(NFS4CLNT_LEASE_EXPIRED, &clp->cl_state) &&
+-	    status == 0)
++	 /* Let the state manager reestablish state */
++	if (!test_bit(NFS4CLNT_LEASE_EXPIRED, &clp->cl_state))
+ 		nfs41_setup_state_renewal(clp);
+-
++out:
+ 	return status;
+ }
+ 

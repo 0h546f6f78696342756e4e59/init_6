@@ -1,0 +1,27 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Mon, 11 Jan 2010 11:06:09 -0500
+Subject: [gfs] VFS: Use GFP_NOFS in posix_acl_from_xattr()
+Message-id: <1263207970-7099-8-git-send-email-swhiteho@redhat.com>
+Patchwork-id: 22371
+O-Subject: [PATCH 07/08] VFS: Use GFP_NOFS in posix_acl_from_xattr()
+Bugzilla: 546294
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+GFS2 needs to call this from under a glock, so we need GFP_NOFS
+and I suspect that other filesystems might require this too.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+
+diff --git a/fs/xattr_acl.c b/fs/xattr_acl.c
+index c6ad7c7..05ac0fe 100644
+--- a/fs/xattr_acl.c
++++ b/fs/xattr_acl.c
+@@ -36,7 +36,7 @@ posix_acl_from_xattr(const void *value, size_t size)
+ 	if (count == 0)
+ 		return NULL;
+ 	
+-	acl = posix_acl_alloc(count, GFP_KERNEL);
++	acl = posix_acl_alloc(count, GFP_NOFS);
+ 	if (!acl)
+ 		return ERR_PTR(-ENOMEM);
+ 	acl_e = acl->a_entries;

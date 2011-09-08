@@ -1,0 +1,82 @@
+From: Roland McGrath <roland@redhat.com>
+Date: Fri, 18 Dec 2009 10:23:40 -0500
+Subject: [ptrace] copy_process() should disable stepping
+Message-id: <23bbe5de0e1e71b8b969ca9fc21698bca3b9737c.1261131466.git.roland@redhat.com>
+Patchwork-id: 22118
+O-Subject: [RHEL6.0 PATCH 03/16] ptrace: copy_process() should disable stepping
+Bugzilla: 549491
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+From: Oleg Nesterov <oleg@redhat.com>
+
+If the tracee calls fork() after PTRACE_SINGLESTEP, the forked child
+starts with TIF_SINGLESTEP/X86_EFLAGS_TF bits copied from ptraced parent.
+This is not right, especially when the new child is not auto-attaced: in
+this case it is killed by SIGTRAP.
+
+Change copy_process() to call user_disable_single_step(). Tested on x86.
+
+Test-case:
+
+	#include <stdio.h>
+	#include <unistd.h>
+	#include <signal.h>
+	#include <sys/ptrace.h>
+	#include <sys/wait.h>
+	#include <assert.h>
+
+	int main(void)
+	{
+		int pid, status;
+
+		if (!(pid = fork())) {
+			assert(ptrace(PTRACE_TRACEME) == 0);
+			kill(getpid(), SIGSTOP);
+
+			if (!fork()) {
+				/* kernel bug: this child will be killed by SIGTRAP */
+				printf("Hello world\n");
+				return 43;
+			}
+
+			wait(&status);
+			return WEXITSTATUS(status);
+		}
+
+		for (;;) {
+			assert(pid == wait(&status));
+			if (WIFEXITED(status))
+				break;
+			assert(ptrace(PTRACE_SINGLESTEP, pid, 0,0) == 0);
+		}
+
+		assert(WEXITSTATUS(status) == 43);
+		return 0;
+	}
+
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Acked-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+(cherry picked from commit 6580807da14c423f0d0a708108e6df6ebc8bc83d)
+
+Signed-off-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/fork.c b/kernel/fork.c
+index 166b8c4..669f919 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -1199,9 +1199,10 @@ static struct task_struct *copy_process(unsigned long clone_flags,
+ 		p->sas_ss_sp = p->sas_ss_size = 0;
+ 
+ 	/*
+-	 * Syscall tracing should be turned off in the child regardless
+-	 * of CLONE_PTRACE.
++	 * Syscall tracing and stepping should be turned off in the
++	 * child regardless of CLONE_PTRACE.
+ 	 */
++	user_disable_single_step(p);
+ 	clear_tsk_thread_flag(p, TIF_SYSCALL_TRACE);
+ #ifdef TIF_SYSCALL_EMU
+ 	clear_tsk_thread_flag(p, TIF_SYSCALL_EMU);

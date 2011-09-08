@@ -1,0 +1,674 @@
+From: Dave Airlie <airlied@redhat.com>
+Date: Tue, 2 Mar 2010 05:20:32 -0500
+Subject: [drm] bring drm core/ttm/fb layer fixes in from upstream
+Message-id: <1267507233-27443-1-git-send-email-airlied@redhat.com>
+Patchwork-id: 23465
+O-Subject: [PATCH 1/2] [PATCH RHEL6] drm: bring drm core/ttm/fb layer fixes in
+	from upstream.
+Bugzilla: 569701
+RH-Acked-by: Adam Jackson <ajax@redhat.com>
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+bz 569701
+
+This brings the following drm core patches into the RHEL6 kernel:
+drm: EDID accept separate sync video mode
+drm: fix regression in fb blank handling
+drm: Fix a bug in the range manager.
+drm/edid: Fix interlaced detailed timings to be frame size, not field.
+drm: switch all GEM/KMS ioctls to unlocked ioctl status.
+drivers/gpu/drm/drm_fb_helper.c: don't use private implementation of atoi()
+drm/kms: fix fb_changed = true else statement
+drm/kms: fix spelling of "CLOCK"
+
+ttm:
+drm/ttm: Add a swap_notify callback.
+drm/ttm: Make sure system buffer objects has offset == 0.
+drm/ttm: Fix race condition in ttm_bo_delayed_delete (v3, final)
+drm/ttm: Allow system memory as a busy placement.
+drm/ttm: Avoid conflicting reserve_memtype during ttm_tt_set_page_caching.
+drm/ttm: remove unnecessary save_flags and ttm_flag_masked in ttm_bo_util.c
+drm/ttm: Fix a bug occuring when validating a buffer object in a range.
+drm/ttm: fix caching problem on non-PAT systems.
+drm/ttm: handle OOM in ttm_tt_swapout
+
+Along with these two fixes for fb bugs:
+efifb: fix framebuffer handoff
+fb: for framebuffer handover don't exit the loop early.
+
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/drm_crtc_helper.c b/drivers/gpu/drm/drm_crtc_helper.c
+index 7d0f00a..f2aaf39 100644
+--- a/drivers/gpu/drm/drm_crtc_helper.c
++++ b/drivers/gpu/drm/drm_crtc_helper.c
+@@ -836,11 +836,7 @@ int drm_crtc_helper_set_config(struct drm_mode_set *set)
+ 			mode_changed = true;
+ 		} else if (set->fb == NULL) {
+ 			mode_changed = true;
+-		} else if ((set->fb->bits_per_pixel !=
+-			 set->crtc->fb->bits_per_pixel) ||
+-			 set->fb->depth != set->crtc->fb->depth)
+-			fb_changed = true;
+-		else
++		} else
+ 			fb_changed = true;
+ 	}
+ 
+diff --git a/drivers/gpu/drm/drm_drv.c b/drivers/gpu/drm/drm_drv.c
+index 766c468..f3c58e2 100644
+--- a/drivers/gpu/drm/drm_drv.c
++++ b/drivers/gpu/drm/drm_drv.c
+@@ -125,28 +125,28 @@ static struct drm_ioctl_desc drm_ioctls[] = {
+ 
+ 	DRM_IOCTL_DEF(DRM_IOCTL_UPDATE_DRAW, drm_update_drawable_info, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
+ 
+-	DRM_IOCTL_DEF(DRM_IOCTL_GEM_CLOSE, drm_gem_close_ioctl, 0),
+-	DRM_IOCTL_DEF(DRM_IOCTL_GEM_FLINK, drm_gem_flink_ioctl, DRM_AUTH),
+-	DRM_IOCTL_DEF(DRM_IOCTL_GEM_OPEN, drm_gem_open_ioctl, DRM_AUTH),
+-
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETRESOURCES, drm_mode_getresources, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETCRTC, drm_mode_getcrtc, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_SETCRTC, drm_mode_setcrtc, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_CURSOR, drm_mode_cursor_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETGAMMA, drm_mode_gamma_get_ioctl, DRM_MASTER),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_SETGAMMA, drm_mode_gamma_set_ioctl, DRM_MASTER),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETENCODER, drm_mode_getencoder, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETCONNECTOR, drm_mode_getconnector, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_ATTACHMODE, drm_mode_attachmode_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_DETACHMODE, drm_mode_detachmode_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETPROPERTY, drm_mode_getproperty_ioctl, DRM_MASTER | DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_SETPROPERTY, drm_mode_connector_property_set_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETPROPBLOB, drm_mode_getblob_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETFB, drm_mode_getfb, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_ADDFB, drm_mode_addfb, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_RMFB, drm_mode_rmfb, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_PAGE_FLIP, drm_mode_page_flip_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW),
+-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_DIRTYFB, drm_mode_dirtyfb_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW)
++	DRM_IOCTL_DEF(DRM_IOCTL_GEM_CLOSE, drm_gem_close_ioctl, DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_GEM_FLINK, drm_gem_flink_ioctl, DRM_AUTH|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_GEM_OPEN, drm_gem_open_ioctl, DRM_AUTH|DRM_UNLOCKED),
++
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETRESOURCES, drm_mode_getresources, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETCRTC, drm_mode_getcrtc, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_SETCRTC, drm_mode_setcrtc, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_CURSOR, drm_mode_cursor_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETGAMMA, drm_mode_gamma_get_ioctl, DRM_MASTER|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_SETGAMMA, drm_mode_gamma_set_ioctl, DRM_MASTER|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETENCODER, drm_mode_getencoder, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETCONNECTOR, drm_mode_getconnector, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_ATTACHMODE, drm_mode_attachmode_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_DETACHMODE, drm_mode_detachmode_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETPROPERTY, drm_mode_getproperty_ioctl, DRM_MASTER | DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_SETPROPERTY, drm_mode_connector_property_set_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETPROPBLOB, drm_mode_getblob_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETFB, drm_mode_getfb, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_ADDFB, drm_mode_addfb, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_RMFB, drm_mode_rmfb, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_PAGE_FLIP, drm_mode_page_flip_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_DIRTYFB, drm_mode_dirtyfb_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED)
+ };
+ 
+ #define DRM_CORE_IOCTL_COUNT	ARRAY_SIZE( drm_ioctls )
+diff --git a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
+index 380c1e2..b6af620 100644
+--- a/drivers/gpu/drm/drm_edid.c
++++ b/drivers/gpu/drm/drm_edid.c
+@@ -588,6 +588,50 @@ struct drm_display_mode *drm_mode_std(struct drm_device *dev,
+ 	return mode;
+ }
+ 
++/*
++ * EDID is delightfully ambiguous about how interlaced modes are to be
++ * encoded.  Our internal representation is of frame height, but some
++ * HDTV detailed timings are encoded as field height.
++ *
++ * The format list here is from CEA, in frame size.  Technically we
++ * should be checking refresh rate too.  Whatever.
++ */
++static void
++drm_mode_do_interlace_quirk(struct drm_display_mode *mode,
++			    struct detailed_pixel_timing *pt)
++{
++	int i;
++	static const struct {
++		int w, h;
++	} cea_interlaced[] = {
++		{ 1920, 1080 },
++		{  720,  480 },
++		{ 1440,  480 },
++		{ 2880,  480 },
++		{  720,  576 },
++		{ 1440,  576 },
++		{ 2880,  576 },
++	};
++	static const int n_sizes =
++		sizeof(cea_interlaced)/sizeof(cea_interlaced[0]);
++
++	if (!(pt->misc & DRM_EDID_PT_INTERLACED))
++		return;
++
++	for (i = 0; i < n_sizes; i++) {
++		if ((mode->hdisplay == cea_interlaced[i].w) &&
++		    (mode->vdisplay == cea_interlaced[i].h / 2)) {
++			mode->vdisplay *= 2;
++			mode->vsync_start *= 2;
++			mode->vsync_end *= 2;
++			mode->vtotal *= 2;
++			mode->vtotal |= 1;
++		}
++	}
++
++	mode->flags |= DRM_MODE_FLAG_INTERLACE;
++}
++
+ /**
+  * drm_mode_detailed - create a new mode from an EDID detailed timing section
+  * @dev: DRM device (needed to create new mode)
+@@ -623,8 +667,7 @@ static struct drm_display_mode *drm_mode_detailed(struct drm_device *dev,
+ 		return NULL;
+ 	}
+ 	if (!(pt->misc & DRM_EDID_PT_SEPARATE_SYNC)) {
+-		printk(KERN_WARNING "integrated sync not supported\n");
+-		return NULL;
++		printk(KERN_WARNING "composite sync not supported\n");
+ 	}
+ 
+ 	/* it is incorrect if hsync/vsync width is zero */
+@@ -671,8 +714,7 @@ static struct drm_display_mode *drm_mode_detailed(struct drm_device *dev,
+ 
+ 	drm_mode_set_name(mode);
+ 
+-	if (pt->misc & DRM_EDID_PT_INTERLACED)
+-		mode->flags |= DRM_MODE_FLAG_INTERLACE;
++	drm_mode_do_interlace_quirk(mode, pt);
+ 
+ 	if (quirks & EDID_QUIRK_DETAILED_SYNC_PP) {
+ 		pt->misc |= DRM_EDID_PT_HSYNC_POSITIVE | DRM_EDID_PT_VSYNC_POSITIVE;
+diff --git a/drivers/gpu/drm/drm_fb_helper.c b/drivers/gpu/drm/drm_fb_helper.c
+index 1c2b7d4..5054970 100644
+--- a/drivers/gpu/drm/drm_fb_helper.c
++++ b/drivers/gpu/drm/drm_fb_helper.c
+@@ -27,6 +27,7 @@
+  *      Dave Airlie <airlied@linux.ie>
+  *      Jesse Barnes <jesse.barnes@intel.com>
+  */
++#include <linux/kernel.h>
+ #include <linux/sysrq.h>
+ #include <linux/fb.h>
+ #include "drmP.h"
+@@ -50,21 +51,6 @@ int drm_fb_helper_add_connector(struct drm_connector *connector)
+ }
+ EXPORT_SYMBOL(drm_fb_helper_add_connector);
+ 
+-static int my_atoi(const char *name)
+-{
+-	int val = 0;
+-
+-	for (;; name++) {
+-		switch (*name) {
+-		case '0' ... '9':
+-			val = 10*val+(*name-'0');
+-			break;
+-		default:
+-			return val;
+-		}
+-	}
+-}
+-
+ /**
+  * drm_fb_helper_connector_parse_command_line - parse command line for connector
+  * @connector - connector to parse line for
+@@ -111,7 +97,7 @@ static bool drm_fb_helper_connector_parse_command_line(struct drm_connector *con
+ 			namelen = i;
+ 			if (!refresh_specified && !bpp_specified &&
+ 			    !yres_specified) {
+-				refresh = my_atoi(&name[i+1]);
++				refresh = simple_strtol(&name[i+1], NULL, 10);
+ 				refresh_specified = 1;
+ 				if (cvt || rb)
+ 					cvt = 0;
+@@ -121,7 +107,7 @@ static bool drm_fb_helper_connector_parse_command_line(struct drm_connector *con
+ 		case '-':
+ 			namelen = i;
+ 			if (!bpp_specified && !yres_specified) {
+-				bpp = my_atoi(&name[i+1]);
++				bpp = simple_strtol(&name[i+1], NULL, 10);
+ 				bpp_specified = 1;
+ 				if (cvt || rb)
+ 					cvt = 0;
+@@ -130,7 +116,7 @@ static bool drm_fb_helper_connector_parse_command_line(struct drm_connector *con
+ 			break;
+ 		case 'x':
+ 			if (!yres_specified) {
+-				yres = my_atoi(&name[i+1]);
++				yres = simple_strtol(&name[i+1], NULL, 10);
+ 				yres_specified = 1;
+ 			} else
+ 				goto done;
+@@ -170,7 +156,7 @@ static bool drm_fb_helper_connector_parse_command_line(struct drm_connector *con
+ 		}
+ 	}
+ 	if (i < 0 && yres_specified) {
+-		xres = my_atoi(name);
++		xres = simple_strtol(name, NULL, 10);
+ 		res_specified = 1;
+ 	}
+ done:
+@@ -389,7 +375,7 @@ int drm_fb_helper_blank(int blank, struct fb_info *info)
+ 		break;
+ 	/* Display: Off; HSync: On, VSync: On */
+ 	case FB_BLANK_NORMAL:
+-		drm_fb_helper_off(info, DRM_MODE_DPMS_ON);
++		drm_fb_helper_off(info, DRM_MODE_DPMS_STANDBY);
+ 		break;
+ 	/* Display: Off; HSync: Off, VSync: On */
+ 	case FB_BLANK_HSYNC_SUSPEND:
+@@ -694,7 +680,7 @@ int drm_fb_helper_set_par(struct fb_info *info)
+ 	int i;
+ 
+ 	if (var->pixclock != 0) {
+-		DRM_ERROR("PIXEL CLCOK SET\n");
++		DRM_ERROR("PIXEL CLOCK SET\n");
+ 		return -EINVAL;
+ 	}
+ 
+diff --git a/drivers/gpu/drm/drm_mm.c b/drivers/gpu/drm/drm_mm.c
+index cdec329..2ac074c 100644
+--- a/drivers/gpu/drm/drm_mm.c
++++ b/drivers/gpu/drm/drm_mm.c
+@@ -405,7 +405,8 @@ struct drm_mm_node *drm_mm_search_free_in_range(const struct drm_mm *mm,
+ 				wasted += alignment - tmp;
+ 		}
+ 
+-		if (entry->size >= size + wasted) {
++		if (entry->size >= size + wasted &&
++		    (entry->start + wasted + size) <= end) {
+ 			if (!best_match)
+ 				return entry;
+ 			if (entry->size < best_size) {
+diff --git a/drivers/gpu/drm/ttm/ttm_bo.c b/drivers/gpu/drm/ttm/ttm_bo.c
+index 2920f9a..b103a5e 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo.c
++++ b/drivers/gpu/drm/ttm/ttm_bo.c
+@@ -426,7 +426,8 @@ moved:
+ 		    bdev->man[bo->mem.mem_type].gpu_offset;
+ 		bo->cur_placement = bo->mem.placement;
+ 		spin_unlock(&bo->lock);
+-	}
++	} else
++		bo->offset = 0;
+ 
+ 	return 0;
+ 
+@@ -523,52 +524,44 @@ static int ttm_bo_cleanup_refs(struct ttm_buffer_object *bo, bool remove_all)
+ static int ttm_bo_delayed_delete(struct ttm_bo_device *bdev, bool remove_all)
+ {
+ 	struct ttm_bo_global *glob = bdev->glob;
+-	struct ttm_buffer_object *entry, *nentry;
+-	struct list_head *list, *next;
+-	int ret;
++	struct ttm_buffer_object *entry = NULL;
++	int ret = 0;
+ 
+ 	spin_lock(&glob->lru_lock);
+-	list_for_each_safe(list, next, &bdev->ddestroy) {
+-		entry = list_entry(list, struct ttm_buffer_object, ddestroy);
+-		nentry = NULL;
++	if (list_empty(&bdev->ddestroy))
++		goto out_unlock;
+ 
+-		/*
+-		 * Protect the next list entry from destruction while we
+-		 * unlock the lru_lock.
+-		 */
++	entry = list_first_entry(&bdev->ddestroy,
++		struct ttm_buffer_object, ddestroy);
++	kref_get(&entry->list_kref);
+ 
+-		if (next != &bdev->ddestroy) {
+-			nentry = list_entry(next, struct ttm_buffer_object,
+-					    ddestroy);
++	for (;;) {
++		struct ttm_buffer_object *nentry = NULL;
++
++		if (entry->ddestroy.next != &bdev->ddestroy) {
++			nentry = list_first_entry(&entry->ddestroy,
++				struct ttm_buffer_object, ddestroy);
+ 			kref_get(&nentry->list_kref);
+ 		}
+-		kref_get(&entry->list_kref);
+ 
+ 		spin_unlock(&glob->lru_lock);
+ 		ret = ttm_bo_cleanup_refs(entry, remove_all);
+ 		kref_put(&entry->list_kref, ttm_bo_release_list);
++		entry = nentry;
++
++		if (ret || !entry)
++			goto out;
+ 
+ 		spin_lock(&glob->lru_lock);
+-		if (nentry) {
+-			bool next_onlist = !list_empty(next);
+-			spin_unlock(&glob->lru_lock);
+-			kref_put(&nentry->list_kref, ttm_bo_release_list);
+-			spin_lock(&glob->lru_lock);
+-			/*
+-			 * Someone might have raced us and removed the
+-			 * next entry from the list. We don't bother restarting
+-			 * list traversal.
+-			 */
+-
+-			if (!next_onlist)
+-				break;
+-		}
+-		if (ret)
++		if (list_empty(&entry->ddestroy))
+ 			break;
+ 	}
+-	ret = !list_empty(&bdev->ddestroy);
+-	spin_unlock(&glob->lru_lock);
+ 
++out_unlock:
++	spin_unlock(&glob->lru_lock);
++out:
++	if (entry)
++		kref_put(&entry->list_kref, ttm_bo_release_list);
+ 	return ret;
+ }
+ 
+@@ -950,6 +943,14 @@ int ttm_bo_mem_space(struct ttm_buffer_object *bo,
+ 		ttm_flag_masked(&cur_flags, placement->busy_placement[i],
+ 				~TTM_PL_MASK_MEMTYPE);
+ 
++
++		if (mem_type == TTM_PL_SYSTEM) {
++			mem->mem_type = mem_type;
++			mem->placement = cur_flags;
++			mem->mm_node = NULL;
++			return 0;
++		}
++
+ 		ret = ttm_bo_mem_force_space(bo, mem_type, placement, mem,
+ 						interruptible, no_wait);
+ 		if (ret == 0 && mem->mm_node) {
+@@ -1019,6 +1020,12 @@ static int ttm_bo_mem_compat(struct ttm_placement *placement,
+ 			     struct ttm_mem_reg *mem)
+ {
+ 	int i;
++	struct drm_mm_node *node = mem->mm_node;
++
++	if (node && placement->lpfn != 0 &&
++	    (node->start < placement->fpfn ||
++	     node->start + node->size > placement->lpfn))
++		return -1;
+ 
+ 	for (i = 0; i < placement->num_placement; i++) {
+ 		if ((placement->placement[i] & mem->placement &
+@@ -1844,6 +1851,9 @@ static int ttm_bo_swapout(struct ttm_mem_shrink *shrink)
+ 	 * anyone tries to access a ttm page.
+ 	 */
+ 
++	if (bo->bdev->driver->swap_notify)
++		bo->bdev->driver->swap_notify(bo);
++
+ 	ret = ttm_tt_swapout(bo->ttm, bo->persistant_swap_storage);
+ out:
+ 
+diff --git a/drivers/gpu/drm/ttm/ttm_bo_util.c b/drivers/gpu/drm/ttm/ttm_bo_util.c
+index c70927e..e8f2f7e 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo_util.c
++++ b/drivers/gpu/drm/ttm/ttm_bo_util.c
+@@ -53,7 +53,6 @@ int ttm_bo_move_ttm(struct ttm_buffer_object *bo,
+ {
+ 	struct ttm_tt *ttm = bo->ttm;
+ 	struct ttm_mem_reg *old_mem = &bo->mem;
+-	uint32_t save_flags = old_mem->placement;
+ 	int ret;
+ 
+ 	if (old_mem->mem_type != TTM_PL_SYSTEM) {
+@@ -62,7 +61,6 @@ int ttm_bo_move_ttm(struct ttm_buffer_object *bo,
+ 		ttm_flag_masked(&old_mem->placement, TTM_PL_FLAG_SYSTEM,
+ 				TTM_PL_MASK_MEM);
+ 		old_mem->mem_type = TTM_PL_SYSTEM;
+-		save_flags = old_mem->placement;
+ 	}
+ 
+ 	ret = ttm_tt_set_placement_caching(ttm, new_mem->placement);
+@@ -77,7 +75,7 @@ int ttm_bo_move_ttm(struct ttm_buffer_object *bo,
+ 
+ 	*old_mem = *new_mem;
+ 	new_mem->mm_node = NULL;
+-	ttm_flag_masked(&save_flags, new_mem->placement, TTM_PL_MASK_MEMTYPE);
++
+ 	return 0;
+ }
+ EXPORT_SYMBOL(ttm_bo_move_ttm);
+@@ -219,7 +217,6 @@ int ttm_bo_move_memcpy(struct ttm_buffer_object *bo,
+ 	void *old_iomap;
+ 	void *new_iomap;
+ 	int ret;
+-	uint32_t save_flags = old_mem->placement;
+ 	unsigned long i;
+ 	unsigned long page;
+ 	unsigned long add = 0;
+@@ -270,7 +267,6 @@ out2:
+ 
+ 	*old_mem = *new_mem;
+ 	new_mem->mm_node = NULL;
+-	ttm_flag_masked(&save_flags, new_mem->placement, TTM_PL_MASK_MEMTYPE);
+ 
+ 	if ((man->flags & TTM_MEMTYPE_FLAG_FIXED) && (ttm != NULL)) {
+ 		ttm_tt_unbind(ttm);
+@@ -536,7 +532,6 @@ int ttm_bo_move_accel_cleanup(struct ttm_buffer_object *bo,
+ 	struct ttm_mem_type_manager *man = &bdev->man[new_mem->mem_type];
+ 	struct ttm_mem_reg *old_mem = &bo->mem;
+ 	int ret;
+-	uint32_t save_flags = old_mem->placement;
+ 	struct ttm_buffer_object *ghost_obj;
+ 	void *tmp_obj = NULL;
+ 
+@@ -597,7 +592,7 @@ int ttm_bo_move_accel_cleanup(struct ttm_buffer_object *bo,
+ 
+ 	*old_mem = *new_mem;
+ 	new_mem->mm_node = NULL;
+-	ttm_flag_masked(&save_flags, new_mem->placement, TTM_PL_MASK_MEMTYPE);
++
+ 	return 0;
+ }
+ EXPORT_SYMBOL(ttm_bo_move_accel_cleanup);
+diff --git a/drivers/gpu/drm/ttm/ttm_tt.c b/drivers/gpu/drm/ttm/ttm_tt.c
+index 7bcb89f..1d071d5 100644
+--- a/drivers/gpu/drm/ttm/ttm_tt.c
++++ b/drivers/gpu/drm/ttm/ttm_tt.c
+@@ -195,23 +195,34 @@ int ttm_tt_populate(struct ttm_tt *ttm)
+ 
+ #ifdef CONFIG_X86
+ static inline int ttm_tt_set_page_caching(struct page *p,
+-					  enum ttm_caching_state c_state)
++					  enum ttm_caching_state c_old,
++					  enum ttm_caching_state c_new)
+ {
++	int ret = 0;
++
+ 	if (PageHighMem(p))
+ 		return 0;
+ 
+-	switch (c_state) {
+-	case tt_cached:
+-		return set_pages_wb(p, 1);
+-	case tt_wc:
+-	    return set_memory_wc((unsigned long) page_address(p), 1);
+-	default:
+-		return set_pages_uc(p, 1);
++	if (c_old != tt_cached) {
++		/* p isn't in the default caching state, set it to
++		 * writeback first to free its current memtype. */
++
++		ret = set_pages_wb(p, 1);
++		if (ret)
++			return ret;
+ 	}
++
++	if (c_new == tt_wc)
++		ret = set_memory_wc((unsigned long) page_address(p), 1);
++	else if (c_new == tt_uncached)
++		ret = set_pages_uc(p, 1);
++
++	return ret;
+ }
+ #else /* CONFIG_X86 */
+ static inline int ttm_tt_set_page_caching(struct page *p,
+-					  enum ttm_caching_state c_state)
++					  enum ttm_caching_state c_old,
++					  enum ttm_caching_state c_new)
+ {
+ 	return 0;
+ }
+@@ -244,7 +255,9 @@ static int ttm_tt_set_caching(struct ttm_tt *ttm,
+ 	for (i = 0; i < ttm->num_pages; ++i) {
+ 		cur_page = ttm->pages[i];
+ 		if (likely(cur_page != NULL)) {
+-			ret = ttm_tt_set_page_caching(cur_page, c_state);
++			ret = ttm_tt_set_page_caching(cur_page,
++						      ttm->caching_state,
++						      c_state);
+ 			if (unlikely(ret != 0))
+ 				goto out_err;
+ 		}
+@@ -258,7 +271,7 @@ out_err:
+ 	for (j = 0; j < i; ++j) {
+ 		cur_page = ttm->pages[j];
+ 		if (likely(cur_page != NULL)) {
+-			(void)ttm_tt_set_page_caching(cur_page,
++			(void)ttm_tt_set_page_caching(cur_page, c_state,
+ 						      ttm->caching_state);
+ 		}
+ 	}
+@@ -466,7 +479,7 @@ static int ttm_tt_swapin(struct ttm_tt *ttm)
+ 	void *from_virtual;
+ 	void *to_virtual;
+ 	int i;
+-	int ret;
++	int ret = -ENOMEM;
+ 
+ 	if (ttm->page_flags & TTM_PAGE_FLAG_USER) {
+ 		ret = ttm_tt_set_user(ttm, ttm->tsk, ttm->start,
+@@ -485,8 +498,10 @@ static int ttm_tt_swapin(struct ttm_tt *ttm)
+ 
+ 	for (i = 0; i < ttm->num_pages; ++i) {
+ 		from_page = read_mapping_page(swap_space, i, NULL);
+-		if (IS_ERR(from_page))
++		if (IS_ERR(from_page)) {
++			ret = PTR_ERR(from_page);
+ 			goto out_err;
++		}
+ 		to_page = __ttm_tt_get_page(ttm, i);
+ 		if (unlikely(to_page == NULL))
+ 			goto out_err;
+@@ -509,7 +524,7 @@ static int ttm_tt_swapin(struct ttm_tt *ttm)
+ 	return 0;
+ out_err:
+ 	ttm_tt_free_alloced_pages(ttm);
+-	return -ENOMEM;
++	return ret;
+ }
+ 
+ int ttm_tt_swapout(struct ttm_tt *ttm, struct file *persistant_swap_storage)
+@@ -521,6 +536,7 @@ int ttm_tt_swapout(struct ttm_tt *ttm, struct file *persistant_swap_storage)
+ 	void *from_virtual;
+ 	void *to_virtual;
+ 	int i;
++	int ret = -ENOMEM;
+ 
+ 	BUG_ON(ttm->state != tt_unbound && ttm->state != tt_unpopulated);
+ 	BUG_ON(ttm->caching_state != tt_cached);
+@@ -543,7 +559,7 @@ int ttm_tt_swapout(struct ttm_tt *ttm, struct file *persistant_swap_storage)
+ 						0);
+ 		if (unlikely(IS_ERR(swap_storage))) {
+ 			printk(KERN_ERR "Failed allocating swap storage.\n");
+-			return -ENOMEM;
++			return PTR_ERR(swap_storage);
+ 		}
+ 	} else
+ 		swap_storage = persistant_swap_storage;
+@@ -555,9 +571,10 @@ int ttm_tt_swapout(struct ttm_tt *ttm, struct file *persistant_swap_storage)
+ 		if (unlikely(from_page == NULL))
+ 			continue;
+ 		to_page = read_mapping_page(swap_space, i, NULL);
+-		if (unlikely(to_page == NULL))
++		if (unlikely(IS_ERR(to_page))) {
++			ret = PTR_ERR(to_page);
+ 			goto out_err;
+-
++		}
+ 		preempt_disable();
+ 		from_virtual = kmap_atomic(from_page, KM_USER0);
+ 		to_virtual = kmap_atomic(to_page, KM_USER1);
+@@ -581,5 +598,5 @@ out_err:
+ 	if (!persistant_swap_storage)
+ 		fput(swap_storage);
+ 
+-	return -ENOMEM;
++	return ret;
+ }
+diff --git a/drivers/video/efifb.c b/drivers/video/efifb.c
+index eb12182..d25df51 100644
+--- a/drivers/video/efifb.c
++++ b/drivers/video/efifb.c
+@@ -161,8 +161,17 @@ static int efifb_setcolreg(unsigned regno, unsigned red, unsigned green,
+ 	return 0;
+ }
+ 
++static void efifb_destroy(struct fb_info *info)
++{
++	if (info->screen_base)
++		iounmap(info->screen_base);
++	release_mem_region(info->aperture_base, info->aperture_size);
++	framebuffer_release(info);
++}
++
+ static struct fb_ops efifb_ops = {
+ 	.owner		= THIS_MODULE,
++	.fb_destroy	= efifb_destroy,
+ 	.fb_setcolreg	= efifb_setcolreg,
+ 	.fb_fillrect	= cfb_fillrect,
+ 	.fb_copyarea	= cfb_copyarea,
+@@ -281,7 +290,7 @@ static int __init efifb_probe(struct platform_device *dev)
+ 	info->par = NULL;
+ 
+ 	info->aperture_base = efifb_fix.smem_start;
+-	info->aperture_size = size_total;
++	info->aperture_size = size_remap;
+ 
+ 	info->screen_base = ioremap(efifb_fix.smem_start, efifb_fix.smem_len);
+ 	if (!info->screen_base) {
+diff --git a/drivers/video/fbmem.c b/drivers/video/fbmem.c
+index 99bbd28..a15b44e 100644
+--- a/drivers/video/fbmem.c
++++ b/drivers/video/fbmem.c
+@@ -1513,7 +1513,6 @@ register_framebuffer(struct fb_info *fb_info)
+ 				       fb_info->fix.id,
+ 				       registered_fb[i]->fix.id);
+ 				unregister_framebuffer(registered_fb[i]);
+-				break;
+ 			}
+ 		}
+ 	}
+diff --git a/include/drm/ttm/ttm_bo_driver.h b/include/drm/ttm/ttm_bo_driver.h
+index d5af19a..bed0796 100644
+--- a/include/drm/ttm/ttm_bo_driver.h
++++ b/include/drm/ttm/ttm_bo_driver.h
+@@ -353,6 +353,11 @@ struct ttm_bo_driver {
+ 	/* notify the driver we are taking a fault on this BO
+ 	 * and have reserved it */
+ 	void (*fault_reserve_notify)(struct ttm_buffer_object *bo);
++
++	/**
++	 * notify the driver that we're about to swap out this bo
++	 */
++	void (*swap_notify) (struct ttm_buffer_object *bo);
+ };
+ 
+ /**

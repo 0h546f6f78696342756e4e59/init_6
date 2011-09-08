@@ -1,0 +1,46 @@
+From: Theodore Ts'o <tytso@mit.edu>
+Date: Tue, 1 Dec 2009 09:04:42 -0500
+Subject: [stable] jbd2: Add ENOMEM checking in and for jbd2_journal_write_metadata_buffer()
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+(cherry picked from commit e6ec116b67f46e0e7808276476554727b2e6240b)
+
+OOM happens.
+
+Signed-off-by: "Theodore Ts'o" <tytso@mit.edu>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/fs/jbd2/commit.c b/fs/jbd2/commit.c
+index d4cfd6d..8896c1d 100644
+--- a/fs/jbd2/commit.c
++++ b/fs/jbd2/commit.c
+@@ -636,6 +636,10 @@ void jbd2_journal_commit_transaction(journal_t *journal)
+ 		JBUFFER_TRACE(jh, "ph3: write metadata");
+ 		flags = jbd2_journal_write_metadata_buffer(commit_transaction,
+ 						      jh, &new_jh, blocknr);
++		if (flags < 0) {
++			jbd2_journal_abort(journal, flags);
++			continue;
++		}
+ 		set_bit(BH_JWrite, &jh2bh(new_jh)->b_state);
+ 		wbuf[bufs++] = jh2bh(new_jh);
+ 
+diff --git a/fs/jbd2/journal.c b/fs/jbd2/journal.c
+index fed8538..c974077 100644
+--- a/fs/jbd2/journal.c
++++ b/fs/jbd2/journal.c
+@@ -358,6 +358,10 @@ repeat:
+ 
+ 		jbd_unlock_bh_state(bh_in);
+ 		tmp = jbd2_alloc(bh_in->b_size, GFP_NOFS);
++		if (!tmp) {
++			jbd2_journal_put_journal_head(new_jh);
++			return -ENOMEM;
++		}
+ 		jbd_lock_bh_state(bh_in);
+ 		if (jh_in->b_frozen_data) {
+ 			jbd2_free(tmp, bh_in->b_size);

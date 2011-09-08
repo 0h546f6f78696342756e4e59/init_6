@@ -1,0 +1,33 @@
+From: Prarit Bhargava <prarit@redhat.com>
+Date: Fri, 20 Nov 2009 18:25:25 -0500
+Subject: [kernel] Set panic_on_oops to 1
+Message-id: <20091021132142.12136.83679.sendpatchset@prarit.bos.redhat.com>
+Patchwork-id: 21146
+O-Subject: [RHEL6 PATCH] Set panic_on_oops to 1
+Bugzilla: 529963
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+RH-Acked-by: Neil Horman <nhorman@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Eugene Teo <eugene@redhat.com>
+
+Panic on oops.  RHEL4 & RHEL5 have this set to 1.
+
+Successfully tested by me.
+
+Resolves BZ 529963.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/panic.c b/kernel/panic.c
+index ebb099b..395f2c5 100644
+--- a/kernel/panic.c
++++ b/kernel/panic.c
+@@ -23,7 +23,7 @@
+ #include <linux/nmi.h>
+ #include <linux/dmi.h>
+ 
+-int panic_on_oops;
++int panic_on_oops = 1;
+ static unsigned long tainted_mask;
+ static int pause_on_oops;
+ static int pause_on_oops_flag;

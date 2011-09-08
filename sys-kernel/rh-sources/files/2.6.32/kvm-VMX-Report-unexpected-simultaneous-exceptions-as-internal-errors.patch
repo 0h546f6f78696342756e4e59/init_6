@@ -1,0 +1,62 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:34:05 -0500
+Subject: [kvm] VMX: Report unexpected simultaneous exceptions as internal errors
+Message-id: <20100112214156.388297582@amt.cnet>
+Patchwork-id: 22463
+O-Subject: [RHEL 6 KVM 16/20] KVM: VMX: Report unexpected simultaneous
+	exceptions as internal errors
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit 65ac7264043740572ba804edca03c374d70427c9
+Author: Avi Kivity <avi@redhat.com>
+Date:   Wed Nov 4 11:59:01 2009 +0200
+
+KVM: VMX: Report unexpected simultaneous exceptions as internal errors
+
+These happen when we trap an exception when another exception is being
+delivered; we only expect these with MCEs and page faults.  If something
+unexpected happens, things probably went south and we're better off reporting
+an internal error and freezing.
+
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/vmx.c b/arch/x86/kvm/vmx.c
+index b74abe1..264f989 100644
+--- a/arch/x86/kvm/vmx.c
++++ b/arch/x86/kvm/vmx.c
+@@ -2754,9 +2754,14 @@ static int handle_exception(struct kvm_vcpu *vcpu)
+ 		return handle_machine_check(vcpu);
+ 
+ 	if ((vect_info & VECTORING_INFO_VALID_MASK) &&
+-						!is_page_fault(intr_info))
+-		printk(KERN_ERR "%s: unexpected, vectoring info 0x%x "
+-		       "intr info 0x%x\n", __func__, vect_info, intr_info);
++	    !is_page_fault(intr_info)) {
++		vcpu->run->exit_reason = KVM_EXIT_INTERNAL_ERROR;
++		vcpu->run->internal.suberror = KVM_INTERNAL_ERROR_SIMUL_EX;
++		vcpu->run->internal.ndata = 2;
++		vcpu->run->internal.data[0] = vect_info;
++		vcpu->run->internal.data[1] = intr_info;
++		return 0;
++	}
+ 
+ 	if ((intr_info & INTR_INFO_INTR_TYPE_MASK) == INTR_TYPE_NMI_INTR)
+ 		return 1;  /* already handled by vmx_vcpu_run() */
+diff --git a/include/linux/kvm.h b/include/linux/kvm.h
+index 197fbe3..a1ed992 100644
+--- a/include/linux/kvm.h
++++ b/include/linux/kvm.h
+@@ -99,6 +99,7 @@ struct kvm_pit_config {
+ 
+ /* For KVM_EXIT_INTERNAL_ERROR */
+ #define KVM_INTERNAL_ERROR_EMULATION 1
++#define KVM_INTERNAL_ERROR_SIMUL_EX 2
+ 
+ /* for KVM_RUN, returned by mmap(vcpu_fd, offset=0) */
+ struct kvm_run {

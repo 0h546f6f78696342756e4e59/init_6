@@ -1,0 +1,45 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Tue, 2 Feb 2010 12:13:16 -0500
+Subject: [nfs] nfsd: 4.1 has an rfc number
+Message-id: <4B6816DC.5060906@RedHat.com>
+Patchwork-id: 23092
+O-Subject: [RHEL6] [PATCH 5/10] nfsd: 4.1 has an rfc number
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 73834d6f90f6833663f9effd4cf9b79b63bc36e1
+Author: J. Bruce Fields <bfields@citi.umich.edu>
+Date:   Wed Jan 20 17:17:04 2010 -0500
+
+    nfsd: 4.1 has an rfc number
+
+    No need to refer to an internet draft; there's an RFC now.
+
+    Signed-off-by: J. Bruce Fields <bfields@citi.umich.edu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/Documentation/filesystems/nfs/nfs41-server.txt b/Documentation/filesystems/nfs/nfs41-server.txt
+index 1bd0d0c..6a53a84 100644
+--- a/Documentation/filesystems/nfs/nfs41-server.txt
++++ b/Documentation/filesystems/nfs/nfs41-server.txt
+@@ -17,8 +17,7 @@ kernels must turn 4.1 on or off *before* turning support for version 4
+ on or off; rpc.nfsd does this correctly.)
+ 
+ The NFSv4 minorversion 1 (NFSv4.1) implementation in nfsd is based
+-on the latest NFSv4.1 Internet Draft:
+-http://tools.ietf.org/html/draft-ietf-nfsv4-minorversion1-29
++on RFC 5661.
+ 
+ From the many new features in NFSv4.1 the current implementation
+ focuses on the mandatory-to-implement NFSv4.1 Sessions, providing
+@@ -44,7 +43,7 @@ interoperability problems with future clients.  Known issues:
+ 	  trunking, but this is a mandatory feature, and its use is
+ 	  recommended to clients in a number of places.  (E.g. to ensure
+ 	  timely renewal in case an existing connection's retry timeouts
+-	  have gotten too long; see section 8.3 of the draft.)
++	  have gotten too long; see section 8.3 of the RFC.)
+ 	  Therefore, lack of this feature may cause future clients to
+ 	  fail.
+ 	- Incomplete backchannel support: incomplete backchannel gss

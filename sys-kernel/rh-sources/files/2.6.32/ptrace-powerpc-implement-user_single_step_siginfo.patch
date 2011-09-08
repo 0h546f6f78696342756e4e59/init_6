@@ -1,0 +1,62 @@
+From: Roland McGrath <roland@redhat.com>
+Date: Fri, 18 Dec 2009 10:23:42 -0500
+Subject: [ptrace] powerpc: implement user_single_step_siginfo()
+Message-id: <a5eeeae6c1f2e66cc135df49298cf952bf8268e9.1261131466.git.roland@redhat.com>
+Patchwork-id: 22111
+O-Subject: [RHEL6.0 PATCH 05/16] ptrace: powerpc: implement
+	user_single_step_siginfo()
+Bugzilla: 549491
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+From: Oleg Nesterov <oleg@redhat.com>
+
+Suggested by Roland.
+
+Implement user_single_step_siginfo() for powerpc.
+
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Acked-by: Roland McGrath <roland@redhat.com>
+Cc: <linux-arch@vger.kernel.org>
+Cc: Ingo Molnar <mingo@elte.hu>
+Cc: Thomas Gleixner <tglx@linutronix.de>
+Cc: "H. Peter Anvin" <hpa@zytor.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+(cherry picked from commit 25baa35befeebe6a4a8d8d12a4fc5b95918bda54)
+
+Signed-off-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/powerpc/include/asm/ptrace.h b/arch/powerpc/include/asm/ptrace.h
+index 8c34149..cbd759e 100644
+--- a/arch/powerpc/include/asm/ptrace.h
++++ b/arch/powerpc/include/asm/ptrace.h
+@@ -140,6 +140,8 @@ extern void user_enable_single_step(struct task_struct *);
+ extern void user_enable_block_step(struct task_struct *);
+ extern void user_disable_single_step(struct task_struct *);
+ 
++#define ARCH_HAS_USER_SINGLE_STEP_INFO
++
+ #endif /* __ASSEMBLY__ */
+ 
+ #endif /* __KERNEL__ */
+diff --git a/arch/powerpc/kernel/traps.c b/arch/powerpc/kernel/traps.c
+index 6f0ae1a..83b57ac 100644
+--- a/arch/powerpc/kernel/traps.c
++++ b/arch/powerpc/kernel/traps.c
+@@ -174,6 +174,15 @@ int die(const char *str, struct pt_regs *regs, long err)
+ 	return 0;
+ }
+ 
++void user_single_step_siginfo(struct task_struct *tsk,
++				struct pt_regs *regs, siginfo_t *info)
++{
++	memset(info, 0, sizeof(*info));
++	info->si_signo = SIGTRAP;
++	info->si_code = TRAP_TRACE;
++	info->si_addr = (void __user *)regs->nip;
++}
++
+ void _exception(int signr, struct pt_regs *regs, int code, unsigned long addr)
+ {
+ 	siginfo_t info;

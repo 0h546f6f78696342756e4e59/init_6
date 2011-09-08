@@ -1,0 +1,102 @@
+From: Rik van Riel <riel@redhat.com>
+Date: Thu, 17 Dec 2009 14:26:51 -0500
+Subject: [mm] move inc_zone_page_state(NR_ISOLATED) to just isolated place
+Message-id: <20091217143336.693269284@redhat.com>
+Patchwork-id: 22026
+O-Subject: [PATCH 01/21 RHEL 6] (bz 548457) mm: move
+	inc_zone_page_state(NR_ISOLATED) to just isolated place
+Bugzilla: 548457
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+commit 6d9c285a632b39ab83c6ae14cbff0e606d4042ee
+Author: KOSAKI Motohiro <kosaki.motohiro@jp.fujitsu.com>
+Date:   Mon Dec 14 17:58:11 2009 -0800
+
+    mm: move inc_zone_page_state(NR_ISOLATED) to just isolated place
+
+    Christoph pointed out inc_zone_page_state(NR_ISOLATED) should be placed
+    in right after isolate_page().
+
+    This patch does it.
+
+    Reviewed-by: Christoph Lameter <cl@linux-foundation.org>
+    Signed-off-by: KOSAKI Motohiro <kosaki.motohiro@jp.fujitsu.com>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/memory_hotplug.c b/mm/memory_hotplug.c
+index 2047465..e8116f8 100644
+--- a/mm/memory_hotplug.c
++++ b/mm/memory_hotplug.c
+@@ -27,6 +27,7 @@
+ #include <linux/page-isolation.h>
+ #include <linux/pfn.h>
+ #include <linux/suspend.h>
++#include <linux/mm_inline.h>
+ 
+ #include <asm/tlbflush.h>
+ 
+@@ -672,6 +673,9 @@ do_migrate_range(unsigned long start_pfn, unsigned long end_pfn)
+ 		if (!ret) { /* Success */
+ 			list_add_tail(&page->lru, &source);
+ 			move_pages--;
++			inc_zone_page_state(page, NR_ISOLATED_ANON +
++					    page_is_file_cache(page));
++
+ 		} else {
+ 			/* Becasue we don't have big zone->lock. we should
+ 			   check this again here. */
+diff --git a/mm/mempolicy.c b/mm/mempolicy.c
+index 4545d59..0f89eab 100644
+--- a/mm/mempolicy.c
++++ b/mm/mempolicy.c
+@@ -89,6 +89,7 @@
+ #include <linux/security.h>
+ #include <linux/syscalls.h>
+ #include <linux/ctype.h>
++#include <linux/mm_inline.h>
+ 
+ #include <asm/tlbflush.h>
+ #include <asm/uaccess.h>
+@@ -809,6 +810,8 @@ static void migrate_page_add(struct page *page, struct list_head *pagelist,
+ 	if ((flags & MPOL_MF_MOVE_ALL) || page_mapcount(page) == 1) {
+ 		if (!isolate_lru_page(page)) {
+ 			list_add_tail(&page->lru, pagelist);
++			inc_zone_page_state(page, NR_ISOLATED_ANON +
++					    page_is_file_cache(page));
+ 		}
+ 	}
+ }
+diff --git a/mm/migrate.c b/mm/migrate.c
+index 7dbcb22..f11ee8b 100644
+--- a/mm/migrate.c
++++ b/mm/migrate.c
+@@ -746,13 +746,6 @@ int migrate_pages(struct list_head *from,
+ 	struct page *page2;
+ 	int swapwrite = current->flags & PF_SWAPWRITE;
+ 	int rc;
+-	unsigned long flags;
+-
+-	local_irq_save(flags);
+-	list_for_each_entry(page, from, lru)
+-		__inc_zone_page_state(page, NR_ISOLATED_ANON +
+-				page_is_file_cache(page));
+-	local_irq_restore(flags);
+ 
+ 	if (!swapwrite)
+ 		current->flags |= PF_SWAPWRITE;
+@@ -878,8 +871,11 @@ static int do_move_page_to_node_array(struct mm_struct *mm,
+ 			goto put_and_set;
+ 
+ 		err = isolate_lru_page(page);
+-		if (!err)
++		if (!err) {
+ 			list_add_tail(&page->lru, &pagelist);
++			inc_zone_page_state(page, NR_ISOLATED_ANON +
++					    page_is_file_cache(page));
++		}
+ put_and_set:
+ 		/*
+ 		 * Either remove the duplicate refcount from

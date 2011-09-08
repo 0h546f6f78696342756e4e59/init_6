@@ -1,0 +1,88 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:33:57 -0500
+Subject: [kvm] SVM: Move INTR vmexit out of atomic code
+Message-id: <20100112214154.603074146@amt.cnet>
+Patchwork-id: 22470
+O-Subject: [RHEL 6 KVM 08/20] KVM: SVM: Move INTR vmexit out of atomic code
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit cd3ff653ae0b45bac7a19208e9c75034fcacc85f
+Author: Joerg Roedel <joerg.roedel@amd.com>
+Date:   Fri Oct 9 16:08:26 2009 +0200
+
+KVM: SVM: Move INTR vmexit out of atomic code
+
+The nested SVM code emulates a #vmexit caused by a request
+to open the irq window right in the request function. This
+is a bug because the request function runs with preemption
+and interrupts disabled but the #vmexit emulation might
+sleep. This can cause a schedule()-while-atomic bug and is
+fixed with this patch.
+
+Signed-off-by: Joerg Roedel <joerg.roedel@amd.com>
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/svm.c b/arch/x86/kvm/svm.c
+index d912dad..e310025 100644
+--- a/arch/x86/kvm/svm.c
++++ b/arch/x86/kvm/svm.c
+@@ -85,6 +85,9 @@ struct nested_state {
+ 	/* gpa pointers to the real vectors */
+ 	u64 vmcb_msrpm;
+ 
++	/* A VMEXIT is required but not yet emulated */
++	bool exit_required;
++
+ 	/* cache for intercepts of the guest */
+ 	u16 intercept_cr_read;
+ 	u16 intercept_cr_write;
+@@ -1383,7 +1386,14 @@ static inline int nested_svm_intr(struct vcpu_svm *svm)
+ 
+ 	svm->vmcb->control.exit_code = SVM_EXIT_INTR;
+ 
+-	if (nested_svm_exit_handled(svm)) {
++	if (svm->nested.intercept & 1ULL) {
++		/*
++		 * The #vmexit can't be emulated here directly because this
++		 * code path runs with irqs and preemtion disabled. A
++		 * #vmexit emulation might sleep. Only signal request for
++		 * the #vmexit here.
++		 */
++		svm->nested.exit_required = true;
+ 		nsvm_printk("VMexit -> INTR\n");
+ 		return 1;
+ 	}
+@@ -2333,6 +2343,13 @@ static int handle_exit(struct kvm_vcpu *vcpu)
+ 
+ 	trace_kvm_exit(exit_code, svm->vmcb->save.rip);
+ 
++	if (unlikely(svm->nested.exit_required)) {
++		nested_svm_vmexit(svm);
++		svm->nested.exit_required = false;
++
++		return 1;
++	}
++
+ 	if (is_nested(svm)) {
+ 		int vmexit;
+ 
+@@ -2620,6 +2637,13 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
+ 	u16 gs_selector;
+ 	u16 ldt_selector;
+ 
++	/*
++	 * A vmexit emulation is required before the vcpu can be executed
++	 * again.
++	 */
++	if (unlikely(svm->nested.exit_required))
++		return;
++
+ 	svm->vmcb->save.rax = vcpu->arch.regs[VCPU_REGS_RAX];
+ 	svm->vmcb->save.rsp = vcpu->arch.regs[VCPU_REGS_RSP];
+ 	svm->vmcb->save.rip = vcpu->arch.regs[VCPU_REGS_RIP];

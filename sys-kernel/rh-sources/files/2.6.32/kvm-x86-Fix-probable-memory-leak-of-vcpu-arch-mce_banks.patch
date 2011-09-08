@@ -1,0 +1,39 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Wed, 27 Jan 2010 21:13:10 -0500
+Subject: [kvm] x86: Fix probable memory leak of vcpu->arch.mce_banks
+Message-id: <20100127211710.789724008@amt.cnet>
+Patchwork-id: 22967
+O-Subject: [RHEL 6 KVM 4/9] KVM: x86: Fix probable memory leak of
+	vcpu->arch.mce_banks
+Bugzilla: 559343
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+
+commit 44382659273b30b764ca97e99eeb1d9ed2dbd25d
+Author: Wei Yongjun <yjwei@cn.fujitsu.com>
+Date:   Fri Jan 22 14:18:47 2010 +0800
+
+KVM: x86: Fix probable memory leak of vcpu->arch.mce_banks
+
+vcpu->arch.mce_banks is malloc in kvm_arch_vcpu_init(), but
+never free in any place, this may cause memory leak. So this
+patch fixed to free it in kvm_arch_vcpu_uninit().
+
+Signed-off-by: Wei Yongjun <yjwei@cn.fujitsu.com>
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 559343
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 3019b1e..8b1e85d 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -5087,6 +5087,7 @@ void kvm_arch_vcpu_uninit(struct kvm_vcpu *vcpu)
+ {
+ 	int idx;
+ 
++	kfree(vcpu->arch.mce_banks);
+ 	kvm_free_lapic(vcpu);
+ 	idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 	kvm_mmu_destroy(vcpu);

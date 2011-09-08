@@ -1,0 +1,56 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Wed, 6 Jan 2010 14:31:33 -0500
+Subject: [scsi] cciss: fix spinlock use
+Message-id: <4B449EC5.2070804@redhat.com>
+Patchwork-id: 22324
+O-Subject: [RHEL6 PATCH] bz#552910 cciss: fix spinlock use
+Bugzilla: 552910
+RH-Acked-by: Rob Evers <revers@redhat.com>
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+This is for bz#552910
+
+fail_all_cmds is called (only) from do_cciss_intr with
+spinlock acquired.
+So when in an error-handling situation,
+fail_all_cmds() is called it attempts to *reacquire* the lock.
+
+This patch removes the spinlock lock/unlock from fail_all_cmds and adds a
+spin_unlock after the call to fail_all_cmds before return.
+
+This patch is in RHEl5, it was posted posted in linux-scsi and ack-ed there
+by Mike Miller (HP), but is not yet in any upstream tree.
+
+Tomas
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/block/cciss.c b/drivers/block/cciss.c
+index bcca307..b98115e 100644
+--- a/drivers/block/cciss.c
++++ b/drivers/block/cciss.c
+@@ -3406,6 +3406,7 @@ static irqreturn_t do_cciss_intr(int irq, void *dev_id)
+ 					       "cciss: controller cciss%d failed, stopping.\n",
+ 					       h->ctlr);
+ 					fail_all_cmds(h->ctlr);
++					spin_unlock_irqrestore(CCISS_LOCK(h->ctlr), flags);
+ 					return IRQ_HANDLED;
+ 				}
+ 
+@@ -4550,8 +4551,6 @@ static void fail_all_cmds(unsigned long ctlr)
+ 	printk(KERN_WARNING "cciss%d: controller not responding.\n", h->ctlr);
+ 	h->alive = 0;		/* the controller apparently died... */
+ 
+-	spin_lock_irqsave(CCISS_LOCK(ctlr), flags);
+-
+ 	pci_disable_device(h->pdev);	/* Make sure it is really dead. */
+ 
+ 	/* move everything off the request queue onto the completed queue */
+@@ -4577,7 +4576,6 @@ static void fail_all_cmds(unsigned long ctlr)
+ 			complete_scsi_command(c, 0, 0);
+ #endif
+ 	}
+-	spin_unlock_irqrestore(CCISS_LOCK(ctlr), flags);
+ 	return;
+ }
+ 

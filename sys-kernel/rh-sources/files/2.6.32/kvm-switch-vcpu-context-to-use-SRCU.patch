@@ -1,0 +1,318 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:12:12 -0500
+Subject: [kvm] switch vcpu context to use SRCU
+Message-id: <20100114171430.227547316@amt.cnet>
+Patchwork-id: 22537
+O-Subject: [RHEL 6 KVM 24/27] KVM: switch vcpu context to use SRCU
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 30f66dc74ef2be0fa9ae65164c534efd76c01401
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Wed Dec 23 14:35:25 2009 -0200
+
+KVM: switch vcpu context to use SRCU
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/ia64/kvm/kvm-ia64.c b/arch/ia64/kvm/kvm-ia64.c
+index 4d417cf..1960950 100644
+--- a/arch/ia64/kvm/kvm-ia64.c
++++ b/arch/ia64/kvm/kvm-ia64.c
+@@ -634,12 +634,9 @@ static void kvm_vcpu_post_transition(struct kvm_vcpu *vcpu)
+ static int __vcpu_run(struct kvm_vcpu *vcpu, struct kvm_run *kvm_run)
+ {
+ 	union context *host_ctx, *guest_ctx;
+-	int r;
++	int r, idx;
+ 
+-	/*
+-	 * down_read() may sleep and return with interrupts enabled
+-	 */
+-	down_read(&vcpu->kvm->slots_lock);
++	idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 
+ again:
+ 	if (signal_pending(current)) {
+@@ -661,7 +658,7 @@ again:
+ 	if (r < 0)
+ 		goto vcpu_run_fail;
+ 
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+ 	kvm_guest_enter();
+ 
+ 	/*
+@@ -685,7 +682,7 @@ again:
+ 	kvm_guest_exit();
+ 	preempt_enable();
+ 
+-	down_read(&vcpu->kvm->slots_lock);
++	idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 
+ 	r = kvm_handle_exit(kvm_run, vcpu);
+ 
+@@ -695,10 +692,10 @@ again:
+ 	}
+ 
+ out:
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+ 	if (r > 0) {
+ 		kvm_resched(vcpu);
+-		down_read(&vcpu->kvm->slots_lock);
++		idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 		goto again;
+ 	}
+ 
+diff --git a/arch/s390/kvm/kvm-s390.h b/arch/s390/kvm/kvm-s390.h
+index 74f46b2..60f09ab 100644
+--- a/arch/s390/kvm/kvm-s390.h
++++ b/arch/s390/kvm/kvm-s390.h
+@@ -67,10 +67,14 @@ static inline long kvm_s390_vcpu_get_memsize(struct kvm_vcpu *vcpu)
+ 
+ static inline void kvm_s390_vcpu_set_mem(struct kvm_vcpu *vcpu)
+ {
++	int idx;
+ 	struct kvm_memory_slot *mem;
++	struct kvm_memslots *memslots;
+ 
+-	down_read(&vcpu->kvm->slots_lock);
+-	mem = &vcpu->kvm->memslots->memslots[0];
++	idx = srcu_read_lock(&vcpu->kvm->srcu);
++	memslots = rcu_dereference(vcpu->kvm->memslots);
++
++	mem = &memslots->memslots[0];
+ 
+ 	vcpu->arch.sie_block->gmsor = mem->userspace_addr;
+ 	vcpu->arch.sie_block->gmslm =
+@@ -78,7 +82,7 @@ static inline void kvm_s390_vcpu_set_mem(struct kvm_vcpu *vcpu)
+ 		(mem->npages << PAGE_SHIFT) +
+ 		VIRTIODESCSPACE - 1ul;
+ 
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+ }
+ 
+ /* implemented in priv.c */
+diff --git a/arch/x86/kvm/mmu.c b/arch/x86/kvm/mmu.c
+index ec21a66..fa597be 100644
+--- a/arch/x86/kvm/mmu.c
++++ b/arch/x86/kvm/mmu.c
+@@ -2933,10 +2933,9 @@ static int mmu_shrink(int nr_to_scan, gfp_t gfp_mask)
+ 	spin_lock(&kvm_lock);
+ 
+ 	list_for_each_entry(kvm, &vm_list, vm_list) {
+-		int npages;
++		int npages, idx;
+ 
+-		if (!down_read_trylock(&kvm->slots_lock))
+-			continue;
++		idx = srcu_read_lock(&kvm->srcu);
+ 		spin_lock(&kvm->mmu_lock);
+ 		npages = kvm->arch.n_alloc_mmu_pages -
+ 			 kvm->arch.n_free_mmu_pages;
+@@ -2949,7 +2948,7 @@ static int mmu_shrink(int nr_to_scan, gfp_t gfp_mask)
+ 		nr_to_scan--;
+ 
+ 		spin_unlock(&kvm->mmu_lock);
+-		up_read(&kvm->slots_lock);
++		srcu_read_unlock(&kvm->srcu, idx);
+ 	}
+ 	if (kvm_freed)
+ 		list_move_tail(&kvm_freed->vm_list, &vm_list);
+diff --git a/arch/x86/kvm/vmx.c b/arch/x86/kvm/vmx.c
+index 8a0038d..2a7372f 100644
+--- a/arch/x86/kvm/vmx.c
++++ b/arch/x86/kvm/vmx.c
+@@ -2406,10 +2406,10 @@ static int vmx_vcpu_reset(struct kvm_vcpu *vcpu)
+ {
+ 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+ 	u64 msr;
+-	int ret;
++	int ret, idx;
+ 
+ 	vcpu->arch.regs_avail = ~((1 << VCPU_REGS_RIP) | (1 << VCPU_REGS_RSP));
+-	down_read(&vcpu->kvm->slots_lock);
++	idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 	if (!init_rmode(vmx->vcpu.kvm)) {
+ 		ret = -ENOMEM;
+ 		goto out;
+@@ -2517,7 +2517,7 @@ static int vmx_vcpu_reset(struct kvm_vcpu *vcpu)
+ 	vmx->emulation_required = 0;
+ 
+ out:
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+ 	return ret;
+ }
+ 
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index f72f646..cf820cf 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -1228,15 +1228,15 @@ static int __msr_io(struct kvm_vcpu *vcpu, struct kvm_msrs *msrs,
+ 		    int (*do_msr)(struct kvm_vcpu *vcpu,
+ 				  unsigned index, u64 *data))
+ {
+-	int i;
++	int i, idx;
+ 
+ 	vcpu_load(vcpu);
+ 
+-	down_read(&vcpu->kvm->slots_lock);
++	idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 	for (i = 0; i < msrs->nmsrs; ++i)
+ 		if (do_msr(vcpu, entries[i].index, &entries[i].data))
+ 			break;
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+ 
+ 	vcpu_put(vcpu);
+ 
+@@ -3687,14 +3687,15 @@ static void vapic_enter(struct kvm_vcpu *vcpu)
+ static void vapic_exit(struct kvm_vcpu *vcpu)
+ {
+ 	struct kvm_lapic *apic = vcpu->arch.apic;
++	int idx;
+ 
+ 	if (!apic || !apic->vapic_addr)
+ 		return;
+ 
+-	down_read(&vcpu->kvm->slots_lock);
++	idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 	kvm_release_page_dirty(apic->vapic_page);
+ 	mark_page_dirty(vcpu->kvm, apic->vapic_addr >> PAGE_SHIFT);
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+ }
+ 
+ static void update_cr8_intercept(struct kvm_vcpu *vcpu)
+@@ -3823,7 +3824,7 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
+ 		kvm_lapic_sync_to_vapic(vcpu);
+ 	}
+ 
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&vcpu->kvm->srcu, vcpu->srcu_idx);
+ 
+ 	kvm_guest_enter();
+ 
+@@ -3864,7 +3865,7 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
+ 
+ 	preempt_enable();
+ 
+-	down_read(&vcpu->kvm->slots_lock);
++	vcpu->srcu_idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 
+ 	/*
+ 	 * Profile KVM exit RIPs:
+@@ -3886,6 +3887,7 @@ out:
+ static int __vcpu_run(struct kvm_vcpu *vcpu)
+ {
+ 	int r;
++	struct kvm *kvm = vcpu->kvm;
+ 
+ 	if (unlikely(vcpu->arch.mp_state == KVM_MP_STATE_SIPI_RECEIVED)) {
+ 		pr_debug("vcpu %d received sipi with vector # %x\n",
+@@ -3897,7 +3899,7 @@ static int __vcpu_run(struct kvm_vcpu *vcpu)
+ 		vcpu->arch.mp_state = KVM_MP_STATE_RUNNABLE;
+ 	}
+ 
+-	down_read(&vcpu->kvm->slots_lock);
++	vcpu->srcu_idx = srcu_read_lock(&kvm->srcu);
+ 	vapic_enter(vcpu);
+ 
+ 	r = 1;
+@@ -3905,9 +3907,9 @@ static int __vcpu_run(struct kvm_vcpu *vcpu)
+ 		if (vcpu->arch.mp_state == KVM_MP_STATE_RUNNABLE)
+ 			r = vcpu_enter_guest(vcpu);
+ 		else {
+-			up_read(&vcpu->kvm->slots_lock);
++			srcu_read_unlock(&kvm->srcu, vcpu->srcu_idx);
+ 			kvm_vcpu_block(vcpu);
+-			down_read(&vcpu->kvm->slots_lock);
++			vcpu->srcu_idx = srcu_read_lock(&kvm->srcu);
+ 			if (test_and_clear_bit(KVM_REQ_UNHALT, &vcpu->requests))
+ 			{
+ 				switch(vcpu->arch.mp_state) {
+@@ -3942,13 +3944,13 @@ static int __vcpu_run(struct kvm_vcpu *vcpu)
+ 			++vcpu->stat.signal_exits;
+ 		}
+ 		if (need_resched()) {
+-			up_read(&vcpu->kvm->slots_lock);
++			srcu_read_unlock(&kvm->srcu, vcpu->srcu_idx);
+ 			kvm_resched(vcpu);
+-			down_read(&vcpu->kvm->slots_lock);
++			vcpu->srcu_idx = srcu_read_lock(&kvm->srcu);
+ 		}
+ 	}
+ 
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&kvm->srcu, vcpu->srcu_idx);
+ 	post_kvm_run_save(vcpu);
+ 
+ 	vapic_exit(vcpu);
+@@ -3988,10 +3990,10 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *kvm_run)
+ 		vcpu->mmio_read_completed = 1;
+ 		vcpu->mmio_needed = 0;
+ 
+-		down_read(&vcpu->kvm->slots_lock);
++		vcpu->srcu_idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 		r = emulate_instruction(vcpu, vcpu->arch.mmio_fault_cr2, 0,
+ 					EMULTYPE_NO_DECODE);
+-		up_read(&vcpu->kvm->slots_lock);
++		srcu_read_unlock(&vcpu->kvm->srcu, vcpu->srcu_idx);
+ 		if (r == EMULATE_DO_MMIO) {
+ 			/*
+ 			 * Read-modify-write.  Back to userspace.
+@@ -4729,11 +4731,12 @@ int kvm_arch_vcpu_ioctl_translate(struct kvm_vcpu *vcpu,
+ {
+ 	unsigned long vaddr = tr->linear_address;
+ 	gpa_t gpa;
++	int idx;
+ 
+ 	vcpu_load(vcpu);
+-	down_read(&vcpu->kvm->slots_lock);
++	idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 	gpa = vcpu->arch.mmu.gva_to_gpa(vcpu, vaddr);
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+ 	tr->physical_address = gpa;
+ 	tr->valid = gpa != UNMAPPED_GVA;
+ 	tr->writeable = 1;
+@@ -4975,10 +4978,12 @@ fail:
+ 
+ void kvm_arch_vcpu_uninit(struct kvm_vcpu *vcpu)
+ {
++	int idx;
++
+ 	kvm_free_lapic(vcpu);
+-	down_read(&vcpu->kvm->slots_lock);
++	idx = srcu_read_lock(&vcpu->kvm->srcu);
+ 	kvm_mmu_destroy(vcpu);
+-	up_read(&vcpu->kvm->slots_lock);
++	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+ 	free_page((unsigned long)vcpu->arch.pio_data);
+ }
+ 
+diff --git a/include/linux/kvm_host.h b/include/linux/kvm_host.h
+index b60cb7d..35c9fa7 100644
+--- a/include/linux/kvm_host.h
++++ b/include/linux/kvm_host.h
+@@ -83,6 +83,8 @@ struct kvm_vcpu {
+ 	struct kvm_run *run;
+ 	unsigned long requests;
+ 	unsigned long guest_debug;
++	int srcu_idx;
++
+ 	int fpu_active;
+ 	int guest_fpu_loaded;
+ 	wait_queue_head_t wq;

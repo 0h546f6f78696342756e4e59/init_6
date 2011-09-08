@@ -1,0 +1,40 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 18 Jan 2010 13:33:45 -0500
+Subject: [nfs] SUNRPC: Fix the return value in gss_import_sec_context()
+Message-id: <4B546339.1000609@RedHat.com>
+Patchwork-id: 22625
+O-Subject: [RHEL6] [PATCH 4/7] NFS server and client 2.6.33 bugfixes.
+Bugzilla: 437715
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit b891e4a05ef6beac85465295a032431577c66b16
+Author: Trond Myklebust <Trond.Myklebust@netapp.com>
+Date:   Fri Dec 18 16:28:12 2009 -0500
+
+    SUNRPC: Fix the return value in gss_import_sec_context()
+
+    If the context allocation fails, it will return GSS_S_FAILURE, which is
+    neither a valid error code, nor is it even negative.
+
+    Return ENOMEM instead...
+
+    Reported-by: Jeff Layton <jlayton@redhat.com>
+    Cc: stable@kernel.org
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/net/sunrpc/auth_gss/gss_mech_switch.c b/net/sunrpc/auth_gss/gss_mech_switch.c
+index 6efbb0c..76e4c6f 100644
+--- a/net/sunrpc/auth_gss/gss_mech_switch.c
++++ b/net/sunrpc/auth_gss/gss_mech_switch.c
+@@ -252,7 +252,7 @@ gss_import_sec_context(const void *input_token, size_t bufsize,
+ 		       struct gss_ctx		**ctx_id)
+ {
+ 	if (!(*ctx_id = kzalloc(sizeof(**ctx_id), GFP_KERNEL)))
+-		return GSS_S_FAILURE;
++		return -ENOMEM;
+ 	(*ctx_id)->mech_type = gss_mech_get(mech);
+ 
+ 	return mech->gm_ops

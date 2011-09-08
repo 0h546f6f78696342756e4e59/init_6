@@ -1,0 +1,112 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Thu, 14 Jan 2010 21:49:19 -0500
+Subject: [uv] x86, platform: Change is_untracked_pat_range() to bool
+Message-id: <20100114214027.22817.79848.sendpatchset@dhcp-100-2-194.bos.redhat.com>
+Patchwork-id: 22556
+O-Subject: [RHEL6 PATCH 4/7] x86,
+	platform: Change is_untracked_pat_range() to bool
+Bugzilla: 548524
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+commit eb41c8be89dbe079f49202774e04a79ccac48a09
+Author: H. Peter Anvin <hpa@zytor.com>
+Date:   Mon Nov 23 14:46:07 2009 -0800
+
+    x86, platform: Change is_untracked_pat_range() to bool; cleanup init
+
+    - Change is_untracked_pat_range() to return bool.
+    - Clean up the initialization of is_untracked_pat_range() -- by default,
+      we simply point it at is_ISA_range() directly.
+    - Move is_untracked_pat_range to the end of struct x86_platform, since
+      it is the newest field.
+
+    Signed-off-by: H. Peter Anvin <hpa@zytor.com>
+    Acked-by: Thomas Gleixner <tglx@linutronix.de>
+    Cc: Jack Steiner <steiner@sgi.com>
+    LKML-Reference: <20091119202341.GA4420@sgi.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/pat.h b/arch/x86/include/asm/pat.h
+index 4c35dd0..e2c1668 100644
+--- a/arch/x86/include/asm/pat.h
++++ b/arch/x86/include/asm/pat.h
+@@ -24,6 +24,4 @@ int io_reserve_memtype(resource_size_t start, resource_size_t end,
+ 
+ void io_free_memtype(resource_size_t start, resource_size_t end);
+ 
+-int default_is_untracked_pat_range(u64 start, u64 end);
+-
+ #endif /* _ASM_X86_PAT_H */
+diff --git a/arch/x86/include/asm/x86_init.h b/arch/x86/include/asm/x86_init.h
+index 8112ed7..024cf3c 100644
+--- a/arch/x86/include/asm/x86_init.h
++++ b/arch/x86/include/asm/x86_init.h
+@@ -113,16 +113,16 @@ struct x86_cpuinit_ops {
+ 
+ /**
+  * struct x86_platform_ops - platform specific runtime functions
+- * @is_untracked_pat_range	exclude from PAT logic
+  * @calibrate_tsc:		calibrate TSC
+  * @get_wallclock:		get time from HW clock like RTC etc.
+  * @set_wallclock:		set time back to HW clock
++ * @is_untracked_pat_range	exclude from PAT logic
+  */
+ struct x86_platform_ops {
+-	int (*is_untracked_pat_range)(u64 start, u64 end);
+ 	unsigned long (*calibrate_tsc)(void);
+ 	unsigned long (*get_wallclock)(void);
+ 	int (*set_wallclock)(unsigned long nowtime);
++	bool (*is_untracked_pat_range)(u64 start, u64 end);
+ };
+ 
+ extern struct x86_init_ops x86_init;
+diff --git a/arch/x86/kernel/apic/x2apic_uv_x.c b/arch/x86/kernel/apic/x2apic_uv_x.c
+index c9dbcde..c3f80c3 100644
+--- a/arch/x86/kernel/apic/x2apic_uv_x.c
++++ b/arch/x86/kernel/apic/x2apic_uv_x.c
+@@ -37,12 +37,12 @@ DEFINE_PER_CPU(int, x2apic_extra_bits);
+ static enum uv_system_type uv_system_type;
+ static u64 gru_start_paddr, gru_end_paddr;
+ 
+-static int is_GRU_range(u64 start, u64 end)
++static inline bool is_GRU_range(u64 start, u64 end)
+ {
+ 	return start >= gru_start_paddr && end < gru_end_paddr;
+ }
+ 
+-static int uv_is_untracked_pat_range(u64 start, u64 end)
++static bool uv_is_untracked_pat_range(u64 start, u64 end)
+ {
+ 	return is_ISA_range(start, end) || is_GRU_range(start, end);
+ }
+diff --git a/arch/x86/kernel/x86_init.c b/arch/x86/kernel/x86_init.c
+index bcc749e..861b8b5 100644
+--- a/arch/x86/kernel/x86_init.c
++++ b/arch/x86/kernel/x86_init.c
+@@ -70,8 +70,8 @@ struct x86_cpuinit_ops x86_cpuinit __cpuinitdata = {
+ };
+ 
+ struct x86_platform_ops x86_platform = {
+-	.is_untracked_pat_range		= default_is_untracked_pat_range,
+ 	.calibrate_tsc			= native_calibrate_tsc,
+ 	.get_wallclock			= mach_get_cmos_time,
+ 	.set_wallclock			= mach_set_rtc_mmss,
++	.is_untracked_pat_range		= is_ISA_range,
+ };
+diff --git a/arch/x86/mm/pat.c b/arch/x86/mm/pat.c
+index b5bc08c..ef71251 100644
+--- a/arch/x86/mm/pat.c
++++ b/arch/x86/mm/pat.c
+@@ -349,11 +349,6 @@ static int free_ram_pages_type(u64 start, u64 end)
+ 	return 0;
+ }
+ 
+-int default_is_untracked_pat_range(u64 start, u64 end)
+-{
+-	return is_ISA_range(start, end);
+-}
+-
+ /*
+  * req_type typically has one of the:
+  * - _PAGE_CACHE_WB

@@ -1,0 +1,56 @@
+From: Michael S. Tsirkin <mst@redhat.com>
+Date: Thu, 4 Mar 2010 10:34:14 -0500
+Subject: [vhost] vhost-net: restart tx poll on sk_sndbuf full
+Message-id: <e550d48c3c3c6d0ea8558a3970ec093354309a0d.1267698800.git.mst@redhat.com>
+Patchwork-id: 23484
+O-Subject: [RHEL6.0 PATCH 5/5] vhost-net: restart tx poll on sk_sndbuf full
+Bugzilla: 562837
+RH-Acked-by: David S. Miller <davem@redhat.com>
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+BZ#562837
+https://bugzilla.redhat.com/show_bug.cgi?id=562837
+
+Description
+
+From: Sridhar Samudrala <samudrala@us.ibm.com>
+
+guest to remote communication with vhost net sometimes stops until
+guest driver is restarted. This happens when we get guest kick precisely
+when the backend send queue is full, as a result handle_tx() returns without
+polling backend. This patch fixes this by restarting tx poll on this condition.
+
+Signed-off-by: Sridhar Samudrala <samudrala@us.ibm.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Tested-by: Tom Lendacky <toml@us.ibm.com>
+
+Upstream status
+This patch has been merged for 2.6.34, commit
+39286fa41a8b2c6a9c1f656a7b3c3efca95bc1b9
+
+Brew build#: 2297441
+
+It has been tested by customers (IBM) on x86 platform
+and in house on x86_64 platform
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/vhost/net.c b/drivers/vhost/net.c
+index 4c89283..278ed96 100644
+--- a/drivers/vhost/net.c
++++ b/drivers/vhost/net.c
+@@ -113,8 +113,12 @@ static void handle_tx(struct vhost_net *net)
+ 		return;
+ 
+ 	wmem = atomic_read(&sock->sk->sk_wmem_alloc);
+-	if (wmem >= sock->sk->sk_sndbuf)
++	if (wmem >= sock->sk->sk_sndbuf) {
++		mutex_lock(&vq->mutex);
++		tx_poll_start(net, sock);
++		mutex_unlock(&vq->mutex);
+ 		return;
++	}
+ 
+ 	use_mm(net->dev.mm);
+ 	mutex_lock(&vq->mutex);

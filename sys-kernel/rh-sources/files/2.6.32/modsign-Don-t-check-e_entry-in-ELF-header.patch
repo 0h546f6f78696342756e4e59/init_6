@@ -1,0 +1,31 @@
+From: David Howells <dhowells@redhat.com>
+Date: Thu, 17 Dec 2009 18:47:41 -0500
+Subject: [modsign] Don't check e_entry in ELF header
+Message-id: <26858.1261075661@redhat.com>
+Patchwork-id: 22096
+O-Subject: [RHEL-6 PATCH] MODSIGN: Don't check e_entry in ELF header
+Bugzilla: 548027
+RH-Acked-by: Roland McGrath <roland@redhat.com>
+
+From: David Howells <dhowells@redhat.com>
+
+Don't check e_entry in the ELF header as newer binutils sets it to a non-zero
+value, which fails the test.  This is acceptable as the kernel module loader
+makes no use of the information.
+
+Signed-off-by: David Howells <dhowells@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/module-verify-elf.c b/kernel/module-verify-elf.c
+index c108cc1..4dea8d0 100644
+--- a/kernel/module-verify-elf.c
++++ b/kernel/module-verify-elf.c
+@@ -61,7 +61,7 @@ do { if (unlikely(!(X))) { line = __LINE__; goto notecheck_error; } } while(0)
+ 
+ 	/* validate the ELF header */
+ 	elfcheck(hdr->e_ehsize < size);
+-	elfcheck(hdr->e_entry == 0);
++	/*elfcheck(hdr->e_entry == 0);*/
+ 	elfcheck(hdr->e_phoff == 0);
+ 	elfcheck(hdr->e_phnum == 0);
+ 

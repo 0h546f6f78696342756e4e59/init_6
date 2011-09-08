@@ -1,0 +1,225 @@
+From: Matthew Garrett <mjg@redhat.com>
+Date: Mon, 14 Dec 2009 19:19:48 -0500
+Subject: [input] Add support for adding i8042 filters
+Message-id: <1260818389-25417-1-git-send-email-mjg@redhat.com>
+Patchwork-id: 21930
+O-Subject: [PATCH 1/2] [RHEL 6 patch] input: Add support for adding i8042 filters
+Bugzilla: 547892
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+This is an amalgamation of two commits in the upstream input tree. The first
+fixes locking in i8042, while the second adds support for drivers to filter
+the i8042 data stream. The original commit messages follow:
+
+Input: i8042 - fix locking in interrupt routine
+
+We need to protect not only i8042 status and data register from concurrent
+access from IRQ 1 and 12 but the rest of the shared state as well, so let's
+move release of i8042_lock in i8042_interrupt() a little bit further down.
+
+Signed-off-by: Dmitry Torokhov <dtor@mail.ru>
+
+Input: i8042 - allow installing platform filters for incoming data
+
+Some hardware (such as Dell laptops) signal a variety of events through
+the i8042 controller, even if these don't map to keyboard events. Add
+support for drivers to filter the i8042 event stream in order to respond
+to these events and (if appropriate) block them from entering the input
+stream.
+
+Signed-off-by: Matthew Garrett <mjg@redhat.com>
+Signed-off-by: Dmitry Torokhov <dtor@mail.ru>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/input/serio/i8042.c b/drivers/input/serio/i8042.c
+index 71558f0..0376ffd 100644
+--- a/drivers/input/serio/i8042.c
++++ b/drivers/input/serio/i8042.c
+@@ -126,6 +126,8 @@ static unsigned char i8042_suppress_kbd_ack;
+ static struct platform_device *i8042_platform_device;
+ 
+ static irqreturn_t i8042_interrupt(int irq, void *dev_id);
++static bool (*i8042_platform_filter)(unsigned char data, unsigned char str,
++				     struct serio *serio);
+ 
+ void i8042_lock_chip(void)
+ {
+@@ -139,6 +141,48 @@ void i8042_unlock_chip(void)
+ }
+ EXPORT_SYMBOL(i8042_unlock_chip);
+ 
++int i8042_install_filter(bool (*filter)(unsigned char data, unsigned char str,
++					struct serio *serio))
++{
++	unsigned long flags;
++	int ret = 0;
++
++	spin_lock_irqsave(&i8042_lock, flags);
++
++	if (i8042_platform_filter) {
++		ret = -EBUSY;
++		goto out;
++	}
++
++	i8042_platform_filter = filter;
++
++out:
++	spin_unlock_irqrestore(&i8042_lock, flags);
++	return ret;
++}
++EXPORT_SYMBOL(i8042_install_filter);
++
++int i8042_remove_filter(bool (*filter)(unsigned char data, unsigned char str,
++				       struct serio *port))
++{
++	unsigned long flags;
++	int ret = 0;
++
++	spin_lock_irqsave(&i8042_lock, flags);
++
++	if (i8042_platform_filter != filter) {
++		ret = -EINVAL;
++		goto out;
++	}
++
++	i8042_platform_filter = NULL;
++
++out:
++	spin_unlock_irqrestore(&i8042_lock, flags);
++	return ret;
++}
++EXPORT_SYMBOL(i8042_remove_filter);
++
+ /*
+  * The i8042_wait_read() and i8042_wait_write functions wait for the i8042 to
+  * be ready for reading values from it / writing values to it.
+@@ -369,6 +413,31 @@ static void i8042_stop(struct serio *serio)
+ }
+ 
+ /*
++ * i8042_filter() filters out unwanted bytes from the input data stream.
++ * It is called from i8042_interrupt and thus is running with interrupts
++ * off and i8042_lock held.
++ */
++static bool i8042_filter(unsigned char data, unsigned char str,
++			 struct serio *serio)
++{
++	if (unlikely(i8042_suppress_kbd_ack)) {
++		if ((~str & I8042_STR_AUXDATA) &&
++		    (data == 0xfa || data == 0xfe)) {
++			i8042_suppress_kbd_ack--;
++			dbg("Extra keyboard ACK - filtered out\n");
++			return true;
++		}
++	}
++
++	if (i8042_platform_filter && i8042_platform_filter(data, str, serio)) {
++		dbg("Filtered out by platfrom filter\n");
++		return true;
++	}
++
++	return false;
++}
++
++/*
+  * i8042_interrupt() is the most important function in this driver -
+  * it handles the interrupts from the i8042, and sends incoming bytes
+  * to the upper layers.
+@@ -377,13 +446,16 @@ static void i8042_stop(struct serio *serio)
+ static irqreturn_t i8042_interrupt(int irq, void *dev_id)
+ {
+ 	struct i8042_port *port;
++	struct serio *serio;
+ 	unsigned long flags;
+ 	unsigned char str, data;
+ 	unsigned int dfl;
+ 	unsigned int port_no;
++	bool filtered;
+ 	int ret = 1;
+ 
+ 	spin_lock_irqsave(&i8042_lock, flags);
++
+ 	str = i8042_read_status();
+ 	if (unlikely(~str & I8042_STR_OBF)) {
+ 		spin_unlock_irqrestore(&i8042_lock, flags);
+@@ -391,8 +463,8 @@ static irqreturn_t i8042_interrupt(int irq, void *dev_id)
+ 		ret = 0;
+ 		goto out;
+ 	}
++
+ 	data = i8042_read_data();
+-	spin_unlock_irqrestore(&i8042_lock, flags);
+ 
+ 	if (i8042_mux_present && (str & I8042_STR_AUXDATA)) {
+ 		static unsigned long last_transmit;
+@@ -441,21 +513,19 @@ static irqreturn_t i8042_interrupt(int irq, void *dev_id)
+ 	}
+ 
+ 	port = &i8042_ports[port_no];
++	serio = port->exists ? port->serio : NULL;
+ 
+ 	dbg("%02x <- i8042 (interrupt, %d, %d%s%s)",
+ 	    data, port_no, irq,
+ 	    dfl & SERIO_PARITY ? ", bad parity" : "",
+ 	    dfl & SERIO_TIMEOUT ? ", timeout" : "");
+ 
+-	if (unlikely(i8042_suppress_kbd_ack))
+-		if (port_no == I8042_KBD_PORT_NO &&
+-		    (data == 0xfa || data == 0xfe)) {
+-			i8042_suppress_kbd_ack--;
+-			goto out;
+-		}
++	filtered = i8042_filter(data, str, serio);
++
++	spin_unlock_irqrestore(&i8042_lock, flags);
+ 
+-	if (likely(port->exists))
+-		serio_interrupt(port->serio, data, dfl);
++	if (likely(port->exists && !filtered))
++		serio_interrupt(serio, data, dfl);
+ 
+  out:
+ 	return IRQ_RETVAL(ret);
+diff --git a/include/linux/i8042.h b/include/linux/i8042.h
+index 60c3360..9bf6870 100644
+--- a/include/linux/i8042.h
++++ b/include/linux/i8042.h
+@@ -39,6 +39,10 @@ void i8042_lock_chip(void);
+ void i8042_unlock_chip(void);
+ int i8042_command(unsigned char *param, int command);
+ bool i8042_check_port_owner(const struct serio *);
++int i8042_install_filter(bool (*filter)(unsigned char data, unsigned char str,
++					struct serio *serio));
++int i8042_remove_filter(bool (*filter)(unsigned char data, unsigned char str,
++				       struct serio *serio));
+ 
+ #else
+ 
+@@ -52,7 +56,7 @@ void i8042_unlock_chip(void)
+ 
+ int i8042_command(unsigned char *param, int command)
+ {
+-	return -ENOSYS;
++	return -ENODEV;
+ }
+ 
+ bool i8042_check_port_owner(const struct serio *serio)
+@@ -60,6 +64,18 @@ bool i8042_check_port_owner(const struct serio *serio)
+ 	return false;
+ }
+ 
++int i8042_install_filter(bool (*filter)(unsigned char data, unsigned char str,
++					struct serio *serio))
++{
++	return -ENODEV;
++}
++
++int i8042_remove_filter(bool (*filter)(unsigned char data, unsigned char str,
++				       struct serio *serio))
++{
++	return -ENODEV;
++}
++
+ #endif
+ 
+ #endif

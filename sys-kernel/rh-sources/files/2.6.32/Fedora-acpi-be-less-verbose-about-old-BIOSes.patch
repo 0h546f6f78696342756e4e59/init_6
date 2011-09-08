@@ -1,0 +1,40 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:43 -0500
+Subject: [Fedora] [acpi] be less verbose about old BIOSes
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6-silence-acpi-blacklist.patch
+
+Be less verbose about old BIOSes
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/acpi/blacklist.c b/drivers/acpi/blacklist.c
+index 23e5a05..a004d6f 100644
+--- a/drivers/acpi/blacklist.c
++++ b/drivers/acpi/blacklist.c
+@@ -84,18 +84,18 @@ static int __init blacklist_by_year(void)
+ 
+ 	/* Doesn't exist? Likely an old system */
+ 	if (!dmi_get_date(DMI_BIOS_DATE, &year, NULL, NULL)) {
+-		printk(KERN_ERR PREFIX "no DMI BIOS year, "
++		printk(KERN_INFO PREFIX "no DMI BIOS year, "
+ 			"acpi=force is required to enable ACPI\n" );
+ 		return 1;
+ 	}
+ 	/* 0? Likely a buggy new BIOS */
+ 	if (year == 0) {
+-		printk(KERN_ERR PREFIX "DMI BIOS year==0, "
++		printk(KERN_INFO PREFIX "DMI BIOS year==0, "
+ 			"assuming ACPI-capable machine\n" );
+ 		return 0;
+ 	}
+ 	if (year < CONFIG_ACPI_BLACKLIST_YEAR) {
+-		printk(KERN_ERR PREFIX "BIOS age (%d) fails cutoff (%d), "
++		printk(KERN_INFO PREFIX "BIOS age (%d) fails cutoff (%d), "
+ 		       "acpi=force is required to enable ACPI\n",
+ 		       year, CONFIG_ACPI_BLACKLIST_YEAR);
+ 		return 1;

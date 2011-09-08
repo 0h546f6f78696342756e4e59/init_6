@@ -1,0 +1,40 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:26 -0500
+Subject: [block] cfq-iosched: make nonrot check logic consistent
+Message-id: <1260298712-12756-54-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21793
+O-Subject: [RHEL6 PATCH 53/59] cfq-iosched: make nonrot check logic consistent
+Bugzilla: 545225
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 545225
+
+commit 3c764b7a654668dd04905841d6024f7b6aa843a5
+Author: Shaohua Li <shaohua.li@intel.com>
+Date:   Fri Dec 4 13:12:06 2009 +0100
+
+    cfq-iosched: make nonrot check logic consistent
+
+    cfq_arm_slice_timer() has logic to disable idle window for SSD device. The same
+    thing should be done at cfq_select_queue() too, otherwise we will still see
+    idle window. This makes the nonrot check logic consistent in cfq.
+    Tests in a intel SSD with low_latency knob close, below patch can triple disk
+    thoughput for muti-thread sequential read.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 4f2c2cd..3c38ac7 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -1795,7 +1795,8 @@ static bool cfq_should_idle(struct cfq_data *cfqd, struct cfq_queue *cfqq)
+ 		return false;
+ 
+ 	/* We do for queues that were marked with idle window flag. */
+-	if (cfq_cfqq_idle_window(cfqq))
++	if (cfq_cfqq_idle_window(cfqq) &&
++	   !(blk_queue_nonrot(cfqd->queue) && cfqd->hw_tag))
+ 		return true;
+ 
+ 	/*

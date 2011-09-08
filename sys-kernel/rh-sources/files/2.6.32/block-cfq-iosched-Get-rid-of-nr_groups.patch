@@ -1,0 +1,51 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 18 Dec 2009 20:36:34 -0500
+Subject: [block] cfq-iosched: Get rid of nr_groups
+Message-id: <1261168595-15386-11-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 22177
+O-Subject: [RHEL6 PATCH 10/11] cfq-iosched: Get rid of nr_groups
+Bugzilla: 548796
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+The commit id is from the block tree.  Fixes bug 548796.
+
+commit fb104db41e6e006c85ce1097f372cd1e10c1755c
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Wed Dec 16 17:52:58 2009 -0500
+
+    cfq-iosched: Get rid of nr_groups
+
+    o Currently code does not seem to be using cfqd->nr_groups. Get rid of it.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 061ade0..1a45377 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -207,8 +207,6 @@ struct cfq_data {
+ 	/* Root service tree for cfq_groups */
+ 	struct cfq_rb_root grp_service_tree;
+ 	struct cfq_group root_group;
+-	/* Number of active cfq groups on group service tree */
+-	int nr_groups;
+ 
+ 	/*
+ 	 * The priority currently being served
+@@ -841,7 +839,6 @@ cfq_group_service_tree_add(struct cfq_data *cfqd, struct cfq_group *cfqg)
+ 
+ 	__cfq_group_service_tree_add(st, cfqg);
+ 	cfqg->on_st = true;
+-	cfqd->nr_groups++;
+ 	st->total_weight += cfqg->weight;
+ }
+ 
+@@ -862,7 +859,6 @@ cfq_group_service_tree_del(struct cfq_data *cfqd, struct cfq_group *cfqg)
+ 
+ 	cfq_log_cfqg(cfqd, cfqg, "del_from_rr group");
+ 	cfqg->on_st = false;
+-	cfqd->nr_groups--;
+ 	st->total_weight -= cfqg->weight;
+ 	if (!RB_EMPTY_NODE(&cfqg->rb_node))
+ 		cfq_rb_erase(&cfqg->rb_node, st);

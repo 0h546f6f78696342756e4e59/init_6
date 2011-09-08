@@ -1,0 +1,139 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Tue, 12 Jan 2010 08:04:01 -0500
+Subject: [s390x] tape: Add pr_fmt() macro to all tape source files
+Message-id: <20100112080401.GA19058@redhat.com>
+Patchwork-id: 22427
+O-Subject: [RHEL6 PATCH 1/1] [s390] tape: Add pr_fmt() macro to all tape
+	source files
+Bugzilla: 554380
+
+Description
+-----------
+The "tape: " prefix is missing in the output of pr_xxx() printk
+macros.  This is caused by a missing pr_fmt() macro definition.
+
+The solution is to add the definition of the pr_fmt() containing
+the prefix.
+
+Bugzilla
+--------
+BZ 554380
+https://bugzilla.redhat.com/show_bug.cgi?id=554380
+
+Upstream status of the patch
+----------------------------
+The patch is upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=bb509912481214cf6ad1181c968295c62ff1ad9e
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+
+diff --git a/drivers/s390/char/tape_34xx.c b/drivers/s390/char/tape_34xx.c
+index 2fe45ff..db1ea68 100644
+--- a/drivers/s390/char/tape_34xx.c
++++ b/drivers/s390/char/tape_34xx.c
+@@ -9,6 +9,7 @@
+  */
+ 
+ #define KMSG_COMPONENT "tape_34xx"
++#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
+ 
+ #include <linux/module.h>
+ #include <linux/init.h>
+diff --git a/drivers/s390/char/tape_3590.c b/drivers/s390/char/tape_3590.c
+index e4cc3aa..171ea16 100644
+--- a/drivers/s390/char/tape_3590.c
++++ b/drivers/s390/char/tape_3590.c
+@@ -9,6 +9,7 @@
+  */
+ 
+ #define KMSG_COMPONENT "tape_3590"
++#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
+ 
+ #include <linux/module.h>
+ #include <linux/init.h>
+diff --git a/drivers/s390/char/tape_block.c b/drivers/s390/char/tape_block.c
+index 0c0705b..709a167 100644
+--- a/drivers/s390/char/tape_block.c
++++ b/drivers/s390/char/tape_block.c
+@@ -11,6 +11,7 @@
+  */
+ 
+ #define KMSG_COMPONENT "tape"
++#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
+ 
+ #include <linux/fs.h>
+ #include <linux/module.h>
+diff --git a/drivers/s390/char/tape_char.c b/drivers/s390/char/tape_char.c
+index 31566c5..1186858 100644
+--- a/drivers/s390/char/tape_char.c
++++ b/drivers/s390/char/tape_char.c
+@@ -10,6 +10,9 @@
+  *		 Martin Schwidefsky <schwidefsky@de.ibm.com>
+  */
+ 
++#define KMSG_COMPONENT "tape"
++#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
++
+ #include <linux/module.h>
+ #include <linux/types.h>
+ #include <linux/proc_fs.h>
+diff --git a/drivers/s390/char/tape_class.c b/drivers/s390/char/tape_class.c
+index ddc914c..b2864e3 100644
+--- a/drivers/s390/char/tape_class.c
++++ b/drivers/s390/char/tape_class.c
+@@ -7,6 +7,10 @@
+  * Author: Stefan Bader <shbader@de.ibm.com>
+  * Based on simple class device code by Greg K-H
+  */
++
++#define KMSG_COMPONENT "tape"
++#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
++
+ #include "tape_class.h"
+ 
+ MODULE_AUTHOR("Stefan Bader <shbader@de.ibm.com>");
+diff --git a/drivers/s390/char/tape_core.c b/drivers/s390/char/tape_core.c
+index 6311018..45e09ea 100644
+--- a/drivers/s390/char/tape_core.c
++++ b/drivers/s390/char/tape_core.c
+@@ -12,6 +12,8 @@
+  */
+ 
+ #define KMSG_COMPONENT "tape"
++#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
++
+ #include <linux/module.h>
+ #include <linux/init.h>	     // for kernel parameters
+ #include <linux/kmod.h>	     // for requesting modules
+diff --git a/drivers/s390/char/tape_proc.c b/drivers/s390/char/tape_proc.c
+index 202f421..e5fdca1 100644
+--- a/drivers/s390/char/tape_proc.c
++++ b/drivers/s390/char/tape_proc.c
+@@ -11,6 +11,9 @@
+  * PROCFS Functions
+  */
+ 
++#define KMSG_COMPONENT "tape"
++#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
++
+ #include <linux/module.h>
+ #include <linux/vmalloc.h>
+ #include <linux/seq_file.h>
+diff --git a/drivers/s390/char/tape_std.c b/drivers/s390/char/tape_std.c
+index 750354a..03f07e5 100644
+--- a/drivers/s390/char/tape_std.c
++++ b/drivers/s390/char/tape_std.c
+@@ -11,6 +11,9 @@
+  *		 Stefan Bader <shbader@de.ibm.com>
+  */
+ 
++#define KMSG_COMPONENT "tape"
++#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
++
+ #include <linux/stddef.h>
+ #include <linux/kernel.h>
+ #include <linux/bio.h>

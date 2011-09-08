@@ -1,0 +1,63 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 29 Jan 2010 09:34:39 -0500
+Subject: [s390x] zcrypt: Do not remove coprocessor in case of error 8/72
+Message-id: <1264757680-32133-3-git-send-email-brueckner@redhat.com>
+Patchwork-id: 23000
+O-Subject: [RHEL6 PATCH 2/3] [s390] zcrypt: Do not remove coprocessor in case of
+	error 8/72
+Bugzilla: 559613
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+
+In a case where the number of the input data is bigger than the
+modulus of the key, the coprocessor adapters will report an
+rc=8 reason=72 error.  This case is not caught yet, thus the
+adapter will be taken offline.
+
+To prevent this, return an -EINVAL instead.
+
+Bugzilla
+--------
+BZ 559613
+https://bugzilla.redhat.com/show_bug.cgi?id=559613
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=19b123ebacacdce5e75045bfe82122b01c821a5b
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/crypto/zcrypt_pcicc.c b/drivers/s390/crypto/zcrypt_pcicc.c
+index a23726a..142f72a 100644
+--- a/drivers/s390/crypto/zcrypt_pcicc.c
++++ b/drivers/s390/crypto/zcrypt_pcicc.c
+@@ -373,6 +373,8 @@ static int convert_type86(struct zcrypt_device *zdev,
+ 			zdev->max_mod_size = PCICC_MAX_MOD_SIZE_OLD;
+ 			return -EAGAIN;
+ 		}
++		if (service_rc == 8 && service_rs == 72)
++			return -EINVAL;
+ 		zdev->online = 0;
+ 		return -EAGAIN;	/* repeat the request on a different device. */
+ 	}
+diff --git a/drivers/s390/crypto/zcrypt_pcixcc.c b/drivers/s390/crypto/zcrypt_pcixcc.c
+index 79c1205..68f3e62 100644
+--- a/drivers/s390/crypto/zcrypt_pcixcc.c
++++ b/drivers/s390/crypto/zcrypt_pcixcc.c
+@@ -470,6 +470,8 @@ static int convert_type86_ica(struct zcrypt_device *zdev,
+ 		}
+ 		if (service_rc == 12 && service_rs == 769)
+ 			return -EINVAL;
++		if (service_rc == 8 && service_rs == 72)
++			return -EINVAL;
+ 		zdev->online = 0;
+ 		return -EAGAIN;	/* repeat the request on a different device. */
+ 	}

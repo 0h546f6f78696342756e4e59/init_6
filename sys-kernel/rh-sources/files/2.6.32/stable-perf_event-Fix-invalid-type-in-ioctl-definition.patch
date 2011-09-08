@@ -1,0 +1,32 @@
+From: Arjan van de Ven <arjan@infradead.org>
+Date: Fri, 13 Nov 2009 21:47:33 -0800
+Subject: [stable] perf_event: Fix invalid type in ioctl definition
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 4c49b12853fbb5eff4849b7b6a1e895776f027a1 upstream.
+
+u64 is invalid in userspace headers, including ioctl
+definitions; use __u64 instead
+
+Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
+LKML-Reference: <20091113214733.7cd76be9@infradead.org>
+Signed-off-by: Ingo Molnar <mingo@elte.hu>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index 9e70126..81c9689 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -219,7 +219,7 @@ struct perf_event_attr {
+ #define PERF_EVENT_IOC_DISABLE		_IO ('$', 1)
+ #define PERF_EVENT_IOC_REFRESH		_IO ('$', 2)
+ #define PERF_EVENT_IOC_RESET		_IO ('$', 3)
+-#define PERF_EVENT_IOC_PERIOD		_IOW('$', 4, u64)
++#define PERF_EVENT_IOC_PERIOD		_IOW('$', 4, __u64)
+ #define PERF_EVENT_IOC_SET_OUTPUT	_IO ('$', 5)
+ 
+ enum perf_event_ioc_flags {

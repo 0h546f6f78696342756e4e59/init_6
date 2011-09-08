@@ -1,0 +1,52 @@
+From: Mike Christie <michaelc@cs.wisc.edu>
+Date: Tue, 17 Nov 2009 21:25:16 -0600
+Subject: [stable] SCSI: fc class: fix fc_transport_init error handling
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 48de68a40aef032a2e198437f4781a83bfb938db upstream.
+
+If transport_class_register fails we should unregister any
+registered classes, or we will leak memory or other
+resources.
+
+I did a quick modprobe of scsi_transport_fc to test the
+patch.
+
+Signed-off-by: Mike Christie <michaelc@cs.wisc.edu>
+Signed-off-by: James Bottomley <James.Bottomley@suse.de>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/scsi/scsi_transport_fc.c b/drivers/scsi/scsi_transport_fc.c
+index d1fe89c..39e0e12 100644
+--- a/drivers/scsi/scsi_transport_fc.c
++++ b/drivers/scsi/scsi_transport_fc.c
+@@ -649,11 +649,22 @@ static __init int fc_transport_init(void)
+ 		return error;
+ 	error = transport_class_register(&fc_vport_class);
+ 	if (error)
+-		return error;
++		goto unreg_host_class;
+ 	error = transport_class_register(&fc_rport_class);
+ 	if (error)
+-		return error;
+-	return transport_class_register(&fc_transport_class);
++		goto unreg_vport_class;
++	error = transport_class_register(&fc_transport_class);
++	if (error)
++		goto unreg_rport_class;
++	return 0;
++
++unreg_rport_class:
++	transport_class_unregister(&fc_rport_class);
++unreg_vport_class:
++	transport_class_unregister(&fc_vport_class);
++unreg_host_class:
++	transport_class_unregister(&fc_host_class);
++	return error;
+ }
+ 
+ static void __exit fc_transport_exit(void)

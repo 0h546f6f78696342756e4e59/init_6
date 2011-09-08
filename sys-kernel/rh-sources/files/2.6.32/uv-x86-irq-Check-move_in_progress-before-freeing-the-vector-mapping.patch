@@ -1,0 +1,67 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Mon, 18 Jan 2010 22:19:36 -0500
+Subject: [uv] x86, irq: Check move_in_progress before freeing the vector mapping
+Message-id: <20100118221114.4162.5795.sendpatchset@dhcp-100-2-194.bos.redhat.com>
+Patchwork-id: 22642
+O-Subject: [RHEL6 PATCH 7/7] x86,
+	irq: Check move_in_progress before freeing the vector mapping
+Bugzilla: 546668
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+Fuzz otherwise this is patch:
+
+commit 7f41c2e1523f628cc248e34192162aec5728bed7
+Author: Suresh Siddha <suresh.b.siddha@intel.com>
+Date:   Wed Jan 6 10:56:31 2010 -0800
+
+    x86, irq: Check move_in_progress before freeing the vector mapping
+
+    With the recent irq migration fixes (post 2.6.32), Gary Hade has noticed
+    "No IRQ handler for vector" messages during the 2.6.33-rc1 kernel boot on IBM
+    AMD platforms and root caused the issue to this commit:
+
+    > commit 23359a88e7eca3c4f402562b102f23014db3c2aa
+    > Author: Suresh Siddha <suresh.b.siddha@intel.com>
+    > Date:   Mon Oct 26 14:24:33 2009 -0800
+    >
+    >    x86: Remove move_cleanup_count from irq_cfg
+
+    As part of this patch, we have removed the move_cleanup_count check
+    in smp_irq_move_cleanup_interrupt(). With this change, we can run into a
+    situation where an irq cleanup interrupt on a cpu can cleanup the vector
+    mappings associated with multiple irqs, of which one of the irq's migration
+    might be still in progress. As such when that irq hits the old cpu, we get
+    the "No IRQ handler" messages.
+
+    Fix this by checking for the irq_cfg's move_in_progress and if the move
+    is still in progress delay the vector cleanup to another irq cleanup
+    interrupt request (which will happen when the irq starts arriving at the
+    new cpu destination).
+
+    Reported-and-tested-by: Gary Hade <garyhade@us.ibm.com>
+    Signed-off-by: Suresh Siddha <suresh.b.siddha@intel.com>
+    LKML-Reference: <1262804191.2732.7.camel@sbs-t61.sc.intel.com>
+    Cc: Eric W. Biederman <ebiederm@xmission.com>
+    Signed-off-by: H. Peter Anvin <hpa@zytor.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/apic/io_apic.c b/arch/x86/kernel/apic/io_apic.c
+index 4679c98..a2f0a0d 100644
+--- a/arch/x86/kernel/apic/io_apic.c
++++ b/arch/x86/kernel/apic/io_apic.c
+@@ -2411,6 +2411,13 @@ asmlinkage void smp_irq_move_cleanup_interrupt(void)
+ 		cfg = irq_cfg(irq);
+ 		spin_lock(&desc->lock);
+ 
++		/*
++		 * Check if the irq migration is in progress. If so, we
++		 * haven't received the cleanup request yet for this irq.
++		 */
++		if (cfg->move_in_progress)
++			goto unlock;
++
+ 		if (vector == cfg->vector && cpumask_test_cpu(me, cfg->domain))
+ 			goto unlock;
+ 

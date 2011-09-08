@@ -1,0 +1,145 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 22 Jan 2010 14:49:56 -0500
+Subject: [s390x] qeth: set default BLKT settings dependend on OSA hw level
+Message-id: <20100122144956.GA15312@redhat.com>
+Patchwork-id: 22735
+O-Subject: [RHEL6 PATCH 1/1] [s390] qeth: set default BLKT settings dependend
+	on OSA hw level
+Bugzilla: 557474
+RH-Acked-by: David S. Miller <davem@redhat.com>
+
+Description
+-----------
+New OSA Express 3 cards gets configured with values matching old
+hardware levels.  This increases CPU load when receiving network
+packets.
+
+To solve the performance impact, probe the correct hardware level and
+set the BLKT (blocking threshold) settings accordingly.
+
+Bugzilla
+--------
+BZ 557474
+https://bugzilla.redhat.com/show_bug.cgi?id=557474
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.34
+http://git.kernel.org/?p=linux/kernel/git/davem/net-next-2.6.git;a=commitdiff;h=a60389abaab92213c79790e074ff6bc36ac0ebe5
+
+Brew
+----
+https://brewweb.devel.redhat.com/taskinfo?taskID=2216954
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+
+diff --git a/drivers/s390/net/qeth_core_main.c b/drivers/s390/net/qeth_core_main.c
+index 54bc950..2230e49 100644
+--- a/drivers/s390/net/qeth_core_main.c
++++ b/drivers/s390/net/qeth_core_main.c
+@@ -1362,26 +1362,28 @@ static int qeth_read_conf_data(struct qeth_card *card, void **buffer,
+ 	return ret;
+ }
+ 
+-static int qeth_get_unitaddr(struct qeth_card *card)
++static void qeth_configure_unitaddr(struct qeth_card *card, char *prcd)
+ {
+-	int length;
+-	char *prcd;
+-	int rc;
+-
+-	QETH_DBF_TEXT(SETUP, 2, "getunit");
+-	rc = qeth_read_conf_data(card, (void **) &prcd, &length);
+-	if (rc) {
+-		QETH_DBF_MESSAGE(2, "%s qeth_read_conf_data returned %i\n",
+-			dev_name(&card->gdev->dev), rc);
+-		return rc;
+-	}
++	QETH_DBF_TEXT(SETUP, 2, "cfgunit");
+ 	card->info.chpid = prcd[30];
+ 	card->info.unit_addr2 = prcd[31];
+ 	card->info.cula = prcd[63];
+ 	card->info.guestlan = ((prcd[0x10] == _ascebc['V']) &&
+ 			       (prcd[0x11] == _ascebc['M']));
+-	kfree(prcd);
+-	return 0;
++}
++
++static void qeth_configure_blkt_default(struct qeth_card *card, char *prcd) {
++	QETH_DBF_TEXT(SETUP, 2, "cfgblkt");
++
++	if (prcd[74] == 0xF0 && prcd[75] == 0xF0 && prcd[76] == 0xF5) {
++		card->info.blkt.time_total = 250;
++		card->info.blkt.inter_packet = 5;
++		card->info.blkt.inter_packet_jumbo = 15;
++	} else {
++		card->info.blkt.time_total = 0;
++		card->info.blkt.inter_packet = 0;
++		card->info.blkt.inter_packet_jumbo = 0;
++	}
+ }
+ 
+ static void qeth_init_tokens(struct qeth_card *card)
+@@ -4163,6 +4165,8 @@ void qeth_core_free_discipline(struct qeth_card *card)
+ static void qeth_determine_capabilities(struct qeth_card *card)
+ {
+ 	int rc;
++	int length;
++	char *prcd;
+ 
+ 	QETH_DBF_TEXT(SETUP, 2, "detcapab");
+ 	rc = ccw_device_set_online(CARD_DDEV(card));
+@@ -4171,11 +4175,17 @@ static void qeth_determine_capabilities(struct qeth_card *card)
+ 		goto out;
+ 	}
+ 
+-	rc = qeth_get_unitaddr(card);
++
++	rc = qeth_read_conf_data(card, (void **) &prcd, &length);
+ 	if (rc) {
++		QETH_DBF_MESSAGE(2, "%s qeth_read_conf_data returned %i\n",
++			dev_name(&card->gdev->dev), rc);
+ 		QETH_DBF_TEXT_(SETUP, 2, "5err%d", rc);
+ 		goto out_offline;
+ 	}
++	qeth_configure_unitaddr(card, prcd);
++	qeth_configure_blkt_default(card, prcd);
++	kfree(prcd);
+ 
+ 	rc = qdio_get_ssqd_desc(CARD_DDEV(card), &card->ssqd);
+ 	if (rc)
+diff --git a/drivers/s390/net/qeth_core_sys.c b/drivers/s390/net/qeth_core_sys.c
+index ac2239a..88ae435 100644
+--- a/drivers/s390/net/qeth_core_sys.c
++++ b/drivers/s390/net/qeth_core_sys.c
+@@ -539,7 +539,7 @@ static ssize_t qeth_dev_blkt_total_store(struct device *dev,
+ 	struct qeth_card *card = dev_get_drvdata(dev);
+ 
+ 	return qeth_dev_blkt_store(card, buf, count,
+-				   &card->info.blkt.time_total, 1000);
++				   &card->info.blkt.time_total, 5000);
+ }
+ 
+ 
+@@ -561,7 +561,7 @@ static ssize_t qeth_dev_blkt_inter_store(struct device *dev,
+ 	struct qeth_card *card = dev_get_drvdata(dev);
+ 
+ 	return qeth_dev_blkt_store(card, buf, count,
+-				   &card->info.blkt.inter_packet, 100);
++				   &card->info.blkt.inter_packet, 1000);
+ }
+ 
+ static DEVICE_ATTR(inter, 0644, qeth_dev_blkt_inter_show,
+@@ -582,7 +582,7 @@ static ssize_t qeth_dev_blkt_inter_jumbo_store(struct device *dev,
+ 	struct qeth_card *card = dev_get_drvdata(dev);
+ 
+ 	return qeth_dev_blkt_store(card, buf, count,
+-				   &card->info.blkt.inter_packet_jumbo, 100);
++				   &card->info.blkt.inter_packet_jumbo, 1000);
+ }
+ 
+ static DEVICE_ATTR(inter_jumbo, 0644, qeth_dev_blkt_inter_jumbo_show,

@@ -1,0 +1,60 @@
+From: Gleb Natapov <gleb@redhat.com>
+Date: Mon, 22 Feb 2010 13:59:50 -0500
+Subject: [kvm] x86 emulator: Add group9 instruction decoding
+Message-id: <1266847206-28077-5-git-send-email-gleb@redhat.com>
+Patchwork-id: 23373
+O-Subject: [PATCH 04/20] KVM: x86 emulator: Add group9 instruction decoding
+Bugzilla: 560903 560904 563466
+CVE: CVE-2010-0298 CVE-2010-0306 CVE-2010-0419
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+Use groups mechanism to decode 0F C7 instructions.
+
+Signed-off-by: Gleb Natapov <gleb@redhat.com>
+Cc: stable@kernel.org
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index b675a08..f9687e6 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -88,7 +88,7 @@
+ enum {
+ 	Group1_80, Group1_81, Group1_82, Group1_83,
+ 	Group1A, Group3_Byte, Group3, Group4, Group5, Group7,
+-	Group8,
++	Group8, Group9,
+ };
+ 
+ static u32 opcode_table[256] = {
+@@ -270,7 +270,8 @@ static u32 twobyte_table[256] = {
+ 	0, 0, ByteOp | DstReg | SrcMem | ModRM | Mov,
+ 	    DstReg | SrcMem16 | ModRM | Mov,
+ 	/* 0xC0 - 0xCF */
+-	0, 0, 0, DstMem | SrcReg | ModRM | Mov, 0, 0, 0, ImplicitOps | ModRM,
++	0, 0, 0, DstMem | SrcReg | ModRM | Mov,
++	0, 0, 0, Group | GroupDual | Group9,
+ 	0, 0, 0, 0, 0, 0, 0, 0,
+ 	/* 0xD0 - 0xDF */
+ 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+@@ -326,6 +327,8 @@ static u32 group_table[] = {
+ 	0, 0, 0, 0,
+ 	DstMem | SrcImmByte | ModRM, DstMem | SrcImmByte | ModRM,
+ 	DstMem | SrcImmByte | ModRM, DstMem | SrcImmByte | ModRM,
++	[Group9*8] =
++	0, ImplicitOps | ModRM, 0, 0, 0, 0, 0, 0,
+ };
+ 
+ static u32 group2_table[] = {
+@@ -333,6 +336,8 @@ static u32 group2_table[] = {
+ 	SrcNone | ModRM, 0, 0, SrcNone | ModRM,
+ 	SrcNone | ModRM | DstMem | Mov, 0,
+ 	SrcMem16 | ModRM | Mov, 0,
++	[Group9*8] =
++	0, 0, 0, 0, 0, 0, 0, 0,
+ };
+ 
+ /* EFLAGS bit definitions. */

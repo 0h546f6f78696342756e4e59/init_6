@@ -1,0 +1,56 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:23 -0500
+Subject: [block] cfq-iosched: fix compile problem with !CONFIG_CGROUP
+Message-id: <1260298712-12756-51-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21803
+O-Subject: [RHEL6 PATCH 50/59] cfq-iosched: fix compile problem with
+	!CONFIG_CGROUP
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit 2f5ea47712489a9d2d3cb832eb06062e4e64e0ec
+Author: Jens Axboe <jens.axboe@oracle.com>
+Date:   Thu Dec 3 21:06:43 2009 +0100
+
+    cfq-iosched: fix compile problem with !CONFIG_CGROUP
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/blk-cgroup.h b/block/blk-cgroup.h
+index b24ab71..257dc6a 100644
+--- a/block/blk-cgroup.h
++++ b/block/blk-cgroup.h
+@@ -15,6 +15,8 @@
+ 
+ #include <linux/cgroup.h>
+ 
++#ifdef CONFIG_BLK_CGROUP
++
+ struct blkio_cgroup {
+ 	struct cgroup_subsys_state css;
+ 	unsigned int weight;
+@@ -41,6 +43,13 @@ struct blkio_group {
+ 	unsigned long sectors;
+ };
+ 
++#else
++
++struct blkio_group {
++};
++
++#endif
++
+ #define BLKIO_WEIGHT_MIN	100
+ #define BLKIO_WEIGHT_MAX	1000
+ #define BLKIO_WEIGHT_DEFAULT	500
+@@ -69,6 +78,7 @@ extern struct blkio_group *blkiocg_lookup_group(struct blkio_cgroup *blkcg,
+ void blkiocg_update_blkio_group_stats(struct blkio_group *blkg,
+ 			unsigned long time, unsigned long sectors);
+ #else
++struct cgroup;
+ static inline struct blkio_cgroup *
+ cgroup_to_blkio_cgroup(struct cgroup *cgroup) { return NULL; }
+ 

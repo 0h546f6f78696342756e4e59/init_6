@@ -1,0 +1,65 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Wed, 27 Jan 2010 21:13:12 -0500
+Subject: [kvm] only allow one gsi per fd
+Message-id: <20100127211711.216407300@amt.cnet>
+Patchwork-id: 22970
+O-Subject: [RHEL 6 KVM 6/9] KVM: only allow one gsi per fd
+Bugzilla: 559343
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+
+commit 7a7638382a0988bb7dfde125d0cd33e638b1d071
+Author: Michael S. Tsirkin <mst@redhat.com>
+Date:   Wed Jan 13 18:58:09 2010 +0200
+
+KVM: only allow one gsi per fd
+
+Looks like repeatedly binding same fd to multiple gsi's with irqfd can
+use up a ton of kernel memory for irqfd structures.
+
+A simple fix is to allow each fd to only trigger one gsi: triggering a
+storm of interrupts in guest is likely useless anyway, and we can do it
+by binding a single gsi to many interrupts if we really want to.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Gregory Haskins <ghaskins@novell.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 559343
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/virt/kvm/eventfd.c b/virt/kvm/eventfd.c
+index e8664a0..942702a 100644
+--- a/virt/kvm/eventfd.c
++++ b/virt/kvm/eventfd.c
+@@ -166,7 +166,7 @@ irqfd_ptable_queue_proc(struct file *file, wait_queue_head_t *wqh,
+ static int
+ kvm_irqfd_assign(struct kvm *kvm, int fd, int gsi)
+ {
+-	struct _irqfd *irqfd;
++	struct _irqfd *irqfd, *tmp;
+ 	struct file *file = NULL;
+ 	struct eventfd_ctx *eventfd = NULL;
+ 	int ret;
+@@ -203,9 +203,20 @@ kvm_irqfd_assign(struct kvm *kvm, int fd, int gsi)
+ 	init_waitqueue_func_entry(&irqfd->wait, irqfd_wakeup);
+ 	init_poll_funcptr(&irqfd->pt, irqfd_ptable_queue_proc);
+ 
++	spin_lock_irq(&kvm->irqfds.lock);
++
++	ret = 0;
++	list_for_each_entry(tmp, &kvm->irqfds.items, list) {
++		if (irqfd->eventfd != tmp->eventfd)
++			continue;
++		/* This fd is used for another irq already. */
++		ret = -EBUSY;
++		spin_unlock_irq(&kvm->irqfds.lock);
++		goto fail;
++	}
++
+ 	events = file->f_op->poll(file, &irqfd->pt);
+ 
+-	spin_lock_irq(&kvm->irqfds.lock);
+ 	list_add_tail(&irqfd->list, &kvm->irqfds.items);
+ 	spin_unlock_irq(&kvm->irqfds.lock);
+ 

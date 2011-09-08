@@ -1,0 +1,119 @@
+From: Steve Best <sbest@redhat.com>
+Date: Wed, 10 Feb 2010 14:20:18 -0500
+Subject: [ppc] Add kdump support to Collaborative Memory Manager
+Message-id: <20100210141300.6482.87082.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 23220
+O-Subject: [PATCH RHEL6.0 BZ563316] Add kdump support to Collaborative Memory
+	Manager
+Bugzilla: 563316
+RH-Acked-by: Neil Horman <nhorman@redhat.com>
+RH-Acked-by: David Howells <dhowells@redhat.com>
+
+RHBZ#:
+======
+https://bugzilla.redhat.com/show_bug.cgi?id=563316
+
+Description:
+============
+When running Active Memory Sharing, the Collaborative Memory Manager (CMM)
+may mark some pages as "loaned" with the hypervisor. Periodically, the
+CMM will query the hypervisor for a loan request, which is a single signed
+value. When kexec'ing into a kdump kernel, the CMM driver in the kdump
+kernel is not aware of the pages the previous kernel had marked as "loaned",
+so the hypervisor and the CMM driver are out of sync. Fix the CMM driver
+to handle this scenario by ignoring requests to decrease the number of loaned
+pages if we don't think we have any pages loaned. Pages that are marked as
+"loaned" which are not in the balloon will automatically get switched to "active"
+the next time we touch the page. This also fixes the case where totalram_pages
+is smaller than min_mem_mb, which can occur during kdump.
+
+RHEL Version Found:
+===================
+RHEL 6.0
+
+kABI Status:
+============
+No symbols were harmed.
+
+Brew:
+=====
+https://brewweb.devel.redhat.com/taskinfo?taskID=2250973
+
+Upstream Status:
+================
+The patch has been accepted upstream:
+
+http://git.kernel.org/gitweb.cgi?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=8be8cf5b47f72096e42bf88cc3afff7a942a346c
+
+Test Status:
+============
+Tested by IBM test team
+
+===============================================================
+Steve Best
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/powerpc/platforms/pseries/Kconfig b/arch/powerpc/platforms/pseries/Kconfig
+index f0e6f28..b1e43cd 100644
+--- a/arch/powerpc/platforms/pseries/Kconfig
++++ b/arch/powerpc/platforms/pseries/Kconfig
+@@ -59,7 +59,7 @@ config PPC_SMLPAR
+ 
+ config CMM
+ 	tristate "Collaborative memory management"
+-	depends on PPC_SMLPAR && !CRASH_DUMP
++       depends on PPC_SMLPAR
+ 	default y
+ 	help
+ 	  Select this option, if you want to enable the kernel interface
+diff --git a/arch/powerpc/platforms/pseries/cmm.c b/arch/powerpc/platforms/pseries/cmm.c
+index 6567439..1e45e33 100644
+--- a/arch/powerpc/platforms/pseries/cmm.c
++++ b/arch/powerpc/platforms/pseries/cmm.c
+@@ -229,8 +229,9 @@ static void cmm_get_mpp(void)
+ {
+ 	int rc;
+ 	struct hvcall_mpp_data mpp_data;
+-	unsigned long active_pages_target;
+-	signed long page_loan_request;
++       signed long active_pages_target, page_loan_request, target;
++       signed long total_pages = totalram_pages + loaned_pages;
++       signed long min_mem_pages = (min_mem_mb * 1024 * 1024) / PAGE_SIZE;
+ 
+ 	rc = h_get_mpp(&mpp_data);
+ 
+@@ -238,17 +239,25 @@ static void cmm_get_mpp(void)
+ 		return;
+ 
+ 	page_loan_request = div_s64((s64)mpp_data.loan_request, PAGE_SIZE);
+-	loaned_pages_target = page_loan_request + loaned_pages;
+-	if (loaned_pages_target > oom_freed_pages)
+-		loaned_pages_target -= oom_freed_pages;
++       target = page_loan_request + (signed long)loaned_pages;
++
++       if (target < 0 || total_pages < min_mem_pages)
++               target = 0;
++
++       if (target > oom_freed_pages)
++               target -= oom_freed_pages;
+ 	else
+-		loaned_pages_target = 0;
++               target = 0;
++
++       active_pages_target = total_pages - target;
++
++       if (min_mem_pages > active_pages_target)
++               target = total_pages - min_mem_pages;
+ 
+-	active_pages_target = totalram_pages + loaned_pages - loaned_pages_target;
++       if (target < 0)
++               target = 0;
+ 
+-	if ((min_mem_mb * 1024 * 1024) > (active_pages_target * PAGE_SIZE))
+-		loaned_pages_target = totalram_pages + loaned_pages -
+-			((min_mem_mb * 1024 * 1024) / PAGE_SIZE);
++       loaned_pages_target = target;
+ 
+ 	cmm_dbg("delta = %ld, loaned = %lu, target = %lu, oom = %lu, totalram = %lu\n",
+ 		page_loan_request, loaned_pages, loaned_pages_target,

@@ -24,10 +24,10 @@ SLOT="0"
 KEYWORDS="~x86 ~amd64"
 
 SRC_URI_PREFIX="http://ftp.redhat.com/pub/redhat/linux/enterprise"
-SRC_URI="${SRC_URI_PREFIX}/6Client/en/os/SRPMS/kernel-2.6.32-131.4.1.el6.src.rpm
-	${SRC_URI_PREFIX}/6ComputeNode/en/os/SRPMS/kernel-2.6.32-131.4.1.el6.src.rpm
-	${SRC_URI_PREFIX}/6Server/en/os/SRPMS/kernel-2.6.32-131.4.1.el6.src.rpm
-	${SRC_URI_PREFIX}/6Workstation/en/os/SRPMS/kernel-2.6.32-131.4.1.el6.src.rpm"
+SRC_URI="${SRC_URI_PREFIX}/6Client/en/os/SRPMS/kernel-2.6.32-131.12.1.el6.src.rpm
+	${SRC_URI_PREFIX}/6ComputeNode/en/os/SRPMS/kernel-2.6.32-131.12.1.el6.src.rpm
+	${SRC_URI_PREFIX}/6Server/en/os/SRPMS/kernel-2.6.32-131.12.1.el6.src.rpm
+	${SRC_URI_PREFIX}/6Workstation/en/os/SRPMS/kernel-2.6.32-131.12.1.el6.src.rpm"
 
 IUSE=""
 
@@ -38,9 +38,9 @@ S="${WORKDIR}/linux-${KV_FULL}"
 src_unpack() {
 	rpm_unpack || die
 
-	tar -xpf "${WORKDIR}/linux-2.6.32-131.4.1.el6.tar.bz2" || die
-	mv "linux-2.6.32-131.4.1.el6" "${S}" || die
-	rm -f "${WORKDIR}/linux-2.6.32-131.4.1.el6.tar.bz2" || die
+	tar -xpf "${WORKDIR}/linux-2.6.32-131.12.1.el6.tar.bz2" || die
+	mv "linux-2.6.32-131.12.1.el6" "${S}" || die
+	rm -f "${WORKDIR}/linux-2.6.32-131.12.1.el6.tar.bz2" || die
 
 	rm -f "${WORKDIR}/linux-kernel-test.patch" || die
 	sed -i -e "s:^\(EXTRAVERSION =\).*:\1 ${EXTRAVERSION}:" "${S}/Makefile" || die
@@ -56,9 +56,9 @@ src_prepare() {
 	echo
 
 	# acpi
-	epatch "${FILESDIR}/${PVR}/acpi-ec-add-delay-before-write.patch" || die # https://bugzilla.kernel.org/show_bug.cgi?id=14733
+	epatch "${FILESDIR}/acpi-ec-add-delay-before-write.patch" || die # https://bugzilla.kernel.org/show_bug.cgi?id=14733
 	# font
-	epatch "${FILESDIR}/${PVR}/font-8x16-iso-latin-1.patch" || die # http://sudormrf.wordpress.com/2010/10/23/ka-ping-yee-iso-latin-1 font-in-linux-kernel/
+	epatch "${FILESDIR}/font-8x16-iso-latin-1.patch" || die # http://sudormrf.wordpress.com/2010/10/23/ka-ping-yee-iso-latin-1 font-in-linux-kernel/
 
 }
 

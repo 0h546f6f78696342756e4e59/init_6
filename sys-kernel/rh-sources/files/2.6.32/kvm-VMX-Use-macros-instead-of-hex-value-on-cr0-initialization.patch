@@ -1,0 +1,40 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:33:50 -0500
+Subject: [kvm] VMX: Use macros instead of hex value on cr0 initialization
+Message-id: <20100112214153.019567158@amt.cnet>
+Patchwork-id: 22459
+O-Subject: [RHEL 6 KVM 01/20] KVM: VMX: Use macros instead of hex value on cr0
+	initialization
+Bugzilla: 554506
+RH-Acked-by: Eduardo Habkost <ehabkost@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit fa40052ca04bdbbeb20b839cc8ffe9fa7beefbe9
+Author: Eduardo Habkost <ehabkost@redhat.com>
+Date:   Sat Oct 24 02:49:58 2009 -0200
+
+KVM: VMX: Use macros instead of hex value on cr0 initialization
+
+This should have no effect, it is just to make the code clearer.
+
+Signed-off-by: Eduardo Habkost <ehabkost@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554506
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/vmx.c b/arch/x86/kvm/vmx.c
+index 0620267..4dbb4cf 100644
+--- a/arch/x86/kvm/vmx.c
++++ b/arch/x86/kvm/vmx.c
+@@ -2502,7 +2502,7 @@ static int vmx_vcpu_reset(struct kvm_vcpu *vcpu)
+ 	if (vmx->vpid != 0)
+ 		vmcs_write16(VIRTUAL_PROCESSOR_ID, vmx->vpid);
+ 
+-	vmx->vcpu.arch.cr0 = 0x60000010;
++	vmx->vcpu.arch.cr0 = X86_CR0_NW | X86_CR0_CD | X86_CR0_ET;
+ 	vmx_set_cr0(&vmx->vcpu, vmx->vcpu.arch.cr0); /* enter rmode */
+ 	vmx_set_cr4(&vmx->vcpu, 0);
+ 	vmx_set_efer(&vmx->vcpu, 0);

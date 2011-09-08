@@ -1,0 +1,60 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Thu, 17 Dec 2009 18:44:58 -0500
+Subject: [uv] x86: function to translate from gpa -> socket_paddr
+Message-id: <20091217133117.25514.59399.sendpatchset@localhost.localdomain>
+Patchwork-id: 22089
+O-Subject: [RHEL6 PATCH 2/8] x86: uv: function to translate from gpa ->
+	socket_paddr
+Bugzilla: 548181
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+commit 729d69e6995fc4dea8ff70df256a7d4034a3d21d
+Author: Robin Holt <holt@sgi.com>
+Date:   Tue Dec 15 16:47:52 2009 -0800
+
+    x86: uv: introduce a means to translate from gpa -> socket_paddr
+
+    The UV BIOS has been updated to implement some of our interface
+    functionality differently than originally expected.  These patches update
+    the kernel to the bios implementation and include a few minor bug fixes
+    which prevent us from doing significant testing on real hardware.
+
+    This patch:
+
+    For SGI UV systems, translate from a global physical address back to a
+    socket physical address.  This does nothing to ensure the socket physical
+    address is actually addressable by the kernel.  That is the responsibility
+    of the user of the function.
+
+    Signed-off-by: Robin Holt <holt@sgi.com>
+    Cc: Jack Steiner <steiner@sgi.com>
+    Cc: Ingo Molnar <mingo@elte.hu>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/uv/uv_hub.h b/arch/x86/include/asm/uv/uv_hub.h
+index d1414af..0cc955f 100644
+--- a/arch/x86/include/asm/uv/uv_hub.h
++++ b/arch/x86/include/asm/uv/uv_hub.h
+@@ -232,6 +232,19 @@ static inline unsigned long uv_gpa(void *v)
+ 	return uv_soc_phys_ram_to_gpa(__pa(v));
+ }
+ 
++/* UV global physical address --> socket phys RAM */
++static inline unsigned long uv_gpa_to_soc_phys_ram(unsigned long gpa)
++{
++	unsigned long paddr = gpa & uv_hub_info->gpa_mask;
++	unsigned long remap_base = uv_hub_info->lowmem_remap_base;
++	unsigned long remap_top =  uv_hub_info->lowmem_remap_top;
++
++	if (paddr >= remap_base && paddr < remap_base + remap_top)
++		paddr -= remap_base;
++	return paddr;
++}
++
++
+ /* gnode -> pnode */
+ static inline unsigned long uv_gpa_to_gnode(unsigned long gpa)
+ {

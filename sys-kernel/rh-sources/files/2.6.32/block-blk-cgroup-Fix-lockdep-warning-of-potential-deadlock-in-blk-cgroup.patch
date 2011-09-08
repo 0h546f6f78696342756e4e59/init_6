@@ -1,0 +1,50 @@
+From: Vivek Goyal <vgoyal@redhat.com>
+Date: Fri, 5 Feb 2010 16:41:18 -0500
+Subject: [block] blk-cgroup: Fix lockdep warning of potential deadlock in blk-cgroup
+Message-id: <20100205164118.GB3840@redhat.com>
+Patchwork-id: 23151
+O-Subject: [RHEL6 PATCH] blk-cgroup: Fix lockdep warning of potential
+	deadlock in blk-cgroup
+Bugzilla: 561903
+RH-Acked-by: Jeff Moyer <jmoyer@redhat.com>
+
+BZ: 561903
+
+Gui encountered a lockdep warning with blk-cgroup (blkio). Looking at the
+code, currently I don't think we have a scenario where we will deadlock.
+But future changes might. So we still need to take locks in correct order and
+make sure lockdep warning is gone.
+
+Upstream commit
+
+commit bcf4dd43424cdfd8195f3955300a579fe58e9911
+Author: Gui Jianfeng <guijianfeng@cn.fujitsu.com>
+Date:   Mon Feb 1 09:58:54 2010 +0100
+
+I triggered a lockdep warning as following.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/blk-cgroup.c b/block/blk-cgroup.c
+index 1fa2654..e7dbbaf 100644
+--- a/block/blk-cgroup.c
++++ b/block/blk-cgroup.c
+@@ -147,16 +147,16 @@ blkiocg_weight_write(struct cgroup *cgroup, struct cftype *cftype, u64 val)
+ 		return -EINVAL;
+ 
+ 	blkcg = cgroup_to_blkio_cgroup(cgroup);
++	spin_lock(&blkio_list_lock);
+ 	spin_lock_irq(&blkcg->lock);
+ 	blkcg->weight = (unsigned int)val;
+ 	hlist_for_each_entry(blkg, n, &blkcg->blkg_list, blkcg_node) {
+-		spin_lock(&blkio_list_lock);
+ 		list_for_each_entry(blkiop, &blkio_list, list)
+ 			blkiop->ops.blkio_update_group_weight_fn(blkg,
+ 					blkcg->weight);
+-		spin_unlock(&blkio_list_lock);
+ 	}
+ 	spin_unlock_irq(&blkcg->lock);
++	spin_unlock(&blkio_list_lock);
+ 	return 0;
+ }
+ 

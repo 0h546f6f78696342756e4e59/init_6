@@ -1,0 +1,43 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Sun, 21 Feb 2010 14:05:56 -0500
+Subject: [mm] Fix hugetlb.c clear_huge_page parameter
+Message-id: <20100221140556.GT5955@random.random>
+Patchwork-id: 23370
+O-Subject: [RHEL6 PATCH] Fix hugetlb.c clear_huge_page parameter
+Bugzilla: 566604
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Bob Picco <bpicco@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+Please ack and apply to RHEL6 or hugetlb will always crash the
+kernel. I tested hugetlbfs and it worked fine, but that was before
+mainline asked me to share clear_huge_page between hugetlb.c
+huge_memory.c, that (low priority) cleanup broke it and I didn't
+re-test hugetlbfs after it as nothing fundamental changed, sorry. With
+this everything works fine again and hugetlb coexist transparently
+with transparent hugepage again.
+
+-----
+Subject: fix memory corruption with hugetlbfs
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+In the patch that cleaned up clear_huge_page by sharing it across hugetlb.c and
+huge_memory.c, the parameter wasn't updated to the new interface in the hugetlb
+case.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+
+diff --git a/mm/hugetlb.c b/mm/hugetlb.c
+index e356903..17a43e3 100644
+--- a/mm/hugetlb.c
++++ b/mm/hugetlb.c
+@@ -2014,7 +2014,7 @@ retry:
+ 			ret = -PTR_ERR(page);
+ 			goto out;
+ 		}
+-		clear_huge_page(page, address, huge_page_size(h));
++		clear_huge_page(page, address, pages_per_huge_page(h));
+ 		__SetPageUptodate(page);
+ 
+ 		if (vma->vm_flags & VM_MAYSHARE) {

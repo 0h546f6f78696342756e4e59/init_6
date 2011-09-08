@@ -1,0 +1,28 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Fri, 18 Dec 2009 23:23:38 -0500
+Subject: [fusion] bump version to 3.04.13
+Message-id: <20091218192317.2799.61599.sendpatchset@localhost.localdomain>
+Patchwork-id: 22208
+O-Subject: [RHEL6 3/3] bz548408 fusion: bump version to 3.04.13
+Bugzilla: 548408
+RH-Acked-by: David Milburn <dmilburn@redhat.com>
+
+bump version to 3.04.13
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/message/fusion/mptbase.h b/drivers/message/fusion/mptbase.h
+index 8dd4d21..b494867 100644
+--- a/drivers/message/fusion/mptbase.h
++++ b/drivers/message/fusion/mptbase.h
+@@ -76,8 +76,8 @@
+ #define COPYRIGHT	"Copyright (c) 1999-2008 " MODULEAUTHOR
+ #endif
+ 
+-#define MPT_LINUX_VERSION_COMMON	"3.04.12"
+-#define MPT_LINUX_PACKAGE_NAME		"@(#)mptlinux-3.04.12"
++#define MPT_LINUX_VERSION_COMMON	"3.04.13"
++#define MPT_LINUX_PACKAGE_NAME		"@(#)mptlinux-3.04.13"
+ #define WHAT_MAGIC_STRING		"@" "(" "#" ")"
+ 
+ #define show_mptmod_ver(s,ver)  \

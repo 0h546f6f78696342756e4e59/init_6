@@ -1,0 +1,50 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Thu, 18 Feb 2010 08:53:34 -0500
+Subject: [s390] qdio: prevent kernel bug message in interrupt handler
+Message-id: <1266483215-18709-5-git-send-email-brueckner@redhat.com>
+Patchwork-id: 23331
+O-Subject: [RHEL6 PATCH 4/5] [s390] qdio: prevent kernel bug message in
+	interrupt handler
+Bugzilla: 565542
+
+Description
+-----------
+Setting a qdio chpid offline during a qdio device shutdown
+can lead to a failing ccw_device_halt which leaves the qdio
+device in the stopped state.  If an interrupt occurs before
+the final cleanup is done the unhandled stopped state triggers
+a kernel bug message.
+
+Add the stopped state to the known states in the interrupt handler
+and prevent the kernel bug message for the stopped state.
+
+Bugzilla
+--------
+BZ 565542
+https://bugzilla.redhat.com/show_bug.cgi?id=565542
+
+Upstream status of the patch
+----------------------------
+The patch is upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=959153d34544b7237bad263e73a5abdf94fc7722
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/cio/qdio_main.c b/drivers/s390/cio/qdio_main.c
+index 4be6e84..18f791f 100644
+--- a/drivers/s390/cio/qdio_main.c
++++ b/drivers/s390/cio/qdio_main.c
+@@ -962,6 +962,8 @@ void qdio_int_handler(struct ccw_device *cdev, unsigned long intparm,
+ 			qdio_handle_activate_check(cdev, intparm, cstat,
+ 						   dstat);
+ 		break;
++	case QDIO_IRQ_STATE_STOPPED:
++		break;
+ 	default:
+ 		WARN_ON(1);
+ 	}

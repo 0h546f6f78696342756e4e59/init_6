@@ -1,0 +1,63 @@
+From: Michael S. Tsirkin <mst@redhat.com>
+Date: Mon, 8 Feb 2010 20:27:13 -0500
+Subject: [vhost] fix high 32 bit in FEATURES ioctls
+Message-id: <20100208202713.GB17153@redhat.com>
+Patchwork-id: 23197
+O-Subject: [RHEL6 PATCH 1/8] vhost: fix high 32 bit in FEATURES ioctls
+Bugzilla: 562837
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+This patchset backports vhost net fixes from net-next to RHEL.
+
+BZ#562837
+https://bugzilla.redhat.com/show_bug.cgi?id=562837
+
+Description
+
+VHOST_GET_FEATURES fails to initialize high-order 32 bits
+in the returned value, and VHOST_SET_FEATURES fails to check them.
+This patch fixes it to use 64 bits throughout.
+
+Signed-off-by: David L Stevens <dlstevens@us.ibm.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+Upstream Status of the patches
+Most of the fixes have been merged upstream in a single commit
+3a4d5c94e959359ece6d6b55045c3f046677f55c
+last one is commit 17660f81243e998f36257881ac3ae61685bf91c1
+
+Brew build#: 2247495
+
+Test Status:
+it has been tested by customers (IBM), and in house on x86 and x86-64
+platforms.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/vhost/net.c b/drivers/vhost/net.c
+index 22d5fef..d6db10c 100644
+--- a/drivers/vhost/net.c
++++ b/drivers/vhost/net.c
+@@ -563,7 +563,7 @@ static long vhost_net_ioctl(struct file *f, unsigned int ioctl,
+ {
+ 	struct vhost_net *n = f->private_data;
+ 	void __user *argp = (void __user *)arg;
+-	u32 __user *featurep = argp;
++	u64 __user *featurep = argp;
+ 	struct vhost_vring_file backend;
+ 	u64 features;
+ 	int r;
+@@ -575,10 +575,9 @@ static long vhost_net_ioctl(struct file *f, unsigned int ioctl,
+ 		return vhost_net_set_backend(n, backend.index, backend.fd);
+ 	case VHOST_GET_FEATURES:
+ 		features = VHOST_FEATURES;
+-		return put_user(features, featurep);
++		return copy_to_user(featurep, &features, sizeof features);
+ 	case VHOST_SET_FEATURES:
+-		r = get_user(features, featurep);
+-		/* No features for now */
++		r = copy_from_user(&features, featurep, sizeof features);
+ 		if (r < 0)
+ 			return r;
+ 		if (features & ~VHOST_FEATURES)

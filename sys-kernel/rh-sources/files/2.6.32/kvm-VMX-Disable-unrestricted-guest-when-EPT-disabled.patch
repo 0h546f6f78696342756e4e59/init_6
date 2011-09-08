@@ -1,0 +1,43 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:34:00 -0500
+Subject: [kvm] VMX: Disable unrestricted guest when EPT disabled
+Message-id: <20100112214155.258920800@amt.cnet>
+Patchwork-id: 22471
+O-Subject: [RHEL 6 KVM 11/20] KVM: VMX: Disable unrestricted guest when EPT
+	disabled
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit 046d87103addc117f0d397196e85189722d4d7de
+Author: Sheng Yang <sheng@linux.intel.com>
+Date:   Fri Nov 27 16:46:26 2009 +0800
+
+KVM: VMX: Disable unrestricted guest when EPT disabled
+
+Otherwise would cause VMEntry failure when using ept=0 on unrestricted guest
+supported processors.
+
+Signed-off-by: Sheng Yang <sheng@linux.intel.com>
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/vmx.c b/arch/x86/kvm/vmx.c
+index afc7024..b74abe1 100644
+--- a/arch/x86/kvm/vmx.c
++++ b/arch/x86/kvm/vmx.c
+@@ -2295,8 +2295,10 @@ static int vmx_vcpu_setup(struct vcpu_vmx *vmx)
+ 				~SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
+ 		if (vmx->vpid == 0)
+ 			exec_control &= ~SECONDARY_EXEC_ENABLE_VPID;
+-		if (!enable_ept)
++		if (!enable_ept) {
+ 			exec_control &= ~SECONDARY_EXEC_ENABLE_EPT;
++			enable_unrestricted_guest = 0;
++		}
+ 		if (!enable_unrestricted_guest)
+ 			exec_control &= ~SECONDARY_EXEC_UNRESTRICTED_GUEST;
+ 		vmcs_write32(SECONDARY_VM_EXEC_CONTROL, exec_control);

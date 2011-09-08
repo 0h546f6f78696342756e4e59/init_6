@@ -1,0 +1,312 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Wed, 20 Jan 2010 10:17:53 -0500
+Subject: [gfs] Add quota netlink support
+Message-id: <1263982673.2528.6.camel@localhost>
+Patchwork-id: 22671
+O-Subject: [RHEL6] GFS2: Add quota netlink support (bz #557057) [1/2]
+Bugzilla: 557057
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+RH-Acked-by: Abhijith Das <adas@redhat.com>
+
+Hi,
+
+Since the other bug has been marked as modified and the patches have been
+already put into RHEL6, I'm doing these two remaining patches under
+a different bz to avoid any possible confusion.
+
+This is the missing patch from the original patch series. Following
+this is the GFS2 part of the changes. I checked that the patches
+apply and build ok against the current RHEL6 git tree.
+
+Steve.
+
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Mon, 28 Sep 2009 11:35:17 +0000 (+0100)
+Subject: VFS: Export dquot_send_warning
+X-Git-Tag: v2.6.33-rc1~410^2~11
+X-Git-Url: http://git.engineering.redhat.com/?p=linux-2.6.git;a=commitdiff_plain;h=86e931a35e93d94e6e91b57cc76456e16d188ea9
+
+VFS: Export dquot_send_warning
+
+Sending a message to userspace in a generic format to warn
+of events (e.g. quota exceeded) in the quota subsystem is
+a generically useful feature. This patch makes some minor
+changes to the send_message function from dquot.c renaming
+it quota_send_message, moving it to quota.c and exporting it
+for use by filesystems which do not use the dquot code.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+
+diff --git a/fs/quota/Kconfig b/fs/quota/Kconfig
+index 8047e01..353e78a 100644
+--- a/fs/quota/Kconfig
++++ b/fs/quota/Kconfig
+@@ -17,7 +17,7 @@ config QUOTA
+ 
+ config QUOTA_NETLINK_INTERFACE
+ 	bool "Report quota messages through netlink interface"
+-	depends on QUOTA && NET
++	depends on QUOTACTL && NET
+ 	help
+ 	  If you say Y here, quota warnings (about exceeding softlimit, reaching
+ 	  hardlimit, etc.) will be reported through netlink interface. If unsure,
+diff --git a/fs/quota/dquot.c b/fs/quota/dquot.c
+index c4d07a8..1d6b731 100644
+--- a/fs/quota/dquot.c
++++ b/fs/quota/dquot.c
+@@ -77,10 +77,6 @@
+ #include <linux/capability.h>
+ #include <linux/quotaops.h>
+ #include <linux/writeback.h> /* for inode_lock, oddly enough.. */
+-#ifdef CONFIG_QUOTA_NETLINK_INTERFACE
+-#include <net/netlink.h>
+-#include <net/genetlink.h>
+-#endif
+ 
+ #include <asm/uaccess.h>
+ 
+@@ -1071,73 +1067,6 @@ static void print_warning(struct dquot *dquot, const int warntype)
+ }
+ #endif
+ 
+-#ifdef CONFIG_QUOTA_NETLINK_INTERFACE
+-
+-/* Netlink family structure for quota */
+-static struct genl_family quota_genl_family = {
+-	.id = GENL_ID_GENERATE,
+-	.hdrsize = 0,
+-	.name = "VFS_DQUOT",
+-	.version = 1,
+-	.maxattr = QUOTA_NL_A_MAX,
+-};
+-
+-/* Send warning to userspace about user which exceeded quota */
+-static void send_warning(const struct dquot *dquot, const char warntype)
+-{
+-	static atomic_t seq;
+-	struct sk_buff *skb;
+-	void *msg_head;
+-	int ret;
+-	int msg_size = 4 * nla_total_size(sizeof(u32)) +
+-		       2 * nla_total_size(sizeof(u64));
+-
+-	/* We have to allocate using GFP_NOFS as we are called from a
+-	 * filesystem performing write and thus further recursion into
+-	 * the fs to free some data could cause deadlocks. */
+-	skb = genlmsg_new(msg_size, GFP_NOFS);
+-	if (!skb) {
+-		printk(KERN_ERR
+-		  "VFS: Not enough memory to send quota warning.\n");
+-		return;
+-	}
+-	msg_head = genlmsg_put(skb, 0, atomic_add_return(1, &seq),
+-			&quota_genl_family, 0, QUOTA_NL_C_WARNING);
+-	if (!msg_head) {
+-		printk(KERN_ERR
+-		  "VFS: Cannot store netlink header in quota warning.\n");
+-		goto err_out;
+-	}
+-	ret = nla_put_u32(skb, QUOTA_NL_A_QTYPE, dquot->dq_type);
+-	if (ret)
+-		goto attr_err_out;
+-	ret = nla_put_u64(skb, QUOTA_NL_A_EXCESS_ID, dquot->dq_id);
+-	if (ret)
+-		goto attr_err_out;
+-	ret = nla_put_u32(skb, QUOTA_NL_A_WARNING, warntype);
+-	if (ret)
+-		goto attr_err_out;
+-	ret = nla_put_u32(skb, QUOTA_NL_A_DEV_MAJOR,
+-		MAJOR(dquot->dq_sb->s_dev));
+-	if (ret)
+-		goto attr_err_out;
+-	ret = nla_put_u32(skb, QUOTA_NL_A_DEV_MINOR,
+-		MINOR(dquot->dq_sb->s_dev));
+-	if (ret)
+-		goto attr_err_out;
+-	ret = nla_put_u64(skb, QUOTA_NL_A_CAUSED_ID, current_uid());
+-	if (ret)
+-		goto attr_err_out;
+-	genlmsg_end(skb, msg_head);
+-
+-	genlmsg_multicast(skb, 0, quota_genl_family.id, GFP_NOFS);
+-	return;
+-attr_err_out:
+-	printk(KERN_ERR "VFS: Not enough space to compose quota message!\n");
+-err_out:
+-	kfree_skb(skb);
+-}
+-#endif
+ /*
+  * Write warnings to the console and send warning messages over netlink.
+  *
+@@ -1145,18 +1074,20 @@ err_out:
+  */
+ static void flush_warnings(struct dquot *const *dquots, char *warntype)
+ {
++	struct dquot *dq;
+ 	int i;
+ 
+-	for (i = 0; i < MAXQUOTAS; i++)
+-		if (dquots[i] && warntype[i] != QUOTA_NL_NOWARN &&
+-		    !warning_issued(dquots[i], warntype[i])) {
++	for (i = 0; i < MAXQUOTAS; i++) {
++		dq = dquots[i];
++		if (dq && warntype[i] != QUOTA_NL_NOWARN &&
++		    !warning_issued(dq, warntype[i])) {
+ #ifdef CONFIG_PRINT_QUOTA_WARNING
+-			print_warning(dquots[i], warntype[i]);
+-#endif
+-#ifdef CONFIG_QUOTA_NETLINK_INTERFACE
+-			send_warning(dquots[i], warntype[i]);
++			print_warning(dq, warntype[i]);
+ #endif
++			quota_send_warning(dq->dq_type, dq->dq_id,
++					   dq->dq_sb->s_dev, warntype[i]);
+ 		}
++	}
+ }
+ 
+ static int ignore_hardlimit(struct dquot *dquot)
+@@ -2632,12 +2563,6 @@ static int __init dquot_init(void)
+ 
+ 	register_shrinker(&dqcache_shrinker);
+ 
+-#ifdef CONFIG_QUOTA_NETLINK_INTERFACE
+-	if (genl_register_family(&quota_genl_family) != 0)
+-		printk(KERN_ERR
+-		       "VFS: Failed to create quota netlink interface.\n");
+-#endif
+-
+ 	return 0;
+ }
+ module_init(dquot_init);
+diff --git a/fs/quota/quota.c b/fs/quota/quota.c
+index 95c5b42..ee91e27 100644
+--- a/fs/quota/quota.c
++++ b/fs/quota/quota.c
+@@ -18,6 +18,8 @@
+ #include <linux/capability.h>
+ #include <linux/quotaops.h>
+ #include <linux/types.h>
++#include <net/netlink.h>
++#include <net/genetlink.h>
+ 
+ /* Check validity of generic quotactl commands */
+ static int generic_quotactl_valid(struct super_block *sb, int type, int cmd,
+@@ -525,3 +527,94 @@ asmlinkage long sys32_quotactl(unsigned int cmd, const char __user *special,
+ 	return ret;
+ }
+ #endif
++
++
++#ifdef CONFIG_QUOTA_NETLINK_INTERFACE
++
++/* Netlink family structure for quota */
++static struct genl_family quota_genl_family = {
++	.id = GENL_ID_GENERATE,
++	.hdrsize = 0,
++	.name = "VFS_DQUOT",
++	.version = 1,
++	.maxattr = QUOTA_NL_A_MAX,
++};
++
++/**
++ * quota_send_warning - Send warning to userspace about exceeded quota
++ * @type: The quota type: USRQQUOTA, GRPQUOTA,...
++ * @id: The user or group id of the quota that was exceeded
++ * @dev: The device on which the fs is mounted (sb->s_dev)
++ * @warntype: The type of the warning: QUOTA_NL_...
++ *
++ * This can be used by filesystems (including those which don't use
++ * dquot) to send a message to userspace relating to quota limits.
++ *
++ */
++
++void quota_send_warning(short type, unsigned int id, dev_t dev,
++			const char warntype)
++{
++	static atomic_t seq;
++	struct sk_buff *skb;
++	void *msg_head;
++	int ret;
++	int msg_size = 4 * nla_total_size(sizeof(u32)) +
++		       2 * nla_total_size(sizeof(u64));
++
++	/* We have to allocate using GFP_NOFS as we are called from a
++	 * filesystem performing write and thus further recursion into
++	 * the fs to free some data could cause deadlocks. */
++	skb = genlmsg_new(msg_size, GFP_NOFS);
++	if (!skb) {
++		printk(KERN_ERR
++		  "VFS: Not enough memory to send quota warning.\n");
++		return;
++	}
++	msg_head = genlmsg_put(skb, 0, atomic_add_return(1, &seq),
++			&quota_genl_family, 0, QUOTA_NL_C_WARNING);
++	if (!msg_head) {
++		printk(KERN_ERR
++		  "VFS: Cannot store netlink header in quota warning.\n");
++		goto err_out;
++	}
++	ret = nla_put_u32(skb, QUOTA_NL_A_QTYPE, type);
++	if (ret)
++		goto attr_err_out;
++	ret = nla_put_u64(skb, QUOTA_NL_A_EXCESS_ID, id);
++	if (ret)
++		goto attr_err_out;
++	ret = nla_put_u32(skb, QUOTA_NL_A_WARNING, warntype);
++	if (ret)
++		goto attr_err_out;
++	ret = nla_put_u32(skb, QUOTA_NL_A_DEV_MAJOR, MAJOR(dev));
++	if (ret)
++		goto attr_err_out;
++	ret = nla_put_u32(skb, QUOTA_NL_A_DEV_MINOR, MINOR(dev));
++	if (ret)
++		goto attr_err_out;
++	ret = nla_put_u64(skb, QUOTA_NL_A_CAUSED_ID, current_uid());
++	if (ret)
++		goto attr_err_out;
++	genlmsg_end(skb, msg_head);
++
++	genlmsg_multicast(skb, 0, quota_genl_family.id, GFP_NOFS);
++	return;
++attr_err_out:
++	printk(KERN_ERR "VFS: Not enough space to compose quota message!\n");
++err_out:
++	kfree_skb(skb);
++}
++EXPORT_SYMBOL(quota_send_warning);
++
++static int __init quota_init(void)
++{
++	if (genl_register_family(&quota_genl_family) != 0)
++		printk(KERN_ERR
++		       "VFS: Failed to create quota netlink interface.\n");
++	return 0;
++};
++
++module_init(quota_init);
++#endif
++
+diff --git a/include/linux/quota.h b/include/linux/quota.h
+index 47b7e10..c40c540 100644
+--- a/include/linux/quota.h
++++ b/include/linux/quota.h
+@@ -379,6 +379,17 @@ static inline unsigned int dquot_generic_flag(unsigned int flags, int type)
+ 	return flags >> _DQUOT_STATE_FLAGS;
+ }
+ 
++#ifdef CONFIG_QUOTA_NETLINK_INTERFACE
++extern void quota_send_warning(short type, unsigned int id, dev_t dev,
++			       const char warntype);
++#else
++static inline void quota_send_warning(short type, unsigned int id, dev_t dev,
++				      const char warntype)
++{
++	return;
++}
++#endif /* CONFIG_QUOTA_NETLINK_INTERFACE */
++
+ struct quota_info {
+ 	unsigned int flags;			/* Flags for diskquotas on this device */
+ 	struct mutex dqio_mutex;		/* lock device while I/O in progress */

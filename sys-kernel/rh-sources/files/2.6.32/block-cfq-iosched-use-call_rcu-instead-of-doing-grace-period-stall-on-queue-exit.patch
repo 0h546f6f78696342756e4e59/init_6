@@ -1,0 +1,71 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:30 -0500
+Subject: [block] cfq-iosched: use call_rcu() instead of doing grace period stall on queue exit
+Message-id: <1260298712-12756-58-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21806
+O-Subject: [RHEL6 PATCH 57/59] cfq-iosched: use call_rcu() instead of doing
+	grace period stall on queue exit
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit bb729bc98c0f3e6a898d8730df3e2830bf68751a
+Author: Jens Axboe <jens.axboe@oracle.com>
+Date:   Sun Dec 6 09:54:19 2009 +0100
+
+    cfq-iosched: use call_rcu() instead of doing grace period stall on queue exit
+
+    After the merge of the IO controller patches, booting on my megaraid
+    box ran much slower. Vivek Goyal traced it down to megaraid discovery
+    creating tons of devices, each suffering a grace period when they later
+    kill that queue (if no device is found).
+
+    So lets use call_rcu() to batch these deferred frees, instead of taking
+    the grace period hit for each one.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 82d3b03..85a69ee 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -286,6 +286,7 @@ struct cfq_data {
+ 
+ 	/* List of cfq groups being managed on this device*/
+ 	struct hlist_head cfqg_list;
++	struct rcu_head rcu;
+ };
+ 
+ static struct cfq_group *cfq_get_next_cfqg(struct cfq_data *cfqd);
+@@ -3600,6 +3601,11 @@ static void cfq_put_async_queues(struct cfq_data *cfqd)
+ 		cfq_put_queue(cfqd->async_idle_cfqq);
+ }
+ 
++static void cfq_cfqd_free(struct rcu_head *head)
++{
++	kfree(container_of(head, struct cfq_data, rcu));
++}
++
+ static void cfq_exit_queue(struct elevator_queue *e)
+ {
+ 	struct cfq_data *cfqd = e->elevator_data;
+@@ -3629,8 +3635,7 @@ static void cfq_exit_queue(struct elevator_queue *e)
+ 	cfq_shutdown_timer_wq(cfqd);
+ 
+ 	/* Wait for cfqg->blkg->key accessors to exit their grace periods. */
+-	synchronize_rcu();
+-	kfree(cfqd);
++	call_rcu(&cfqd->rcu, cfq_cfqd_free);
+ }
+ 
+ static void *cfq_init_queue(struct request_queue *q)
+@@ -3705,6 +3710,7 @@ static void *cfq_init_queue(struct request_queue *q)
+ 	cfqd->cfq_group_isolation = 0;
+ 	cfqd->hw_tag = -1;
+ 	cfqd->last_end_sync_rq = jiffies;
++	INIT_RCU_HEAD(&cfqd->rcu);
+ 	return cfqd;
+ }
+ 

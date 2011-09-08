@@ -1,0 +1,124 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Sat, 19 Dec 2009 23:44:07 -0500
+Subject: [scsi] mpt2sas: add extended type for diagnostic buffer support
+Message-id: <20091219194346.5875.1384.sendpatchset@localhost.localdomain>
+Patchwork-id: 22230
+O-Subject: [RHEL6 9/20] bz478848 mpt2sas: add extended type for diagnostic
+	buffer support
+Bugzilla: 470848
+RH-Acked-by: Rob Evers <revers@redhat.com>
+
+mpt2sas: add extended type for diagnostic buffer support
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_base.c b/drivers/scsi/mpt2sas/mpt2sas_base.c
+index 1d2374b..935cfc7 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_base.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_base.c
+@@ -78,15 +78,16 @@ module_param(msix_disable, int, 0);
+ MODULE_PARM_DESC(msix_disable, " disable msix routed interrupts (default=0)");
+ 
+ /* diag_buffer_enable is bitwise
+- * bit 0 set = MPI2_DIAG_BUF_TYPE_TRACE(1)
+- * bit 1 set = MPI2_DIAG_BUF_TYPE_SNAPSHOT(2)
++ * bit 0 set = TRACE
++ * bit 1 set = SNAPSHOT
++ * bit 2 set = EXTENDED
+  *
+  * Either bit can be set, or both
+  */
+ static int diag_buffer_enable;
+ module_param(diag_buffer_enable, int, 0);
+-MODULE_PARM_DESC(diag_buffer_enable, " enable diag buffer at driver load "
+-    "time (TRACE=1/SNAP=2/default=0)");
++MODULE_PARM_DESC(diag_buffer_enable, " post diag buffers "
++    "(TRACE=1/SNAPSHOT=2/EXTENDED=4/default=0)");
+ 
+ int mpt2sas_fwfault_debug;
+ MODULE_PARM_DESC(mpt2sas_fwfault_debug, " enable detection of firmware fault "
+@@ -1765,6 +1766,12 @@ _base_display_ioc_capabilities(struct MPT2SAS_ADAPTER *ioc)
+ 	}
+ 
+ 	if (ioc->facts.IOCCapabilities &
++	    MPI2_IOCFACTS_CAPABILITY_EXTENDED_BUFFER) {
++		printk(KERN_INFO "%sDiag Extended Buffer", i ? "," : "");
++		i++;
++	}
++
++	if (ioc->facts.IOCCapabilities &
+ 	    MPI2_IOCFACTS_CAPABILITY_TASK_SET_FULL_HANDLING) {
+ 		printk("%sTask Set Full", i ? "," : "");
+ 		i++;
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_ctl.c b/drivers/scsi/mpt2sas/mpt2sas_ctl.c
+index 99a332d..8dfc5f6 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_ctl.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_ctl.c
+@@ -1230,7 +1230,7 @@ _ctl_btdh_mapping(void __user *arg)
+ /**
+  * _ctl_diag_capability - return diag buffer capability
+  * @ioc: per adapter object
+- * @buffer_type: specifies either TRACE or SNAPSHOT
++ * @buffer_type: specifies either TRACE, SNAPSHOT, or EXTENDED
+  *
+  * returns 1 when diag buffer support is enabled in firmware
+  */
+@@ -1250,6 +1250,10 @@ _ctl_diag_capability(struct MPT2SAS_ADAPTER *ioc, u8 buffer_type)
+ 		    MPI2_IOCFACTS_CAPABILITY_SNAPSHOT_BUFFER)
+ 			rc = 1;
+ 		break;
++	case MPI2_DIAG_BUF_TYPE_EXTENDED:
++		if (ioc->facts.IOCCapabilities &
++		    MPI2_IOCFACTS_CAPABILITY_EXTENDED_BUFFER)
++			rc = 1;
+ 	}
+ 
+ 	return rc;
+@@ -1460,6 +1464,16 @@ mpt2sas_enable_diag_buffer(struct MPT2SAS_ADAPTER *ioc, u8 bits_to_register)
+ 		diag_register.unique_id = 0x7075901;
+ 		_ctl_diag_register_2(ioc,  &diag_register);
+ 	}
++
++	if (bits_to_register & 4) {
++		printk(MPT2SAS_INFO_FMT "registering extended buffer support\n",
++		    ioc->name);
++		diag_register.buffer_type = MPI2_DIAG_BUF_TYPE_EXTENDED;
++		/* register for 2MB buffers  */
++		diag_register.requested_buffer_size = 2 * (1024 * 1024);
++		diag_register.unique_id = 0x7075901;
++		_ctl_diag_register_2(ioc,  &diag_register);
++	}
+ }
+ 
+ /**
+@@ -1652,7 +1666,7 @@ _ctl_diag_query(void __user *arg)
+ /**
+  * _ctl_send_release - Diag Release Message
+  * @ioc: per adapter object
+- * @buffer_type - specifies either TRACE or SNAPSHOT
++ * @buffer_type - specifies either TRACE, SNAPSHOT, or EXTENDED
+  * @issue_reset - specifies whether host reset is required.
+  *
+  */
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_ctl.h b/drivers/scsi/mpt2sas/mpt2sas_ctl.h
+index 211f296..8a5eeb1 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_ctl.h
++++ b/drivers/scsi/mpt2sas/mpt2sas_ctl.h
+@@ -313,7 +313,7 @@ struct mpt2_ioctl_btdh_mapping {
+  * struct mpt2_diag_register - application register with driver
+  * @hdr - generic header
+  * @reserved -
+- * @buffer_type - specifies either TRACE or SNAPSHOT
++ * @buffer_type - specifies either TRACE, SNAPSHOT, or EXTENDED
+  * @application_flags - misc flags
+  * @diagnostic_flags - specifies flags affecting command processing
+  * @product_specific - product specific information
+@@ -352,7 +352,7 @@ struct mpt2_diag_unregister {
+  * struct mpt2_diag_query - query relevant info associated with diag buffers
+  * @hdr - generic header
+  * @reserved -
+- * @buffer_type - specifies either TRACE or SNAPSHOT
++ * @buffer_type - specifies either TRACE, SNAPSHOT, or EXTENDED
+  * @application_flags - misc flags
+  * @diagnostic_flags - specifies flags affecting command processing
+  * @product_specific - product specific information

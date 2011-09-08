@@ -1,0 +1,84 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Tue, 5 Jan 2010 13:32:41 -0500
+Subject: [scsi] cciss,hpsa: reassign controllers
+Message-id: <4B433F79.8030403@redhat.com>
+Patchwork-id: 22312
+O-Subject: [RHEL6 PATCH] bz#552192 cciss,hpsa: reassign controllers
+Bugzilla: 552192
+
+This is for bz#552192
+
+This patch moves the P800, P400 and P400M controllers
+from hpsa to the cciss driver.
+The P400i (atm not handled by any driver) is added
+to the cciss driver also.
+This change has been acked by HP (Mike Miller).
+
+Brew build 2169837
+
+Tomas
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/block/cciss.c b/drivers/block/cciss.c
+index 91bf056..bcca307 100644
+--- a/drivers/block/cciss.c
++++ b/drivers/block/cciss.c
+@@ -84,12 +84,16 @@ static const struct pci_device_id cciss_pci_device_id[] = {
+ 	{PCI_VENDOR_ID_COMPAQ, PCI_DEVICE_ID_COMPAQ_CISSC, 0x0E11, 0x409C},
+ 	{PCI_VENDOR_ID_COMPAQ, PCI_DEVICE_ID_COMPAQ_CISSC, 0x0E11, 0x409D},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSA,     0x103C, 0x3225},
++	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3223},
++	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3234},
++	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3235},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3211},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3212},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3213},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3214},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSD,     0x103C, 0x3215},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3237},
++	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x323D},
+ 	{0,}
+ };
+ 
+@@ -110,12 +114,16 @@ static struct board_type products[] = {
+ 	{0x409D0E11, "Smart Array 6400 EM", &SA5_access},
+ 	{0x40910E11, "Smart Array 6i", &SA5_access},
+ 	{0x3225103C, "Smart Array P600", &SA5_access},
++	{0x3223103C, "Smart Array P800", &SA5_access},
++	{0x3234103C, "Smart Array P400", &SA5_access},
++	{0x3235103C, "Smart Array P400i", &SA5_access},
+ 	{0x3211103C, "Smart Array E200i", &SA5_access},
+ 	{0x3212103C, "Smart Array E200", &SA5_access},
+ 	{0x3213103C, "Smart Array E200i", &SA5_access},
+ 	{0x3214103C, "Smart Array E200i", &SA5_access},
+ 	{0x3215103C, "Smart Array E200i", &SA5_access},
+ 	{0x3237103C, "Smart Array E500", &SA5_access},
++	{0x323d103c, "Smart Array P700M", &SA5_access},
+ };
+ 
+ /* How long to wait (in milliseconds) for board to go into simple mode */
+diff --git a/drivers/scsi/hpsa.c b/drivers/scsi/hpsa.c
+index 3c079a4..5919e1d 100644
+--- a/drivers/scsi/hpsa.c
++++ b/drivers/scsi/hpsa.c
+@@ -77,9 +77,6 @@ MODULE_PARM_DESC(hpsa_allow_any,
+ 
+ /* define the PCI info for the cards we can control */
+ static const struct pci_device_id hpsa_pci_device_id[] = {
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3223},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x3234},
+-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSC,     0x103C, 0x323D},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3241},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3243},
+ 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3245},
+@@ -99,9 +96,6 @@ MODULE_DEVICE_TABLE(pci, hpsa_pci_device_id);
+  *  access = Address of the struct of function pointers
+  */
+ static struct board_type products[] = {
+-	{0x3223103C, "Smart Array P800", &SA5_access},
+-	{0x3234103C, "Smart Array P400", &SA5_access},
+-	{0x323d103c, "Smart Array P700M", &SA5_access},
+ 	{0x3241103C, "Smart Array P212", &SA5_access},
+ 	{0x3243103C, "Smart Array P410", &SA5_access},
+ 	{0x3245103C, "Smart Array P410i", &SA5_access},

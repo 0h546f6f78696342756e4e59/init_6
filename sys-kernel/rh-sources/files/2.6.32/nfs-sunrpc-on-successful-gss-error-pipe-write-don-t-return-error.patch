@@ -1,0 +1,60 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 18 Jan 2010 13:34:39 -0500
+Subject: [nfs] sunrpc: on successful gss error pipe write, don't return error
+Message-id: <4B54636F.9070200@RedHat.com>
+Patchwork-id: 22624
+O-Subject: [RHEL6] [PATCH 5/7] NFS server and client 2.6.33 bugfixes.
+Bugzilla: 437715
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 486bad2e40e938cd68fd853b7a9fa3115a9d3a4a
+Author: Jeff Layton <jlayton@redhat.com>
+Date:   Fri Dec 18 16:28:20 2009 -0500
+
+    sunrpc: on successful gss error pipe write, don't return error
+
+    When handling the gssd downcall, the kernel should distinguish between a
+    successful downcall that contains an error code and a failed downcall
+    (i.e. where the parsing failed or some other sort of problem occurred).
+
+    In the former case, gss_pipe_downcall should be returning the number of
+    bytes written to the pipe instead of an error. In the event of other
+    errors, we generally want the initiating task to retry the upcall so
+    we set msg.errno to -EAGAIN. An unexpected error code here is a bug
+    however, so BUG() in that case.
+
+    Signed-off-by: Jeff Layton <jlayton@redhat.com>
+    Cc: stable@kernel.org
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/net/sunrpc/auth_gss/auth_gss.c b/net/sunrpc/auth_gss/auth_gss.c
+index 3c3c50f..66cb89c 100644
+--- a/net/sunrpc/auth_gss/auth_gss.c
++++ b/net/sunrpc/auth_gss/auth_gss.c
+@@ -644,7 +644,22 @@ gss_pipe_downcall(struct file *filp, const char __user *src, size_t mlen)
+ 	p = gss_fill_context(p, end, ctx, gss_msg->auth->mech);
+ 	if (IS_ERR(p)) {
+ 		err = PTR_ERR(p);
+-		gss_msg->msg.errno = (err == -EAGAIN) ? -EAGAIN : -EACCES;
++		switch (err) {
++		case -EACCES:
++			gss_msg->msg.errno = err;
++			err = mlen;
++			break;
++		case -EFAULT:
++		case -ENOMEM:
++		case -EINVAL:
++		case -ENOSYS:
++			gss_msg->msg.errno = -EAGAIN;
++			break;
++		default:
++			printk(KERN_CRIT "%s: bad return from "
++				"gss_fill_context: %ld\n", __func__, err);
++			BUG();
++		}
+ 		goto err_release_msg;
+ 	}
+ 	gss_msg->ctx = gss_get_ctx(ctx);

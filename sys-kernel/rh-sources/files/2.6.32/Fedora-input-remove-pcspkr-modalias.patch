@@ -1,0 +1,26 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:39 -0500
+Subject: [Fedora] [input] remove pcspkr modalias
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: linux-2.6.30-no-pcspkr-modalias.patch
+
+Removes pcspkr modalias preventing it to be autoloaded.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/input/misc/pcspkr.c b/drivers/input/misc/pcspkr.c
+index 21cb755..78156bf 100644
+--- a/drivers/input/misc/pcspkr.c
++++ b/drivers/input/misc/pcspkr.c
+@@ -23,7 +23,6 @@
+ MODULE_AUTHOR("Vojtech Pavlik <vojtech@ucw.cz>");
+ MODULE_DESCRIPTION("PC Speaker beeper driver");
+ MODULE_LICENSE("GPL");
+-MODULE_ALIAS("platform:pcspkr");
+ 
+ #if defined(CONFIG_MIPS) || defined(CONFIG_X86)
+ /* Use the global PIT lock ! */

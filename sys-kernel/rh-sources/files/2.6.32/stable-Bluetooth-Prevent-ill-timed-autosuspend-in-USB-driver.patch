@@ -1,0 +1,30 @@
+From: Oliver Neukum <oliver@neukum.org>
+Date: Wed, 16 Dec 2009 19:23:43 +0100
+Subject: [stable] Bluetooth: Prevent ill-timed autosuspend in USB driver
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 652fd781a52ad6e24b908cd8b83d12699754f253 upstream.
+
+The device must be marked busy as it receives data.
+
+Signed-off-by: Oliver Neukum <oliver@neukum.org>
+Tested-by: Matthew Garrett <mjg@redhat.com>
+Signed-off-by: Marcel Holtmann <marcel@holtmann.org>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
+index 44bc8bb..1be7631 100644
+--- a/drivers/bluetooth/btusb.c
++++ b/drivers/bluetooth/btusb.c
+@@ -307,6 +307,7 @@ static void btusb_bulk_complete(struct urb *urb)
+ 		return;
+ 
+ 	usb_anchor_urb(urb, &data->bulk_anchor);
++	usb_mark_last_busy(data->udev);
+ 
+ 	err = usb_submit_urb(urb, GFP_ATOMIC);
+ 	if (err < 0) {

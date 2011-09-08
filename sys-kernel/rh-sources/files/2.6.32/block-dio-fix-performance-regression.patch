@@ -1,0 +1,125 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 19:26:22 -0500
+Subject: [block] dio: fix performance regression
+Message-id: <x493a3lfesh.fsf@segfault.boston.devel.redhat.com>
+Patchwork-id: 21810
+O-Subject: [RHEL6 PATCH] dio: fix performance regression
+Bugzilla: 545507
+RH-Acked-by: David Milburn <dmilburn@redhat.com>
+
+Hi,
+
+This fixes bug 545507.
+
+Cheers,
+Jeff
+
+commit d9449ce35a1e8fb58dd2d419f9215562a14ecca0
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Thu Nov 26 09:45:40 2009 +0100
+
+    Fix regression in direct writes performance due to WRITE_ODIRECT flag removal
+
+    There seems to be a regression in direct write path due to following
+    commit in for-2.6.33 branch of block tree.
+
+    commit 1af60fbd759d31f565552fea315c2033947cfbe6
+    Author: Jeff Moyer <jmoyer@redhat.com>
+    Date:   Fri Oct 2 18:56:53 2009 -0400
+
+        block: get rid of the WRITE_ODIRECT flag
+
+    Marking direct writes as WRITE_SYNC_PLUG instead of WRITE_ODIRECT, sets
+    the NOIDLE flag in bio and hence in request. This tells CFQ to not expect
+    more request from the queue and not idle on it (despite the fact that
+    queue's think time is less and it is not seeky).
+
+    So direct writers lose big time when competing with sequential readers.
+
+    Using fio, I have run one direct writer and two sequential readers and
+    following are the results with 2.6.32-rc7 kernel and with for-2.6.33
+    branch.
+
+    Test
+    ====
+    1 direct writer and 2 sequential reader running simultaneously.
+
+    [global]
+    directory=/mnt/sdc/fio/
+    runtime=10
+
+    [seqwrite]
+    rw=write
+    size=4G
+    direct=1
+
+    [seqread]
+    rw=read
+    size=2G
+    numjobs=2
+
+    2.6.32-rc7
+    ==========
+    direct writes: aggrb=2,968KB/s
+    readers	     : aggrb=101MB/s
+
+    for-2.6.33 branch
+    =================
+    direct write: aggrb=19KB/s
+    readers	      aggrb=137MB/s
+
+    This patch brings back the WRITE_ODIRECT flag, with the difference that we
+    don't set the BIO_RW_UNPLUG flag so that device is not unplugged after
+    submission of request and an explicit unplug from submitter is required.
+
+    That way we fix the jeff's issue of not enough merging taking place in aio
+    path as well as make sure direct writes get their fair share.
+
+    After the fix
+    =============
+    for-2.6.33 + fix
+    ----------------
+    direct writes: aggrb=2,728KB/s
+    reads: aggrb=103MB/s
+
+    Thanks
+    Vivek
+
+    Signed-off-by: Vivek Goyal <vgoyal@redhat.com>
+    Signed-off-by: Jens Axboe <jens.axboe@oracle.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/direct-io.c b/fs/direct-io.c
+index 3af761c..b912270 100644
+--- a/fs/direct-io.c
++++ b/fs/direct-io.c
+@@ -1124,7 +1124,7 @@ __blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
+ 	int acquire_i_mutex = 0;
+ 
+ 	if (rw & WRITE)
+-		rw = WRITE_SYNC_PLUG;
++		rw = WRITE_ODIRECT_PLUG;
+ 
+ 	if (bdev)
+ 		bdev_blkbits = blksize_bits(bdev_logical_block_size(bdev));
+diff --git a/include/linux/fs.h b/include/linux/fs.h
+index 017b1c1..891f7d6 100644
+--- a/include/linux/fs.h
++++ b/include/linux/fs.h
+@@ -129,6 +129,7 @@ struct inodes_stat_t {
+  * WRITE_SYNC		Like WRITE_SYNC_PLUG, but also unplugs the device
+  *			immediately after submission. The write equivalent
+  *			of READ_SYNC.
++ * WRITE_ODIRECT_PLUG	Special case write for O_DIRECT only.
+  * SWRITE_SYNC
+  * SWRITE_SYNC_PLUG	Like WRITE_SYNC/WRITE_SYNC_PLUG, but locks the buffer.
+  *			See SWRITE.
+@@ -150,6 +151,7 @@ struct inodes_stat_t {
+ #define READ_META	(READ | (1 << BIO_RW_META))
+ #define WRITE_SYNC_PLUG	(WRITE | (1 << BIO_RW_SYNCIO) | (1 << BIO_RW_NOIDLE))
+ #define WRITE_SYNC	(WRITE_SYNC_PLUG | (1 << BIO_RW_UNPLUG))
++#define WRITE_ODIRECT_PLUG	(WRITE | (1 << BIO_RW_SYNCIO))
+ #define SWRITE_SYNC_PLUG	\
+ 			(SWRITE | (1 << BIO_RW_SYNCIO) | (1 << BIO_RW_NOIDLE))
+ #define SWRITE_SYNC	(SWRITE_SYNC_PLUG | (1 << BIO_RW_UNPLUG))

@@ -1,0 +1,26 @@
+From: Matthew Garrett <mjg@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:31 -0500
+Subject: [Fedora] [usb] enable autosuspend by default on qcserial
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+All qcserial hardware supports autosuspend properly. Enable it by default.
+
+Signed-off-by: Matthew Garrett <mjg@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/usb/serial/qcserial.c b/drivers/usb/serial/qcserial.c
+index 7528b8d..959a176 100644
+--- a/drivers/usb/serial/qcserial.c
++++ b/drivers/usb/serial/qcserial.c
+@@ -74,6 +74,8 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
+ 	ifnum = serial->interface->cur_altsetting->desc.bInterfaceNumber;
+ 	dbg("This Interface = %d", ifnum);
+ 
++	usb_device_autosuspend_enable(serial->dev);
++
+ 	switch (nintf) {
+ 	case 1:
+ 		/* QDL mode */

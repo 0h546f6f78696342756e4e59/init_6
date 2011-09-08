@@ -1,0 +1,92 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 21:07:16 -0500
+Subject: [nfs] nfs41: resize slot table in reset
+Message-id: <4B674284.6030300@RedHat.com>
+Patchwork-id: 23079
+O-Subject: [RHEL6] [PATCH 10/13] nfs41: resize slot table in reset
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit f7884bc84571d642b6f49eed7380f219da1441db
+Author: Andy Adamson <andros@netapp.com>
+Date:   Thu Jan 14 17:45:10 2010 -0500
+
+    nfs41: resize slot table in reset
+
+    When session is reset, client can renegotiate slot table size.
+
+    Signed-off-by: Andy Adamson <andros@netapp.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/nfs4proc.c b/fs/nfs/nfs4proc.c
+index 03c7021..d8c476d 100644
+--- a/fs/nfs/nfs4proc.c
++++ b/fs/nfs/nfs4proc.c
+@@ -4573,26 +4573,32 @@ int nfs4_proc_get_lease_time(struct nfs_client *clp, struct nfs_fsinfo *fsinfo)
+ /*
+  * Reset a slot table
+  */
+-static int nfs4_reset_slot_table(struct nfs4_slot_table *tbl, int max_slots,
+-		int old_max_slots, int ivalue)
++static int nfs4_reset_slot_table(struct nfs4_slot_table *tbl, u32 max_reqs,
++				 int ivalue)
+ {
++	struct nfs4_slot *new = NULL;
+ 	int i;
+ 	int ret = 0;
+ 
+-	dprintk("--> %s: max_reqs=%u, tbl %p\n", __func__, max_slots, tbl);
++	dprintk("--> %s: max_reqs=%u, tbl->max_slots %d\n", __func__,
++		max_reqs, tbl->max_slots);
+ 
+-	/*
+-	 * Until we have dynamic slot table adjustment, insist
+-	 * upon the same slot table size
+-	 */
+-	if (max_slots != old_max_slots) {
+-		dprintk("%s reset slot table does't match old\n",
+-			__func__);
+-		ret = -EINVAL; /*XXX NFS4ERR_REQ_TOO_BIG ? */
+-		goto out;
++	/* Does the newly negotiated max_reqs match the existing slot table? */
++	if (max_reqs != tbl->max_slots) {
++		ret = -ENOMEM;
++		new = kmalloc(max_reqs * sizeof(struct nfs4_slot),
++			      GFP_KERNEL);
++		if (!new)
++			goto out;
++		ret = 0;
++		kfree(tbl->slots);
+ 	}
+ 	spin_lock(&tbl->slot_tbl_lock);
+-	for (i = 0; i < max_slots; ++i)
++	if (new) {
++		tbl->slots = new;
++		tbl->max_slots = max_reqs;
++	}
++	for (i = 0; i < tbl->max_slots; ++i)
+ 		tbl->slots[i].seq_nr = ivalue;
+ 	spin_unlock(&tbl->slot_tbl_lock);
+ 	dprintk("%s: tbl=%p slots=%p max_slots=%d\n", __func__,
+@@ -4610,16 +4616,12 @@ static int nfs4_reset_slot_tables(struct nfs4_session *session)
+ 	int status;
+ 
+ 	status = nfs4_reset_slot_table(&session->fc_slot_table,
+-			session->fc_attrs.max_reqs,
+-			session->fc_slot_table.max_slots,
+-			1);
++			session->fc_attrs.max_reqs, 1);
+ 	if (status)
+ 		return status;
+ 
+ 	status = nfs4_reset_slot_table(&session->bc_slot_table,
+-			session->bc_attrs.max_reqs,
+-			session->bc_slot_table.max_slots,
+-			0);
++			session->bc_attrs.max_reqs, 0);
+ 	return status;
+ }
+ 

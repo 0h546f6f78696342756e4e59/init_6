@@ -1,0 +1,65 @@
+From: Josef Bacik <josef@redhat.com>
+Date: Thu, 24 Dec 2009 17:03:17 -0500
+Subject: [fs] ext4: wait for log to commit when unmounting
+Message-id: <20091224170316.GA28049@dhcp231-156.rdu.redhat.com>
+Patchwork-id: 22280
+O-Subject: [RHEL6][PATCH] ext4: wait for log to commit when unmounting
+Bugzilla: 524267
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+
+This is in reference to bz 524267, and is a direct backport of the following
+commit.
+
+commit d4edac314e9ad0b21ba20ba8bc61b61f186f79e1
+Author: Josef Bacik <josef@redhat.com>
+Date:   Tue Dec 8 21:48:58 2009 -0500
+
+    ext4: wait for log to commit when umounting
+
+    There is a potential race when a transaction is committing right when
+    the file system is being umounting.  This could reduce in a race
+    because EXT4_SB(sb)->s_group_info could be freed in ext4_put_super
+    before the commit code calls a callback so the mballoc code can
+    release freed blocks in the transaction, resulting in a panic trying
+    to access the freed s_group_info.
+
+    The fix is to wait for the transaction to finish committing before we
+    shutdown the multiblock allocator.
+
+    Signed-off-by: Josef Bacik <josef@redhat.com>
+    Signed-off-by: "Theodore Ts'o" <tytso@mit.edu>
+
+Thanks,
+
+Josef
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/ext4/super.c b/fs/ext4/super.c
+index 10483fa..5bd29fa 100644
+--- a/fs/ext4/super.c
++++ b/fs/ext4/super.c
+@@ -603,10 +603,6 @@ static void ext4_put_super(struct super_block *sb)
+ 	if (sb->s_dirt)
+ 		ext4_commit_super(sb, 1);
+ 
+-	ext4_release_system_zone(sb);
+-	ext4_mb_release(sb);
+-	ext4_ext_release(sb);
+-	ext4_xattr_put_super(sb);
+ 	if (sbi->s_journal) {
+ 		err = jbd2_journal_destroy(sbi->s_journal);
+ 		sbi->s_journal = NULL;
+@@ -614,6 +610,12 @@ static void ext4_put_super(struct super_block *sb)
+ 			ext4_abort(sb, __func__,
+ 				   "Couldn't clean up the journal");
+ 	}
++
++	ext4_release_system_zone(sb);
++	ext4_mb_release(sb);
++	ext4_ext_release(sb);
++	ext4_xattr_put_super(sb);
++
+ 	if (!(sb->s_flags & MS_RDONLY)) {
+ 		EXT4_CLEAR_INCOMPAT_FEATURE(sb, EXT4_FEATURE_INCOMPAT_RECOVER);
+ 		es->s_state = cpu_to_le16(sbi->s_mount_state);

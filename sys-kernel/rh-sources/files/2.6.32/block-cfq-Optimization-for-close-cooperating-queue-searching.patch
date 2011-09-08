@@ -1,0 +1,40 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 18 Dec 2009 20:36:26 -0500
+Subject: [block] cfq: Optimization for close cooperating queue searching
+Message-id: <1261168595-15386-3-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 22170
+O-Subject: [RHEL6 PATCH 02/11] cfq: Optimization for close cooperating queue
+	searching
+Bugzilla: 548796
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+The following commit id is from the block tree.  This fixes bug 548796.
+
+commit b9d8f4c73b1af4cfd53f819bf84c2bce31232275
+Author: Gui Jianfeng <guijianfeng@cn.fujitsu.com>
+Date:   Tue Dec 8 08:54:17 2009 +0100
+
+    cfq: Optimization for close cooperating queue searching
+
+    It doesn't make any sense to try to find out a close cooperating
+    queue if current cfqq is the only one in the group.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index b726fed..7395f06 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -1749,6 +1749,12 @@ static struct cfq_queue *cfq_close_cooperator(struct cfq_data *cfqd,
+ 		return NULL;
+ 
+ 	/*
++	 * Don't search priority tree if it's the only queue in the group.
++	 */
++	if (cur_cfqq->cfqg->nr_cfqq == 1)
++		return NULL;
++
++	/*
+ 	 * We should notice if some of the queues are cooperating, eg
+ 	 * working closely on the same area of the disk. In that case,
+ 	 * we can group them together and don't waste time idling.

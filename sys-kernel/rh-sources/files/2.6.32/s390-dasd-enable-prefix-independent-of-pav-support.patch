@@ -1,0 +1,62 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Tue, 15 Dec 2009 16:41:07 -0500
+Subject: [s390] dasd: enable prefix independent of pav support
+Message-id: <1260895269-9025-2-git-send-email-brueckner@redhat.com>
+Patchwork-id: 21964
+O-Subject: [RHEL6 PATCH 1/3] [s390] dasd: enable prefix independent of pav
+	support
+Bugzilla: 547735
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+High Performance Ficon is not usable when PAV is not enabled because
+the prefix command is only enabled with enabled PAV support.
+
+The DASD device driver needs to explicitly enable the prefix command
+on the storage server, before it can be used. Originally, we enabled
+this command along with others only if we wanted to support PAV.
+However, today we require this command for other features like
+High Performance FICON as well.
+
+The solution is to always enable the prefix command.
+
+Bugzilla
+--------
+BZ 547735
+https://bugzilla.redhat.com/show_bug.cgi?id=547735
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=626350b63ef2cd447023d3dc2a34eaa7ca01bfff
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/block/dasd_eckd.c b/drivers/s390/block/dasd_eckd.c
+index 417b97c..da3718c 100644
+--- a/drivers/s390/block/dasd_eckd.c
++++ b/drivers/s390/block/dasd_eckd.c
+@@ -1012,9 +1012,9 @@ static struct dasd_ccw_req *dasd_eckd_build_psf_ssc(struct dasd_device *device,
+ 	}
+ 	psf_ssc_data = (struct dasd_psf_ssc_data *)cqr->data;
+ 	psf_ssc_data->order = PSF_ORDER_SSC;
+-	psf_ssc_data->suborder = 0x40;
++	psf_ssc_data->suborder = 0xc0;
+ 	if (enable_pav) {
+-		psf_ssc_data->suborder |= 0x88;
++		psf_ssc_data->suborder |= 0x08;
+ 		psf_ssc_data->reserved[0] = 0x88;
+ 	}
+ 	ccw = cqr->cpaddr;

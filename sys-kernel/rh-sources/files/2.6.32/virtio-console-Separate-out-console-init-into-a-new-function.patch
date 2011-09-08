@@ -1,0 +1,100 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Wed, 27 Jan 2010 05:12:13 -0500
+Subject: [virtio] console: Separate out console init into a new function
+Message-id: <1264569149-20151-17-git-send-email-amit.shah@redhat.com>
+Patchwork-id: 22929
+O-Subject: [RHEL6 PATCH 16/32] virtio: console: Separate out console init into a
+	new function
+Bugzilla: 543824
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+
+Console ports could be hot-added. Also, with the new multiport support,
+a port is identified as a console port only if the host sends a control
+message.
+
+Move the console port init into a separate function so it can be invoked
+from other places.
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/virtio_console.c b/drivers/char/virtio_console.c
+index c6c6f52..11e5faf 100644
+--- a/drivers/char/virtio_console.c
++++ b/drivers/char/virtio_console.c
+@@ -346,6 +346,43 @@ int __init virtio_cons_early_init(int (*put_chars)(u32, const char *, int))
+ 	return hvc_instantiate(0, 0, &hv_ops);
+ }
+ 
++int __devinit init_port_console(struct port *port)
++{
++	int ret;
++
++	/*
++	 * The Host's telling us this port is a console port.  Hook it
++	 * up with an hvc console.
++	 *
++	 * To set up and manage our virtual console, we call
++	 * hvc_alloc().
++	 *
++	 * The first argument of hvc_alloc() is the virtual console
++	 * number.  The second argument is the parameter for the
++	 * notification mechanism (like irq number).  We currently
++	 * leave this as zero, virtqueues have implicit notifications.
++	 *
++	 * The third argument is a "struct hv_ops" containing the
++	 * put_chars() get_chars(), notifier_add() and notifier_del()
++	 * pointers.  The final argument is the output buffer size: we
++	 * can do any size, so we put PAGE_SIZE here.
++	 */
++	port->cons.vtermno = pdrvdata.next_vtermno;
++
++	port->cons.hvc = hvc_alloc(port->cons.vtermno, 0, &hv_ops, PAGE_SIZE);
++	if (IS_ERR(port->cons.hvc)) {
++		ret = PTR_ERR(port->cons.hvc);
++		port->cons.hvc = NULL;
++		return ret;
++	}
++	spin_lock_irq(&pdrvdata_lock);
++	pdrvdata.next_vtermno++;
++	list_add_tail(&port->cons.list, &pdrvdata.consoles);
++	spin_unlock_irq(&pdrvdata_lock);
++
++	return 0;
++}
++
+ static int __devinit add_port(struct ports_device *portdev)
+ {
+ 	struct port *port;
+@@ -367,29 +404,9 @@ static int __devinit add_port(struct ports_device *portdev)
+ 		goto free_port;
+ 	}
+ 
+-	/*
+-	 * The first argument of hvc_alloc() is the virtual console
+-	 * number.  The second argument is the parameter for the
+-	 * notification mechanism (like irq number).  We currently
+-	 * leave this as zero, virtqueues have implicit notifications.
+-	 *
+-	 * The third argument is a "struct hv_ops" containing the
+-	 * put_chars(), get_chars(), notifier_add() and notifier_del()
+-	 * pointers.  The final argument is the output buffer size: we
+-	 * can do any size, so we put PAGE_SIZE here.
+-	 */
+-	port->cons.vtermno = pdrvdata.next_vtermno;
+-	port->cons.hvc = hvc_alloc(port->cons.vtermno, 0, &hv_ops, PAGE_SIZE);
+-	if (IS_ERR(port->cons.hvc)) {
+-		err = PTR_ERR(port->cons.hvc);
++	err = init_port_console(port);
++	if (err)
+ 		goto free_inbuf;
+-	}
+-
+-	/* Add to vtermno list. */
+-	spin_lock_irq(&pdrvdata_lock);
+-	pdrvdata.next_vtermno++;
+-	list_add(&port->cons.list, &pdrvdata.consoles);
+-	spin_unlock_irq(&pdrvdata_lock);
+ 
+ 	/* Register the input buffer the first time. */
+ 	add_inbuf(port->in_vq, port->inbuf);

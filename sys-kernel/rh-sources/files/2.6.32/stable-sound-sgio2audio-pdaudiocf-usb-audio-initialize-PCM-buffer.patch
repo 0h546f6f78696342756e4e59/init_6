@@ -1,0 +1,59 @@
+From: Clemens Ladisch <clemens@ladisch.de>
+Date: Fri, 18 Dec 2009 09:27:24 +0100
+Subject: [stable] sound: sgio2audio/pdaudiocf/usb-audio: initialize PCM buffer
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 3e85fd614c7b6bb7f33bb04a0dcb5a3bfca4c0fe upstream.
+
+When allocating the PCM buffer, use vmalloc_user() instead of vmalloc().
+Otherwise, it would be possible for applications to play the previous
+contents of the kernel memory to the speakers, or to read it directly if
+the buffer is exported to userspace.
+
+Signed-off-by: Clemens Ladisch <clemens@ladisch.de>
+Signed-off-by: Takashi Iwai <tiwai@suse.de>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/sound/mips/sgio2audio.c b/sound/mips/sgio2audio.c
+index 8691f4c..f1d9d16 100644
+--- a/sound/mips/sgio2audio.c
++++ b/sound/mips/sgio2audio.c
+@@ -609,7 +609,7 @@ static int snd_sgio2audio_pcm_hw_params(struct snd_pcm_substream *substream,
+ 	/* alloc virtual 'dma' area */
+ 	if (runtime->dma_area)
+ 		vfree(runtime->dma_area);
+-	runtime->dma_area = vmalloc(size);
++	runtime->dma_area = vmalloc_user(size);
+ 	if (runtime->dma_area == NULL)
+ 		return -ENOMEM;
+ 	runtime->dma_bytes = size;
+diff --git a/sound/pcmcia/pdaudiocf/pdaudiocf_pcm.c b/sound/pcmcia/pdaudiocf/pdaudiocf_pcm.c
+index d057e64..5cfa608 100644
+--- a/sound/pcmcia/pdaudiocf/pdaudiocf_pcm.c
++++ b/sound/pcmcia/pdaudiocf/pdaudiocf_pcm.c
+@@ -51,7 +51,7 @@ static int snd_pcm_alloc_vmalloc_buffer(struct snd_pcm_substream *subs, size_t s
+ 			return 0; /* already enough large */
+ 		vfree(runtime->dma_area);
+ 	}
+-	runtime->dma_area = vmalloc_32(size);
++	runtime->dma_area = vmalloc_32_user(size);
+ 	if (! runtime->dma_area)
+ 		return -ENOMEM;
+ 	runtime->dma_bytes = size;
+diff --git a/sound/usb/usbaudio.c b/sound/usb/usbaudio.c
+index 8db0374..8803d9d 100644
+--- a/sound/usb/usbaudio.c
++++ b/sound/usb/usbaudio.c
+@@ -752,7 +752,7 @@ static int snd_pcm_alloc_vmalloc_buffer(struct snd_pcm_substream *subs, size_t s
+ 			return 0; /* already large enough */
+ 		vfree(runtime->dma_area);
+ 	}
+-	runtime->dma_area = vmalloc(size);
++	runtime->dma_area = vmalloc_user(size);
+ 	if (!runtime->dma_area)
+ 		return -ENOMEM;
+ 	runtime->dma_bytes = size;

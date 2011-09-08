@@ -1,0 +1,167 @@
+From: Steve Best <sbest@redhat.com>
+Date: Wed, 13 Jan 2010 20:55:26 -0500
+Subject: [powerpc] sysfs cpu probe/release files
+Message-id: <20100113204846.9285.54238.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 22499
+O-Subject: [PATCH RHEL6.0 BZ539318 v3 4/8] sysfs cpu probe/release files
+Bugzilla: 539318
+RH-Acked-by: David Howells <dhowells@redhat.com>
+
+RHBZ#:
+======
+https://bugzilla.redhat.com/show_bug.cgi?id=539318
+
+Description:
+============
+Patch 4/8: sysfs cpu probe/release files
+
+Version 3 of this patch is updated with documentation added to
+
+From: Nathan Fontenot <nfont@austin.ibm.com>
+
+Documentation/ABI.  There are no changes to any of the C code from v2
+of the patch.
+
+In order to support kernel DLPAR of CPU resources we need to provide an
+interface to add (probe) and remove (release) the resource from the system.
+This patch Creates new generic probe and release sysfs files to facilitate
+cpu probe/release.  The probe/release interface provides for allowing each
+arch to supply their own routines for implementing the backend of adding
+and removing cpus to/from the system.
+
+This also creates the powerpc specific stubs to handle the arch callouts
+from writes to the sysfs files.
+
+The creation and use of these files is regulated by the
+CONFIG_ARCH_CPU_PROBE_RELEASE option so that only architectures that need the
+capability will have the files created.
+
+Signed-off-by: Nathan Fontenot <nfont@austin.ibm.com>
+
+Upstream Patch:
+http://lkml.org/lkml/2009/11/25/637
+
+Brew:
+=====
+Built on all platforms. All patches brewed together.
+https://brewweb.devel.redhat.com/taskinfo?taskID=2191854
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/powerpc/Kconfig b/arch/powerpc/Kconfig
+index 90e449b..3110aa9 100644
+--- a/arch/powerpc/Kconfig
++++ b/arch/powerpc/Kconfig
+@@ -320,6 +320,10 @@ config HOTPLUG_CPU
+ 
+ 	  Say N if you are unsure.
+ 
++config ARCH_CPU_PROBE_RELEASE
++	def_bool y
++	depends on HOTPLUG_CPU
++
+ config ARCH_ENABLE_MEMORY_HOTPLUG
+ 	def_bool y
+ 
+diff --git a/arch/powerpc/include/asm/machdep.h b/arch/powerpc/include/asm/machdep.h
+index 9efa2be..9f0fc9e 100644
+--- a/arch/powerpc/include/asm/machdep.h
++++ b/arch/powerpc/include/asm/machdep.h
+@@ -266,6 +266,11 @@ struct machdep_calls {
+ 	void (*suspend_disable_irqs)(void);
+ 	void (*suspend_enable_irqs)(void);
+ #endif
++
++#ifdef CONFIG_ARCH_CPU_PROBE_RELEASE
++	ssize_t (*cpu_probe)(const char *, size_t);
++	ssize_t (*cpu_release)(const char *, size_t);
++#endif
+ };
+ 
+ extern void e500_idle(void);
+diff --git a/arch/powerpc/kernel/sysfs.c b/arch/powerpc/kernel/sysfs.c
+index 956ab33..e235e52 100644
+--- a/arch/powerpc/kernel/sysfs.c
++++ b/arch/powerpc/kernel/sysfs.c
+@@ -461,6 +461,25 @@ static void unregister_cpu_online(unsigned int cpu)
+ 
+ 	cacheinfo_cpu_offline(cpu);
+ }
++
++#ifdef CONFIG_ARCH_CPU_PROBE_RELEASE
++ssize_t arch_cpu_probe(const char *buf, size_t count)
++{
++	if (ppc_md.cpu_probe)
++		return ppc_md.cpu_probe(buf, count);
++
++	return -EINVAL;
++}
++
++ssize_t arch_cpu_release(const char *buf, size_t count)
++{
++	if (ppc_md.cpu_release)
++		return ppc_md.cpu_release(buf, count);
++
++	return -EINVAL;
++}
++#endif /* CONFIG_ARCH_CPU_PROBE_RELEASE */
++
+ #endif /* CONFIG_HOTPLUG_CPU */
+ 
+ static int __cpuinit sysfs_cpu_notify(struct notifier_block *self,
+diff --git a/drivers/base/cpu.c b/drivers/base/cpu.c
+index e62a4cc..7c03af7 100644
+--- a/drivers/base/cpu.c
++++ b/drivers/base/cpu.c
+@@ -72,6 +72,38 @@ void unregister_cpu(struct cpu *cpu)
+ 	per_cpu(cpu_sys_devices, logical_cpu) = NULL;
+ 	return;
+ }
++
++#ifdef CONFIG_ARCH_CPU_PROBE_RELEASE
++static ssize_t cpu_probe_store(struct class *class, const char *buf,
++			       size_t count)
++{
++	return arch_cpu_probe(buf, count);
++}
++
++static ssize_t cpu_release_store(struct class *class, const char *buf,
++				 size_t count)
++{
++	return arch_cpu_release(buf, count);
++}
++
++static CLASS_ATTR(probe, S_IWUSR, NULL, cpu_probe_store);
++static CLASS_ATTR(release, S_IWUSR, NULL, cpu_release_store);
++
++int __init cpu_probe_release_init(void)
++{
++	int rc;
++
++	rc = sysfs_create_file(&cpu_sysdev_class.kset.kobj,
++			       &class_attr_probe.attr);
++	if (!rc)
++		rc = sysfs_create_file(&cpu_sysdev_class.kset.kobj,
++				       &class_attr_release.attr);
++
++	return rc;
++}
++device_initcall(cpu_probe_release_init);
++#endif /* CONFIG_ARCH_CPU_PROBE_RELEASE */
++
+ #else /* ... !CONFIG_HOTPLUG_CPU */
+ static inline void register_cpu_control(struct cpu *cpu)
+ {
+diff --git a/include/linux/cpu.h b/include/linux/cpu.h
+index 4753619..c972f7c 100644
+--- a/include/linux/cpu.h
++++ b/include/linux/cpu.h
+@@ -43,6 +43,8 @@ extern int sched_create_sysfs_power_savings_entries(struct sysdev_class *cls);
+ 
+ #ifdef CONFIG_HOTPLUG_CPU
+ extern void unregister_cpu(struct cpu *cpu);
++extern ssize_t arch_cpu_probe(const char *, size_t);
++extern ssize_t arch_cpu_release(const char *, size_t);
+ #endif
+ struct notifier_block;
+ 

@@ -1,0 +1,51 @@
+From: Dave Airlie <airlied@redhat.com>
+Date: Wed, 13 Jan 2010 02:54:35 -0500
+Subject: [x86] allow fbdev primary video code on 64-bit.
+Message-id: <1263351275-14013-1-git-send-email-airlied@redhat.com>
+Patchwork-id: 22480
+O-Subject: [PATCH RHEL6] x86: allow fbdev primary video code on 64-bit.
+Bugzilla: 554930
+RH-Acked-by: Adam Jackson <ajax@redhat.com>
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+BZ 554930
+[sent upstream but probably won't get in until 2.6.34]
+
+For some reason the 64-bit tree was doing this differently and
+I can't see why it would need to.
+
+This correct behaviour when you have two GPUs plugged in and
+32-bit put the console in one place and 64-bit in another.
+
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/Makefile b/arch/x86/Makefile
+index d2d24c9..1e07c1b 100644
+--- a/arch/x86/Makefile
++++ b/arch/x86/Makefile
+@@ -135,9 +135,7 @@ drivers-$(CONFIG_OPROFILE) += arch/x86/oprofile/
+ # suspend and hibernation support
+ drivers-$(CONFIG_PM) += arch/x86/power/
+ 
+-ifeq ($(CONFIG_X86_32),y)
+ drivers-$(CONFIG_FB) += arch/x86/video/
+-endif
+ 
+ ####
+ # boot loader support. Several targets are kept for legacy purposes
+diff --git a/arch/x86/include/asm/fb.h b/arch/x86/include/asm/fb.h
+index 5301846..2519d06 100644
+--- a/arch/x86/include/asm/fb.h
++++ b/arch/x86/include/asm/fb.h
+@@ -12,10 +12,6 @@ static inline void fb_pgprotect(struct file *file, struct vm_area_struct *vma,
+ 		pgprot_val(vma->vm_page_prot) |= _PAGE_PCD;
+ }
+ 
+-#ifdef CONFIG_X86_32
+ extern int fb_is_primary_device(struct fb_info *info);
+-#else
+-static inline int fb_is_primary_device(struct fb_info *info) { return 0; }
+-#endif
+ 
+ #endif /* _ASM_X86_FB_H */

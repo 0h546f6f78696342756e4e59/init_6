@@ -1,0 +1,34 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Wed, 27 Jan 2010 05:12:02 -0500
+Subject: [virtio] console: We support only one device at a time
+Message-id: <1264569149-20151-6-git-send-email-amit.shah@redhat.com>
+Patchwork-id: 22931
+O-Subject: [RHEL6 PATCH 05/32] virtio: console: We support only one device at a
+	time
+Bugzilla: 543824
+RH-Acked-by: Christoph Hellwig <chellwig@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+
+We support only one virtio_console device at a time. If multiple are
+found, error out if one is already initialized.
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/virtio_console.c b/drivers/char/virtio_console.c
+index 791be4e..bfc0abf 100644
+--- a/drivers/char/virtio_console.c
++++ b/drivers/char/virtio_console.c
+@@ -204,6 +204,11 @@ static int __devinit virtcons_probe(struct virtio_device *dev)
+ 	struct virtqueue *vqs[2];
+ 	int err;
+ 
++	if (vdev) {
++		dev_warn(&vdev->dev,
++			 "Multiple virtio-console devices not supported yet\n");
++		return -EEXIST;
++	}
+ 	vdev = dev;
+ 
+ 	/* This is the scratch page we use to receive console input */

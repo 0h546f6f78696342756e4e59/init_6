@@ -1,0 +1,57 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:26 -0500
+Subject: [mm] verify pmd_trans_huge isnt leaking
+Message-id: <20100201152040.497182830@redhat.com>
+Patchwork-id: 23037
+O-Subject: [RHEL6 29/37] verify pmd_trans_huge isnt leaking
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+pte_trans_huge must not leak in certain vmas like the mmio special pfn or
+filebacked mappings.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/memory.c b/mm/memory.c
+index 7b728d8..cc19d37 100644
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -1334,6 +1334,7 @@ int __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
+ 			pmd = pmd_offset(pud, pg);
+ 			if (pmd_none(*pmd))
+ 				return i ? : -EFAULT;
++			VM_BUG_ON(pmd_trans_huge(*pmd));
+ 			pte = pte_offset_map(pmd, pg);
+ 			if (pte_none(*pte)) {
+ 				pte_unmap(pte);
+@@ -1535,8 +1536,10 @@ pte_t *get_locked_pte(struct mm_struct *mm, unsigned long addr,
+ 	pud_t * pud = pud_alloc(mm, pgd, addr);
+ 	if (pud) {
+ 		pmd_t * pmd = pmd_alloc(mm, pud, addr);
+-		if (pmd)
++		if (pmd) {
++			VM_BUG_ON(pmd_trans_huge(*pmd));
+ 			return pte_alloc_map_lock(mm, pmd, addr, ptl);
++		}
+ 	}
+ 	return NULL;
+ }
+@@ -1755,6 +1758,7 @@ static inline int remap_pmd_range(struct mm_struct *mm, pud_t *pud,
+ 	pmd = pmd_alloc(mm, pud, addr);
+ 	if (!pmd)
+ 		return -ENOMEM;
++	VM_BUG_ON(pmd_trans_huge(*pmd));
+ 	do {
+ 		next = pmd_addr_end(addr, end);
+ 		if (remap_pte_range(mm, pmd, addr, next,
+@@ -3224,6 +3228,7 @@ static int follow_pte(struct mm_struct *mm, unsigned long address,
+ 		goto out;
+ 
+ 	pmd = pmd_offset(pud, address);
++	VM_BUG_ON(pmd_trans_huge(*pmd));
+ 	if (pmd_none(*pmd) || unlikely(pmd_bad(*pmd)))
+ 		goto out;
+ 

@@ -1,0 +1,74 @@
+From: Peter Bogdanovic <pbogdano@redhat.com>
+Date: Mon, 25 Jan 2010 04:53:13 -0500
+Subject: [x86] ioapic: Document another case when level irq is seen as an edge
+Message-id: <20100125044617.817.31433.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 22788
+O-Subject: [PATCH RHEL6 8/9 BZ 463633] x86,
+	ioapic: Document another case when level irq is seen as an edge
+Bugzilla: 463633
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+x86, ioapic: Document another case when level irq is seen as an edge
+
+1c83995b6c7c6bb795bce80f75fbffb15f78db2d
+
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=1c83995b6c7c6bb795bce80f75fbffb15f78db2d
+
+In the case when cpu goes offline, fixup_irqs() will forward any
+unhandled interrupt on the offlined cpu to the new cpu
+destination that is handling the corresponding interrupt. This
+interrupt forwarding is done via IPI's. Hence, in this case also
+level-triggered io-apic interrupt will be seen as an edge
+interrupt in the cpu's APIC IRR.
+
+Document this scenario in the code which handles this case by doing
+an explicit EOI to the io-apic to clear remote IRR of the io-apic RTE.
+
+Requested-by: Maciej W. Rozycki <macro@linux-mips.org>
+Signed-off-by: Suresh Siddha <suresh.b.siddha@intel.com>
+Cc: Maciej W. Rozycki <macro@linux-mips.org>
+Cc: ebiederm@xmission.com
+Cc: garyhade@us.ibm.com
+LKML-Reference: <20091201233335.143970505@sbs-t61.sc.intel.com>
+Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+diff --git a/arch/x86/kernel/apic/io_apic.c b/arch/x86/kernel/apic/io_apic.c
+index ac96e68..900bbef 100644
+--- a/arch/x86/kernel/apic/io_apic.c
++++ b/arch/x86/kernel/apic/io_apic.c
+@@ -2577,6 +2577,19 @@ static void ack_apic_level(unsigned int irq)
+ 	 * level-triggered interrupt.  We mask the source for the time of the
+ 	 * operation to prevent an edge-triggered interrupt escaping meanwhile.
+ 	 * The idea is from Manfred Spraul.  --macro
++	 *
++	 * Also in the case when cpu goes offline, fixup_irqs() will forward
++	 * any unhandled interrupt on the offlined cpu to the new cpu
++	 * destination that is handling the corresponding interrupt. This
++	 * interrupt forwarding is done via IPI's. Hence, in this case also
++	 * level-triggered io-apic interrupt will be seen as an edge
++	 * interrupt in the IRR. And we can't rely on the cpu's EOI
++	 * to be broadcasted to the IO-APIC's which will clear the remoteIRR
++	 * corresponding to the level-triggered interrupt. Hence on IO-APIC's
++	 * supporting EOI register, we do an explicit EOI to clear the
++	 * remote IRR and on IO-APIC's which don't have an EOI register,
++	 * we use the above logic (mask+edge followed by unmask+level) from
++	 * Manfred Spraul to clear the remote IRR.
+ 	 */
+ 	cfg = desc->chip_data;
+ 	i = cfg->vector;
+@@ -2588,7 +2601,13 @@ static void ack_apic_level(unsigned int irq)
+ 	 */
+ 	ack_APIC_irq();
+ 
+-	/* Tail end of version 0x11 I/O APIC bug workaround */
++	/*
++	 * Tail end of clearing remote IRR bit (either by delivering the EOI
++	 * message via io-apic EOI register write or simulating it using
++	 * mask+edge followed by unnask+level logic) manually when the
++	 * level triggered interrupt is seen as the edge triggered interrupt
++	 * at the cpu.
++	 */
+ 	if (!(v & (1 << (i & 0x1f)))) {
+ 		atomic_inc(&irq_mis_count);
+ 

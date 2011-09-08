@@ -1,0 +1,32 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Wed, 27 Jan 2010 05:12:26 -0500
+Subject: [virtio] hvc_console: Export (GPL'ed) hvc_remove
+Message-id: <1264569149-20151-30-git-send-email-amit.shah@redhat.com>
+Patchwork-id: 22939
+O-Subject: [RHEL6 PATCH 29/32] hvc_console: Export (GPL'ed) hvc_remove
+Bugzilla: 543824
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+
+The virtio console, which uses hvc, will get the ability to hot-unplug
+ports. Export hvc_remove so that virtio_console can disassociate with
+hvc.
+
+Upstream commit id: c0cefebc0b6ae1bc4c92672223a54e1ee96ea7f0
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Cc: linuxppc-dev@ozlabs.org
+Signed-off-by: Benjamin Herrenschmidt <benh@kernel.crashing.org>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/hvc_console.c b/drivers/char/hvc_console.c
+index 370c6ba..4c3b59b 100644
+--- a/drivers/char/hvc_console.c
++++ b/drivers/char/hvc_console.c
+@@ -833,6 +833,7 @@ int hvc_remove(struct hvc_struct *hp)
+ 		tty_hangup(tty);
+ 	return 0;
+ }
++EXPORT_SYMBOL_GPL(hvc_remove);
+ 
+ /* Driver initialization: called as soon as someone uses hvc_alloc(). */
+ static int hvc_init(void)

@@ -1,0 +1,119 @@
+From: Dave Airlie <airlied@redhat.com>
+Date: Tue, 12 Jan 2010 05:35:35 -0500
+Subject: [drm] ttm: rollup upstream TTM fixes
+Message-id: <1263274540-13581-4-git-send-email-airlied@redhat.com>
+Patchwork-id: 22419
+O-Subject: [PATCH 3/8] drm/ttm: rollup upstream TTM fixes
+Bugzilla: 554601
+
+This rolls up the following TTM fixes
+
+46a79fa08a9a890a12cf9ec3ce51800911a907bf drm/ttm: fix small memory leak in ttm_memory.c
+c3a73ba13bac7fd96030f39202b2d37fb19c46a6 drm/ttm: Fix build failure due to missing struct page
+447aeb907e417e0e837b4a4026d5081c88b6e8ca drm/ttm: fix unreachable code.
+ec42a6e7dcfc2e9a92fad1c132bc9e110fafeb3f drm/ttm: fix memory leak noticed by kmemleak.
+b8ff7357da45e025c446fe0479612215fe56a249 drm/ttm: fix incorrect logic in ttm_bo_io path
+aaa207369436d04bb85382ddbb688a5b9461fd21 drm/ttm: Delayed delete fixes.
+
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/ttm/ttm_bo.c b/drivers/gpu/drm/ttm/ttm_bo.c
+index 863ac5e..eee5114 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo.c
++++ b/drivers/gpu/drm/ttm/ttm_bo.c
+@@ -276,9 +276,10 @@ static int ttm_bo_add_ttm(struct ttm_buffer_object *bo, bool zero_alloc)
+ 		bo->ttm = ttm_tt_create(bdev, bo->num_pages << PAGE_SHIFT,
+ 					page_flags | TTM_PAGE_FLAG_USER,
+ 					glob->dummy_read_page);
+-		if (unlikely(bo->ttm == NULL))
++		if (unlikely(bo->ttm == NULL)) {
+ 			ret = -ENOMEM;
+-		break;
++			break;
++		}
+ 
+ 		ret = ttm_tt_set_user(bo->ttm, current,
+ 				      bo->buffer_start, bo->num_pages);
+@@ -409,6 +410,8 @@ static int ttm_bo_cleanup_refs(struct ttm_buffer_object *bo, bool remove_all)
+ 		spin_unlock(&bo->lock);
+ 
+ 		spin_lock(&glob->lru_lock);
++		put_count = ttm_bo_del_from_lru(bo);
++
+ 		ret = ttm_bo_reserve_locked(bo, false, false, false, 0);
+ 		BUG_ON(ret);
+ 		if (bo->ttm)
+@@ -416,19 +419,18 @@ static int ttm_bo_cleanup_refs(struct ttm_buffer_object *bo, bool remove_all)
+ 
+ 		if (!list_empty(&bo->ddestroy)) {
+ 			list_del_init(&bo->ddestroy);
+-			kref_put(&bo->list_kref, ttm_bo_ref_bug);
++			++put_count;
+ 		}
+ 		if (bo->mem.mm_node) {
+ 			drm_mm_put_block(bo->mem.mm_node);
+ 			bo->mem.mm_node = NULL;
+ 		}
+-		put_count = ttm_bo_del_from_lru(bo);
+ 		spin_unlock(&glob->lru_lock);
+ 
+ 		atomic_set(&bo->reserved, 0);
+ 
+ 		while (put_count--)
+-			kref_put(&bo->list_kref, ttm_bo_release_list);
++			kref_put(&bo->list_kref, ttm_bo_ref_bug);
+ 
+ 		return 0;
+ 	}
+diff --git a/drivers/gpu/drm/ttm/ttm_bo_vm.c b/drivers/gpu/drm/ttm/ttm_bo_vm.c
+index 1c040d0..d3902b6 100644
+--- a/drivers/gpu/drm/ttm/ttm_bo_vm.c
++++ b/drivers/gpu/drm/ttm/ttm_bo_vm.c
+@@ -320,7 +320,7 @@ ssize_t ttm_bo_io(struct ttm_bo_device *bdev, struct file *filp,
+ 		return -EFAULT;
+ 
+ 	driver = bo->bdev->driver;
+-	if (unlikely(driver->verify_access)) {
++	if (unlikely(!driver->verify_access)) {
+ 		ret = -EPERM;
+ 		goto out_unref;
+ 	}
+diff --git a/drivers/gpu/drm/ttm/ttm_memory.c b/drivers/gpu/drm/ttm/ttm_memory.c
+index 072c281..992cc48 100644
+--- a/drivers/gpu/drm/ttm/ttm_memory.c
++++ b/drivers/gpu/drm/ttm/ttm_memory.c
+@@ -274,16 +274,17 @@ static int ttm_mem_init_kernel_zone(struct ttm_mem_global *glob,
+ static int ttm_mem_init_highmem_zone(struct ttm_mem_global *glob,
+ 				     const struct sysinfo *si)
+ {
+-	struct ttm_mem_zone *zone = kzalloc(sizeof(*zone), GFP_KERNEL);
++	struct ttm_mem_zone *zone;
+ 	uint64_t mem;
+ 	int ret;
+ 
+-	if (unlikely(!zone))
+-		return -ENOMEM;
+-
+ 	if (si->totalhigh == 0)
+ 		return 0;
+ 
++	zone = kzalloc(sizeof(*zone), GFP_KERNEL);
++	if (unlikely(!zone))
++		return -ENOMEM;
++
+ 	mem = si->totalram;
+ 	mem *= si->mem_unit;
+ 
+@@ -322,8 +323,10 @@ static int ttm_mem_init_dma32_zone(struct ttm_mem_global *glob,
+ 	 * No special dma32 zone needed.
+ 	 */
+ 
+-	if (mem <= ((uint64_t) 1ULL << 32))
++	if (mem <= ((uint64_t) 1ULL << 32)) {
++		kfree(zone);
+ 		return 0;
++	}
+ 
+ 	/*
+ 	 * Limit max dma32 memory to 4GB for now

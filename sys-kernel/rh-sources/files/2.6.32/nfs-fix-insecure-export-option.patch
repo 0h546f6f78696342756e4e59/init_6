@@ -1,0 +1,39 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Tue, 22 Dec 2009 20:10:22 -0500
+Subject: [nfs] fix insecure export option
+Message-id: <4B3127AE.9010606@RedHat.com>
+Patchwork-id: 22264
+O-Subject: [RHEL6 PATCH 4/5] NFS update to 2.6.33
+Bugzilla: 437715
+RH-Acked-by: Ric Wheeler <rwheeler@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+
+commit 3d354cbc43db36e7e8b27ed78901064b87864ffc
+Author: J. Bruce Fields <bfields@citi.umich.edu>
+Date:   Sun Dec 20 10:43:35 2009 -0500
+
+    nfsd: fix "insecure" export option
+
+    A typo in 12045a6ee9908b "nfsd: let "insecure" flag vary by
+    pseudoflavor" reversed the sense of the "insecure" flag.
+
+    Reported-by: Michael Guntsche <mike@it-loops.com>
+    Signed-off-by: J. Bruce Fields <bfields@citi.umich.edu>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfsd/nfsfh.c b/fs/nfsd/nfsfh.c
+index 1c12177..55c8e63 100644
+--- a/fs/nfsd/nfsfh.c
++++ b/fs/nfsd/nfsfh.c
+@@ -89,7 +89,7 @@ static __be32 nfsd_setuser_and_check_port(struct svc_rqst *rqstp,
+ 	int flags = nfsexp_flags(rqstp, exp);
+ 
+ 	/* Check if the request originated from a secure port. */
+-	if (!rqstp->rq_secure && (flags & NFSEXP_INSECURE_PORT)) {
++	if (!rqstp->rq_secure && !(flags & NFSEXP_INSECURE_PORT)) {
+ 		RPC_IFDEBUG(char buf[RPC_MAX_ADDRBUFLEN]);
+ 		dprintk(KERN_WARNING
+ 		       "nfsd: request from insecure port %s!\n",

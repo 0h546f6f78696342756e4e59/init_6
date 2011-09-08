@@ -1,0 +1,83 @@
+From: Aristeu Rozanski <arozansk@redhat.com>
+Date: Thu, 14 Jan 2010 13:31:33 -0500
+Subject: [redhat] use sysconf(_SC_PAGESIZE) instead of getpagesize()
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/tools/perf/builtin-annotate.c b/tools/perf/builtin-annotate.c
+index 1ec7416..816a1c0 100644
+--- a/tools/perf/builtin-annotate.c
++++ b/tools/perf/builtin-annotate.c
+@@ -1117,7 +1117,7 @@ int cmd_annotate(int argc, const char **argv, const char *prefix __used)
+ {
+ 	symbol__init();
+ 
+-	page_size = getpagesize();
++	page_size = sysconf(_SC_PAGESIZE);
+ 
+ 	argc = parse_options(argc, argv, options, annotate_usage, 0);
+ 
+diff --git a/tools/perf/builtin-report.c b/tools/perf/builtin-report.c
+index 19669c2..1cfd63f 100644
+--- a/tools/perf/builtin-report.c
++++ b/tools/perf/builtin-report.c
+@@ -1692,7 +1692,7 @@ int cmd_report(int argc, const char **argv, const char *prefix __used)
+ {
+ 	symbol__init();
+ 
+-	page_size = getpagesize();
++	page_size = sysconf(_SC_PAGESIZE);
+ 
+ 	argc = parse_options(argc, argv, options, report_usage, 0);
+ 
+diff --git a/tools/perf/builtin-sched.c b/tools/perf/builtin-sched.c
+index ce2d5be..2de52d2 100644
+--- a/tools/perf/builtin-sched.c
++++ b/tools/perf/builtin-sched.c
+@@ -1961,7 +1961,7 @@ static int __cmd_record(int argc, const char **argv)
+ int cmd_sched(int argc, const char **argv, const char *prefix __used)
+ {
+ 	symbol__init();
+-	page_size = getpagesize();
++	page_size = sysconf(_SC_PAGESIZE);
+ 
+ 	argc = parse_options(argc, argv, sched_options, sched_usage,
+ 			     PARSE_OPT_STOP_AT_NON_OPTION);
+diff --git a/tools/perf/builtin-timechart.c b/tools/perf/builtin-timechart.c
+index e8a510d..fbd5b95 100644
+--- a/tools/perf/builtin-timechart.c
++++ b/tools/perf/builtin-timechart.c
+@@ -1170,7 +1170,7 @@ int cmd_timechart(int argc, const char **argv, const char *prefix __used)
+ {
+ 	symbol__init();
+ 
+-	page_size = getpagesize();
++	page_size = sysconf(_SC_PAGESIZE);
+ 
+ 	argc = parse_options(argc, argv, options, timechart_usage,
+ 			PARSE_OPT_STOP_AT_NON_OPTION);
+diff --git a/tools/perf/builtin-trace.c b/tools/perf/builtin-trace.c
+index 0c5e4f7..a072771 100644
+--- a/tools/perf/builtin-trace.c
++++ b/tools/perf/builtin-trace.c
+@@ -273,7 +273,7 @@ static const struct option options[] = {
+ int cmd_trace(int argc, const char **argv, const char *prefix __used)
+ {
+ 	symbol__init();
+-	page_size = getpagesize();
++	page_size = sysconf(_SC_PAGESIZE);
+ 
+ 	argc = parse_options(argc, argv, options, annotate_usage, 0);
+ 	if (argc) {
+diff --git a/tools/perf/util/trace-event-info.c b/tools/perf/util/trace-event-info.c
+index af4b057..8fa5090 100644
+--- a/tools/perf/util/trace-event-info.c
++++ b/tools/perf/util/trace-event-info.c
+@@ -527,7 +527,7 @@ void read_tracing_data(struct perf_event_attr *pattrs, int nb_events)
+ 	write_or_die(buf, 1);
+ 
+ 	/* save page_size */
+-	page_size = getpagesize();
++	page_size = sysconf(_SC_PAGESIZE);
+ 	write_or_die(&page_size, 4);
+ 
+ 	tps = get_tracepoints_path(pattrs, nb_events);

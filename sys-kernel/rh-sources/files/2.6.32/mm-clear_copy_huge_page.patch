@@ -1,0 +1,202 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:20 -0500
+Subject: [mm] clear_copy_huge_page
+Message-id: <20100201152039.574798633@redhat.com>
+Patchwork-id: 23034
+O-Subject: [RHEL6 23/37] clear_copy_huge_page
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Move the copy/clear_huge_page functions to common code to share between
+hugetlb.c and huge_memory.c.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Mel Gorman <mel@csn.ul.ie>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+index 0da5429..26d9840 100644
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -1388,5 +1388,14 @@ extern void shake_page(struct page *p, int access);
+ extern atomic_long_t mce_bad_pages;
+ extern int soft_offline_page(struct page *page, int flags);
+ 
++#if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_HUGETLBFS)
++extern void clear_huge_page(struct page *page,
++			    unsigned long addr,
++			    unsigned int pages_per_huge_page);
++extern void copy_huge_page(struct page *dst, struct page *src,
++			   unsigned long addr, struct vm_area_struct *vma,
++			   unsigned int pages_per_huge_page);
++#endif /* CONFIG_TRANSPARENT_HUGEPAGE || CONFIG_HUGETLBFS */
++
+ #endif /* __KERNEL__ */
+ #endif /* _LINUX_MM_H */
+diff --git a/mm/hugetlb.c b/mm/hugetlb.c
+index 96a67c4..e356903 100644
+--- a/mm/hugetlb.c
++++ b/mm/hugetlb.c
+@@ -384,70 +384,6 @@ static int vma_has_reserves(struct vm_area_struct *vma)
+ 	return 0;
+ }
+ 
+-static void clear_gigantic_page(struct page *page,
+-			unsigned long addr, unsigned long sz)
+-{
+-	int i;
+-	struct page *p = page;
+-
+-	might_sleep();
+-	for (i = 0; i < sz/PAGE_SIZE; i++, p = mem_map_next(p, page, i)) {
+-		cond_resched();
+-		clear_user_highpage(p, addr + i * PAGE_SIZE);
+-	}
+-}
+-static void clear_huge_page(struct page *page,
+-			unsigned long addr, unsigned long sz)
+-{
+-	int i;
+-
+-	if (unlikely(sz/PAGE_SIZE > MAX_ORDER_NR_PAGES)) {
+-		clear_gigantic_page(page, addr, sz);
+-		return;
+-	}
+-
+-	might_sleep();
+-	for (i = 0; i < sz/PAGE_SIZE; i++) {
+-		cond_resched();
+-		clear_user_highpage(page + i, addr + i * PAGE_SIZE);
+-	}
+-}
+-
+-static void copy_gigantic_page(struct page *dst, struct page *src,
+-			   unsigned long addr, struct vm_area_struct *vma)
+-{
+-	int i;
+-	struct hstate *h = hstate_vma(vma);
+-	struct page *dst_base = dst;
+-	struct page *src_base = src;
+-	might_sleep();
+-	for (i = 0; i < pages_per_huge_page(h); ) {
+-		cond_resched();
+-		copy_user_highpage(dst, src, addr + i*PAGE_SIZE, vma);
+-
+-		i++;
+-		dst = mem_map_next(dst, dst_base, i);
+-		src = mem_map_next(src, src_base, i);
+-	}
+-}
+-static void copy_huge_page(struct page *dst, struct page *src,
+-			   unsigned long addr, struct vm_area_struct *vma)
+-{
+-	int i;
+-	struct hstate *h = hstate_vma(vma);
+-
+-	if (unlikely(pages_per_huge_page(h) > MAX_ORDER_NR_PAGES)) {
+-		copy_gigantic_page(dst, src, addr, vma);
+-		return;
+-	}
+-
+-	might_sleep();
+-	for (i = 0; i < pages_per_huge_page(h); i++) {
+-		cond_resched();
+-		copy_user_highpage(dst + i, src + i, addr + i*PAGE_SIZE, vma);
+-	}
+-}
+-
+ static void enqueue_huge_page(struct hstate *h, struct page *page)
+ {
+ 	int nid = page_to_nid(page);
+@@ -1985,7 +1921,8 @@ retry_avoidcopy:
+ 	}
+ 
+ 	spin_unlock(&mm->page_table_lock);
+-	copy_huge_page(new_page, old_page, address, vma);
++	copy_huge_page(new_page, old_page, address, vma,
++		       pages_per_huge_page(h));
+ 	__SetPageUptodate(new_page);
+ 	spin_lock(&mm->page_table_lock);
+ 
+diff --git a/mm/memory.c b/mm/memory.c
+index 988e892..75ae0d4 100644
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -3402,3 +3402,73 @@ void might_fault(void)
+ }
+ EXPORT_SYMBOL(might_fault);
+ #endif
++
++#if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_HUGETLBFS)
++static void clear_gigantic_page(struct page *page,
++				unsigned long addr,
++				unsigned int pages_per_huge_page)
++{
++	int i;
++	struct page *p = page;
++
++	might_sleep();
++	for (i = 0; i < pages_per_huge_page;
++	     i++, p = mem_map_next(p, page, i)) {
++		cond_resched();
++		clear_user_highpage(p, addr + i * PAGE_SIZE);
++	}
++}
++void clear_huge_page(struct page *page,
++		     unsigned long addr, unsigned int pages_per_huge_page)
++{
++	int i;
++
++	if (unlikely(pages_per_huge_page > MAX_ORDER_NR_PAGES)) {
++		clear_gigantic_page(page, addr, pages_per_huge_page);
++		return;
++	}
++
++	might_sleep();
++	for (i = 0; i < pages_per_huge_page; i++) {
++		cond_resched();
++		clear_user_highpage(page + i, addr + i * PAGE_SIZE);
++	}
++}
++
++static void copy_gigantic_page(struct page *dst, struct page *src,
++			       unsigned long addr,
++			       struct vm_area_struct *vma,
++			       unsigned int pages_per_huge_page)
++{
++	int i;
++	struct page *dst_base = dst;
++	struct page *src_base = src;
++	might_sleep();
++	for (i = 0; i < pages_per_huge_page; ) {
++		cond_resched();
++		copy_user_highpage(dst, src, addr + i*PAGE_SIZE, vma);
++
++		i++;
++		dst = mem_map_next(dst, dst_base, i);
++		src = mem_map_next(src, src_base, i);
++	}
++}
++void copy_huge_page(struct page *dst, struct page *src,
++		    unsigned long addr, struct vm_area_struct *vma,
++		    unsigned int pages_per_huge_page)
++{
++	int i;
++
++	if (unlikely(pages_per_huge_page > MAX_ORDER_NR_PAGES)) {
++		copy_gigantic_page(dst, src, addr, vma, pages_per_huge_page);
++		return;
++	}
++
++	might_sleep();
++	for (i = 0; i < pages_per_huge_page; i++) {
++		cond_resched();
++		copy_user_highpage(dst + i, src + i, addr + i*PAGE_SIZE,
++				   vma);
++	}
++}
++#endif /* CONFIG_TRANSPARENT_HUGEPAGE || CONFIG_HUGETLBFS */

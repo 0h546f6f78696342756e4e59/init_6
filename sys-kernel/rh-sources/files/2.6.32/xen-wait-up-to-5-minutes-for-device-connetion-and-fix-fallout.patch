@@ -1,0 +1,143 @@
+From: Paolo Bonzini <pbonzini@redhat.com>
+Date: Mon, 21 Sep 2009 16:21:47 -0400
+Subject: [xen] wait up to 5 minutes for device connetion and fix fallout
+Message-id: <1253550107-22814-1-git-send-email-pbonzini@redhat.com>
+Patchwork-id: 20913
+O-Subject: [RHEL6 PATCH] BZ523630: wait up to 5 minutes for device connetion and
+	fix fallout
+Bugzilla: 523630
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+
+Bugzilla: 523630
+
+Build: Done manually by me after struggling with brew and koji.
+
+Upstream status: in pvops tree only, commit 11b84f6 and its two predecessors
+
+The patch is a trivial forward port of the BZ396621 and BZ506899
+patches for RHEL-5.
+
+For upstream it was split in three; here is the description of the three
+patches that went in upstream and that are combined in this submission:
+
+- xen: wait up to 5 minutes for device connetion
+
+  Increases the device timeout from 10s to 5 minutes, giving the user a
+  visual indication during that time in case there are problems.  The patch
+  is a backport of changesets 144 and 150 in the Xenbits tree.
+
+- xen: improvement to wait_for_devices()
+
+  When printing a warning about a timed-out device, print the
+  current state of both ends of the device connection (i.e., backend as
+  well as frontend).  This is a backport of changeset 146 in the
+  Xenbits tree.
+
+- xen: fix is_disconnected_device/exists_disconnected_device
+
+  This patch is a backport of changeset 909 from the Xenbits tree.
+  It fixes the logic of is_disconnected_device to not consider
+  a Closing or Closed device to be connected.  It also renames
+  the functions, because they actually test whether a device is
+  trying to connect: you could say a closed device is "disconnected"
+  (the old name), but not "connecting" (the new name).
+
+Please review and ack.
+
+Signed-off-by: Paolo Bonzini <pbonzini@redhat.com>
+Cc: Andrew Jones <drjones@redhat.com>
+
+diff --git a/drivers/xen/xenbus/xenbus_probe.c b/drivers/xen/xenbus/xenbus_probe.c
+index d42e25d..4f69159 100644
+--- a/drivers/xen/xenbus/xenbus_probe.c
++++ b/drivers/xen/xenbus/xenbus_probe.c
+@@ -843,7 +843,7 @@ postcore_initcall(xenbus_probe_init);
+ 
+ MODULE_LICENSE("GPL");
+ 
+-static int is_disconnected_device(struct device *dev, void *data)
++static int is_device_connecting(struct device *dev, void *data)
+ {
+ 	struct xenbus_device *xendev = to_xenbus_device(dev);
+ 	struct device_driver *drv = data;
+@@ -861,14 +861,15 @@ static int is_disconnected_device(struct device *dev, void *data)
+ 		return 0;
+ 
+ 	xendrv = to_xenbus_driver(dev->driver);
+-	return (xendev->state != XenbusStateConnected ||
+-		(xendrv->is_ready && !xendrv->is_ready(xendev)));
++	return (xendev->state < XenbusStateConnected ||
++		(xendev->state == XenbusStateConnected &&
++		 xendrv->is_ready && !xendrv->is_ready(xendev)));
+ }
+ 
+-static int exists_disconnected_device(struct device_driver *drv)
++static int exists_connecting_device(struct device_driver *drv)
+ {
+ 	return bus_for_each_dev(&xenbus_frontend.bus, NULL, drv,
+-				is_disconnected_device);
++				is_device_connecting);
+ }
+ 
+ static int print_device_status(struct device *dev, void *data)
+@@ -884,10 +885,13 @@ static int print_device_status(struct device *dev, void *data)
+ 		/* Information only: is this too noisy? */
+ 		printk(KERN_INFO "XENBUS: Device with no driver: %s\n",
+ 		       xendev->nodename);
+-	} else if (xendev->state != XenbusStateConnected) {
++	} else if (xendev->state < XenbusStateConnected) {
++		enum xenbus_state rstate = XenbusStateUnknown;
++		if (xendev->otherend)
++			rstate = xenbus_read_driver_state(xendev->otherend);
+ 		printk(KERN_WARNING "XENBUS: Timeout connecting "
+-		       "to device: %s (state %d)\n",
+-		       xendev->nodename, xendev->state);
++		       "to device: %s (local state %d, remote state %d)\n",
++		       xendev->nodename, xendev->state, rstate);
+ 	}
+ 
+ 	return 0;
+@@ -897,7 +901,7 @@ static int print_device_status(struct device *dev, void *data)
+ static int ready_to_wait_for_devices;
+ 
+ /*
+- * On a 10 second timeout, wait for all devices currently configured.  We need
++ * On a 5-minute timeout, wait for all devices currently configured.  We need
+  * to do this to guarantee that the filesystems and / or network devices
+  * needed for boot are available, before we can allow the boot to proceed.
+  *
+@@ -912,18 +916,30 @@ static int ready_to_wait_for_devices;
+  */
+ static void wait_for_devices(struct xenbus_driver *xendrv)
+ {
+-	unsigned long timeout = jiffies + 10*HZ;
++	unsigned long start = jiffies;
+ 	struct device_driver *drv = xendrv ? &xendrv->driver : NULL;
++	unsigned int seconds_waited = 0;
+ 
+ 	if (!ready_to_wait_for_devices || !xen_domain())
+ 		return;
+ 
+-	while (exists_disconnected_device(drv)) {
+-		if (time_after(jiffies, timeout))
+-			break;
++	while (exists_connecting_device(drv)) {
++		if (time_after(jiffies, start + (seconds_waited+5)*HZ)) {
++			if (!seconds_waited)
++				printk(KERN_WARNING "XENBUS: Waiting for "
++				       "devices to initialise: ");
++			seconds_waited += 5;
++			printk("%us...", 300 - seconds_waited);
++			if (seconds_waited == 300)
++				break;
++		}
++
+ 		schedule_timeout_interruptible(HZ/10);
+ 	}
+ 
++	if (seconds_waited)
++		printk("\n");
++
+ 	bus_for_each_dev(&xenbus_frontend.bus, NULL, drv,
+ 			 print_device_status);
+ }

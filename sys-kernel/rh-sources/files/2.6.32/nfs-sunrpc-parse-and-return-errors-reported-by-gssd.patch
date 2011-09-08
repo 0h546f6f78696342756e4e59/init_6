@@ -1,0 +1,53 @@
+From: Jeff Layton <jlayton@redhat.com>
+Date: Mon, 8 Feb 2010 20:26:42 -0500
+Subject: [nfs] sunrpc: parse and return errors reported by gssd
+Message-id: <1265660805-28933-2-git-send-email-jlayton@redhat.com>
+Patchwork-id: 23193
+O-Subject: [RHEL6 PATCH 1/4] BZ#479359: sunrpc: parse and return errors reported
+	by gssd
+Bugzilla: 479359
+RH-Acked-by: Steve Dickson <SteveD@redhat.com>
+
+The kernel currently ignores any error code sent by gssd and always
+considers it to be -EACCES. In order to better handle the situation of
+an expired KRB5 TGT, the kernel needs to be able to parse and deal with
+the errors that gssd sends. Aside from -EACCES the only error we care
+about is -EKEYEXPIRED, which we're using to indicate that the upper
+layers should retry the call a little later.
+
+To maintain backward compatibility with older gssd's, any error other
+than -EKEYEXPIRED is interpreted as -EACCES.
+
+Signed-off-by: Jeff Layton <jlayton@redhat.com>
+Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/net/sunrpc/auth_gss/auth_gss.c b/net/sunrpc/auth_gss/auth_gss.c
+index f7a7f83..0cfccc2 100644
+--- a/net/sunrpc/auth_gss/auth_gss.c
++++ b/net/sunrpc/auth_gss/auth_gss.c
+@@ -206,8 +206,14 @@ gss_fill_context(const void *p, const void *end, struct gss_cl_ctx *ctx, struct
+ 	ctx->gc_win = window_size;
+ 	/* gssd signals an error by passing ctx->gc_win = 0: */
+ 	if (ctx->gc_win == 0) {
+-		/* in which case, p points to  an error code which we ignore */
+-		p = ERR_PTR(-EACCES);
++		/*
++		 * in which case, p points to an error code. Anything other
++		 * than -EKEYEXPIRED gets converted to -EACCES.
++		 */
++		p = simple_get_bytes(p, end, &ret, sizeof(ret));
++		if (!IS_ERR(p))
++			p = (ret == -EKEYEXPIRED) ? ERR_PTR(-EKEYEXPIRED) :
++						    ERR_PTR(-EACCES);
+ 		goto err;
+ 	}
+ 	/* copy the opaque wire context */
+@@ -646,6 +652,7 @@ gss_pipe_downcall(struct file *filp, const char __user *src, size_t mlen)
+ 		err = PTR_ERR(p);
+ 		switch (err) {
+ 		case -EACCES:
++		case -EKEYEXPIRED:
+ 			gss_msg->msg.errno = err;
+ 			err = mlen;
+ 			break;

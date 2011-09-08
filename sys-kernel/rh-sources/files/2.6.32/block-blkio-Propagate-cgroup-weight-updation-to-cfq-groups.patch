@@ -1,0 +1,71 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:17 -0500
+Subject: [block] blkio: Propagate cgroup weight updation to cfq groups
+Message-id: <1260298712-12756-45-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21791
+O-Subject: [RHEL6 PATCH 44/59] blkio: Propagate cgroup weight updation to cfq
+	groups
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit f8d461d692c341add957fb973fb5ee1f62039dc7
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Thu Dec 3 12:59:52 2009 -0500
+
+    blkio: Propagate cgroup weight updation to cfq groups
+
+    o Propagate blkio cgroup weight updation to associated cfq groups.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/blk-cgroup.c b/block/blk-cgroup.c
+index 4ef78d3..179ddfa 100644
+--- a/block/blk-cgroup.c
++++ b/block/blk-cgroup.c
+@@ -16,6 +16,7 @@
+ #include "blk-cgroup.h"
+ 
+ extern void cfq_unlink_blkio_group(void *, struct blkio_group *);
++extern void cfq_update_blkio_group_weight(struct blkio_group *, unsigned int);
+ 
+ struct blkio_cgroup blkio_root_cgroup = { .weight = 2*BLKIO_WEIGHT_DEFAULT };
+ 
+@@ -116,12 +117,18 @@ static int
+ blkiocg_weight_write(struct cgroup *cgroup, struct cftype *cftype, u64 val)
+ {
+ 	struct blkio_cgroup *blkcg;
++	struct blkio_group *blkg;
++	struct hlist_node *n;
+ 
+ 	if (val < BLKIO_WEIGHT_MIN || val > BLKIO_WEIGHT_MAX)
+ 		return -EINVAL;
+ 
+ 	blkcg = cgroup_to_blkio_cgroup(cgroup);
++	spin_lock_irq(&blkcg->lock);
+ 	blkcg->weight = (unsigned int)val;
++	hlist_for_each_entry(blkg, n, &blkcg->blkg_list, blkcg_node)
++		cfq_update_blkio_group_weight(blkg, blkcg->weight);
++	spin_unlock_irq(&blkcg->lock);
+ 	return 0;
+ }
+ 
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 221c79e..07d671b 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -921,6 +921,12 @@ static inline struct cfq_group *cfqg_of_blkg(struct blkio_group *blkg)
+ 	return NULL;
+ }
+ 
++void
++cfq_update_blkio_group_weight(struct blkio_group *blkg, unsigned int weight)
++{
++	cfqg_of_blkg(blkg)->weight = weight;
++}
++
+ static struct cfq_group *
+ cfq_find_alloc_cfqg(struct cfq_data *cfqd, struct cgroup *cgroup, int create)
+ {

@@ -1,0 +1,45 @@
+From: Dave Airlie <airlied@redhat.com>
+Date: Wed, 13 Jan 2010 06:35:30 -0500
+Subject: [drm] minor printk fixes from upstream
+Message-id: <1263364530-30005-1-git-send-email-airlied@redhat.com>
+Patchwork-id: 22482
+O-Subject: [RHEL6 PATCH] drm: minor printk fixes from upstream
+Bugzilla: 554601
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+BZ 554601
+
+Two minor printk fixes for the DRM core - one is definitely
+not good since it prints a warning no matter what.
+
+These follow on the 8 patches sent previusly.
+
+drm: change drm set mode messages as DRM_DEBUG
+drm: fix crtc no modes printf + typo
+
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/drm_crtc_helper.c b/drivers/gpu/drm/drm_crtc_helper.c
+index 077313f..7d0f00a 100644
+--- a/drivers/gpu/drm/drm_crtc_helper.c
++++ b/drivers/gpu/drm/drm_crtc_helper.c
+@@ -702,7 +702,7 @@ bool drm_crtc_helper_set_mode(struct drm_crtc *crtc,
+ 		if (encoder->crtc != crtc)
+ 			continue;
+ 
+-		DRM_INFO("%s: set mode %s %x\n", drm_get_encoder_name(encoder),
++		DRM_DEBUG("%s: set mode %s %x\n", drm_get_encoder_name(encoder),
+ 			 mode->name, mode->base.id);
+ 		encoder_funcs = encoder->helper_private;
+ 		encoder_funcs->mode_set(encoder, mode, adjusted_mode);
+@@ -1032,7 +1032,8 @@ bool drm_helper_initial_config(struct drm_device *dev)
+ 	/*
+ 	 * we shouldn't end up with no modes here.
+ 	 */
+-	printk(KERN_INFO "No connectors reported conncted with modes\n");
++	if (count == 0)
++		printk(KERN_INFO "No connectors reported connected with modes\n");
+ 
+ 	drm_setup_crtcs(dev);
+ 

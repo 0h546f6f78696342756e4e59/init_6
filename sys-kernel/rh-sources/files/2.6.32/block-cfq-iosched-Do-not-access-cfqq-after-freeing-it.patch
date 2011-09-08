@@ -1,0 +1,55 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:32 -0500
+Subject: [block] cfq-iosched: Do not access cfqq after freeing it
+Message-id: <1260298712-12756-60-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21808
+O-Subject: [RHEL6 PATCH 59/59] cfq-iosched: Do not access cfqq after freeing it
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit 878eaddd05d251cefa9632c2b8046833c5eead66
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Mon Dec 7 19:37:15 2009 +0100
+
+    cfq-iosched: Do not access cfqq after freeing it
+
+    Fix a crash during boot reported by Jeff Moyer. Fix the issue of accessing
+    cfqq after freeing it.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 85a69ee..240003b 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -2367,7 +2367,7 @@ static int cfq_dispatch_requests(struct request_queue *q, int force)
+ static void cfq_put_queue(struct cfq_queue *cfqq)
+ {
+ 	struct cfq_data *cfqd = cfqq->cfqd;
+-	struct cfq_group *cfqg;
++	struct cfq_group *cfqg, *orig_cfqg;
+ 
+ 	BUG_ON(atomic_read(&cfqq->ref) <= 0);
+ 
+@@ -2378,6 +2378,7 @@ static void cfq_put_queue(struct cfq_queue *cfqq)
+ 	BUG_ON(rb_first(&cfqq->sort_list));
+ 	BUG_ON(cfqq->allocated[READ] + cfqq->allocated[WRITE]);
+ 	cfqg = cfqq->cfqg;
++	orig_cfqg = cfqq->orig_cfqg;
+ 
+ 	if (unlikely(cfqd->active_queue == cfqq)) {
+ 		__cfq_slice_expired(cfqd, cfqq, 0);
+@@ -2387,8 +2388,8 @@ static void cfq_put_queue(struct cfq_queue *cfqq)
+ 	BUG_ON(cfq_cfqq_on_rr(cfqq));
+ 	kmem_cache_free(cfq_pool, cfqq);
+ 	cfq_put_cfqg(cfqg);
+-	if (cfqq->orig_cfqg)
+-		cfq_put_cfqg(cfqq->orig_cfqg);
++	if (orig_cfqg)
++		cfq_put_cfqg(orig_cfqg);
+ }
+ 
+ /*

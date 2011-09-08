@@ -1,0 +1,113 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 18 Dec 2009 20:36:31 -0500
+Subject: [block] Fix a CFQ crash in "for-2.6.33" branch of block tree
+Message-id: <1261168595-15386-8-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 22171
+O-Subject: [RHEL6 PATCH 07/11] Fix a CFQ crash in "for-2.6.33" branch of block
+	tree
+Bugzilla: 548796
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+The commit id is from the block tree.  Fixes bug 548796.
+
+commit 82bbbf28db4beefcd8b897800153e21378270cd1
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Thu Dec 10 19:25:41 2009 +0100
+
+    Fix a CFQ crash in "for-2.6.33" branch of block tree
+
+    I think my previous patch introduced a bug which can lead to CFQ hitting
+    BUG_ON().
+
+    The offending commit in for-2.6.33 branch is.
+
+    commit 7667aa0630407bc07dc38dcc79d29cc0a65553c1
+    Author: Vivek Goyal <vgoyal@redhat.com>
+    Date:   Tue Dec 8 17:52:58 2009 -0500
+
+        cfq-iosched: Take care of corner cases of group losing share due to deletion
+
+    While doing some stress testing on my box, I enountered following.
+
+    login: [ 3165.148841] BUG: scheduling while
+    atomic: swapper/0/0x10000100
+    [ 3165.149821] Modules linked in: cfq_iosched dm_multipath qla2xxx igb
+    scsi_transport_fc dm_snapshot [last unloaded: scsi_wait_scan]
+    [ 3165.149821] Pid: 0, comm: swapper Not tainted
+    2.6.32-block-for-33-merged-new #3
+    [ 3165.149821] Call Trace:
+    [ 3165.149821]  <IRQ>  [<ffffffff8103fab8>] __schedule_bug+0x5c/0x60
+    [ 3165.149821]  [<ffffffff8103afd7>] ? __wake_up+0x44/0x4d
+    [ 3165.149821]  [<ffffffff8153a979>] schedule+0xe3/0x7bc
+    [ 3165.149821]  [<ffffffff8103a796>] ? cpumask_next+0x1d/0x1f
+    [ 3165.149821]  [<ffffffffa000b21d>] ? cfq_dispatch_requests+0x6ba/0x93e
+    [cfq_iosched]
+    [ 3165.149821]  [<ffffffff810422d8>] __cond_resched+0x2a/0x35
+    [ 3165.149821]  [<ffffffffa000b21d>] ? cfq_dispatch_requests+0x6ba/0x93e
+    [cfq_iosched]
+    [ 3165.149821]  [<ffffffff8153b1ee>] _cond_resched+0x2c/0x37
+    [ 3165.149821]  [<ffffffff8100e2db>] is_valid_bugaddr+0x16/0x2f
+    [ 3165.149821]  [<ffffffff811e4161>] report_bug+0x18/0xac
+    [ 3165.149821]  [<ffffffff8100f1fc>] die+0x39/0x63
+    [ 3165.149821]  [<ffffffff8153cde1>] do_trap+0x11a/0x129
+    [ 3165.149821]  [<ffffffff8100d470>] do_invalid_op+0x96/0x9f
+    [ 3165.149821]  [<ffffffffa000b21d>] ? cfq_dispatch_requests+0x6ba/0x93e
+    [cfq_iosched]
+    [ 3165.149821]  [<ffffffff81034b4d>] ? enqueue_task+0x5c/0x67
+    [ 3165.149821]  [<ffffffff8103ae83>] ? task_rq_unlock+0x11/0x13
+    [ 3165.149821]  [<ffffffff81041aae>] ? try_to_wake_up+0x292/0x2a4
+    [ 3165.149821]  [<ffffffff8100c935>] invalid_op+0x15/0x20
+    [ 3165.149821]  [<ffffffffa000b21d>] ? cfq_dispatch_requests+0x6ba/0x93e
+    [cfq_iosched]
+    [ 3165.149821]  [<ffffffff810df5a6>] ? virt_to_head_page+0xe/0x2f
+    [ 3165.149821]  [<ffffffff811d8c2a>] blk_peek_request+0x191/0x1a7
+    [ 3165.149821]  [<ffffffff811e5b8d>] ? kobject_get+0x1a/0x21
+    [ 3165.149821]  [<ffffffff812c8d4c>] scsi_request_fn+0x82/0x3df
+    [ 3165.149821]  [<ffffffff8110b2de>] ? bio_fs_destructor+0x15/0x17
+    [ 3165.149821]  [<ffffffff810df5a6>] ? virt_to_head_page+0xe/0x2f
+    [ 3165.149821]  [<ffffffff811d931f>] __blk_run_queue+0x42/0x71
+    [ 3165.149821]  [<ffffffff811d9403>] blk_run_queue+0x26/0x3a
+    [ 3165.149821]  [<ffffffff812c8761>] scsi_run_queue+0x2de/0x375
+    [ 3165.149821]  [<ffffffff812b60ac>] ? put_device+0x17/0x19
+    [ 3165.149821]  [<ffffffff812c92d7>] scsi_next_command+0x3b/0x4b
+    [ 3165.149821]  [<ffffffff812c9b9f>] scsi_io_completion+0x1c9/0x3f5
+    [ 3165.149821]  [<ffffffff812c3c36>] scsi_finish_command+0xb5/0xbe
+
+    I think I have hit following BUG_ON() in cfq_dispatch_request().
+
+    BUG_ON(RB_EMPTY_ROOT(&cfqq->sort_list));
+
+    Please find attached the patch to fix it. I have done some stress testing
+    with it and have not seen it happening again.
+
+    o We should wait on a queue even after slice expiry only if it is empty. If
+      queue is not empty then continue to expire it.
+
+    o If we decide to keep the queue then make cfqq=NULL. Otherwise select_queue()
+      will return a valid cfqq and cfq_dispatch_request() can hit following
+      BUG_ON().
+
+      BUG_ON(RB_EMPTY_ROOT(&cfqq->sort_list))
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index eba740b..84290ea 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -2150,10 +2150,11 @@ static struct cfq_queue *cfq_select_queue(struct cfq_data *cfqd)
+ 		 * have been idling all along on this queue and it should be
+ 		 * ok to wait for this request to complete.
+ 		 */
+-		if (cfqq->cfqg->nr_cfqq == 1 && cfqq->dispatched
+-		    && cfq_should_idle(cfqd, cfqq))
++		if (cfqq->cfqg->nr_cfqq == 1 && RB_EMPTY_ROOT(&cfqq->sort_list)
++		    && cfqq->dispatched && cfq_should_idle(cfqd, cfqq)) {
++			cfqq = NULL;
+ 			goto keep_queue;
+-		else
++		} else
+ 			goto expire;
+ 	}
+ 

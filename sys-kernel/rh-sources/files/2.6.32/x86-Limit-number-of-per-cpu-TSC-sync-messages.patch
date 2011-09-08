@@ -1,0 +1,80 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Sat, 19 Dec 2009 02:34:07 -0500
+Subject: [x86] Limit number of per cpu TSC sync messages
+Message-id: <20091218212025.23706.3912.sendpatchset@localhost.localdomain>
+Patchwork-id: 22216
+O-Subject: [RHEL6 PATCH 7/9] x86: Limit number of per cpu TSC sync messages
+Bugzilla: 548840
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+commit 9b3660a55a9052518c91cc7c62d89e22f3f6f490
+Author: Mike Travis <travis@sgi.com>
+Date:   Tue Nov 17 18:22:16 2009 -0600
+
+    x86: Limit number of per cpu TSC sync messages
+
+    Limit the number of per cpu TSC sync messages by only printing
+    to the console if an error occurs, otherwise print as a DEBUG
+    message.
+
+    The info message "Skipping synchronization ..." is only printed
+    after the last cpu has booted.
+
+    Signed-off-by: Mike Travis <travis@sgi.com>
+    Cc: Heiko Carstens <heiko.carstens@de.ibm.com>
+    Cc: Roland Dreier <rdreier@cisco.com>
+    Cc: Randy Dunlap <rdunlap@xenotime.net>
+    Cc: Tejun Heo <tj@kernel.org>
+    Cc: Andi Kleen <andi@firstfloor.org>
+    Cc: Greg Kroah-Hartman <gregkh@suse.de>
+    Cc: Yinghai Lu <yhlu.kernel@gmail.com>
+    Cc: David Rientjes <rientjes@google.com>
+    Cc: Steven Rostedt <rostedt@goodmis.org>
+    Cc: Rusty Russell <rusty@rustcorp.com.au>
+    Cc: Hidetoshi Seto <seto.hidetoshi@jp.fujitsu.com>
+    Cc: Jack Steiner <steiner@sgi.com>
+    Cc: Frederic Weisbecker <fweisbec@gmail.com>
+    LKML-Reference: <20091118002222.181053000@alcatraz.americas.sgi.com>
+    Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/tsc_sync.c b/arch/x86/kernel/tsc_sync.c
+index f379309..eed1568 100644
+--- a/arch/x86/kernel/tsc_sync.c
++++ b/arch/x86/kernel/tsc_sync.c
+@@ -114,13 +114,12 @@ void __cpuinit check_tsc_sync_source(int cpu)
+ 		return;
+ 
+ 	if (boot_cpu_has(X86_FEATURE_TSC_RELIABLE)) {
+-		printk_once(KERN_INFO "Skipping synchronization checks as TSC is reliable.\n");
++		if (cpu == (nr_cpu_ids-1) || system_state != SYSTEM_BOOTING)
++			pr_info(
++			"Skipped synchronization checks as TSC is reliable.\n");
+ 		return;
+ 	}
+ 
+-	pr_info("checking TSC synchronization [CPU#%d -> CPU#%d]:",
+-		smp_processor_id(), cpu);
+-
+ 	/*
+ 	 * Reset it - in case this is a second bootup:
+ 	 */
+@@ -142,12 +141,14 @@ void __cpuinit check_tsc_sync_source(int cpu)
+ 		cpu_relax();
+ 
+ 	if (nr_warps) {
+-		printk("\n");
++		pr_warning("TSC synchronization [CPU#%d -> CPU#%d]:\n",
++			smp_processor_id(), cpu);
+ 		pr_warning("Measured %Ld cycles TSC warp between CPUs, "
+ 			   "turning off TSC clock.\n", max_warp);
+ 		mark_tsc_unstable("check_tsc_sync_source failed");
+ 	} else {
+-		printk(" passed.\n");
++		pr_debug("TSC synchronization [CPU#%d -> CPU#%d]: passed\n",
++			smp_processor_id(), cpu);
+ 	}
+ 
+ 	/*

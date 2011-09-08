@@ -1,0 +1,79 @@
+From: Oleg Nesterov <oleg@redhat.com>
+Date: Thu, 21 Jan 2010 17:26:40 -0500
+Subject: [utrace] fix utrace_maybe_reap() vs find_matching_engine() race
+Message-id: <20100121172640.GA12280@redhat.com>
+Patchwork-id: 22694
+O-Subject: [RHEL6 PATCH] BZ#557338: utrace: fix utrace_maybe_reap() vs
+	find_matching_engine() race
+Bugzilla: 557338
+RH-Acked-by: Roland McGrath <roland@redhat.com>
+
+https://bugzilla.redhat.com/show_bug.cgi?id=557338
+
+The comment in utrace_maybe_reap() correctly explains why
+utrace_attach_task/utrace_control/etc can't modify or use
+attaching/attached lists.  But find_matching_engine() can
+scan ->attached under utrace->lock without any checks, it
+can race with utrace_maybe_reap() destroying list nodes.
+
+Change utrace_maybe_reap() to empty ->attached before it
+drops utrace->lock, update the comments a bit.
+
+Upstream Status: the same patch was sent upstream.
+
+Reported-by: CAI Qian <caiqian@redhat.com>
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Signed-off-by: Roland McGrath <roland@redhat.com>
+
+diff --git a/kernel/utrace.c b/kernel/utrace.c
+index ead1f13..f5a9e2c 100644
+--- a/kernel/utrace.c
++++ b/kernel/utrace.c
+@@ -1,7 +1,7 @@
+ /*
+  * utrace infrastructure interface for debugging user processes
+  *
+- * Copyright (C) 2006-2009 Red Hat, Inc.  All rights reserved.
++ * Copyright (C) 2006-2010 Red Hat, Inc.  All rights reserved.
+  *
+  * This copyrighted material is made available to anyone wishing to use,
+  * modify, copy, or redistribute it subject to the terms and conditions
+@@ -859,6 +859,7 @@ void utrace_maybe_reap(struct task_struct *target, struct utrace *utrace,
+ 		       bool reap)
+ {
+ 	struct utrace_engine *engine, *next;
++	struct list_head attached;
+ 
+ 	spin_lock(&utrace->lock);
+ 
+@@ -897,16 +898,24 @@ void utrace_maybe_reap(struct task_struct *target, struct utrace *utrace,
+ 	}
+ 
+ 	/*
+-	 * utrace_add_engine() checks ->utrace_flags != 0.
+-	 * Since @utrace->reap is set, nobody can set or clear
+-	 * UTRACE_EVENT(REAP) in @engine->flags or change
+-	 * @engine->ops, and nobody can change @utrace->attached.
++	 * utrace_add_engine() checks ->utrace_flags != 0.  Since
++	 * @utrace->reap is set, nobody can set or clear UTRACE_EVENT(REAP)
++	 * in @engine->flags or change @engine->ops and nobody can change
++	 * @utrace->attached after we drop the lock.
+ 	 */
+ 	target->utrace_flags = 0;
+-	splice_attaching(utrace);
++
++	/*
++	 * We clear out @utrace->attached before we drop the lock so
++	 * that find_matching_engine() can't come across any old engine
++	 * while we are busy tearing it down.
++	 */
++	list_replace_init(&utrace->attached, &attached);
++	list_splice_tail_init(&utrace->attaching, &attached);
++
+ 	spin_unlock(&utrace->lock);
+ 
+-	list_for_each_entry_safe(engine, next, &utrace->attached, entry) {
++	list_for_each_entry_safe(engine, next, &attached, entry) {
+ 		if (engine->flags & UTRACE_EVENT(REAP))
+ 			engine->ops->report_reap(engine, target);
+ 

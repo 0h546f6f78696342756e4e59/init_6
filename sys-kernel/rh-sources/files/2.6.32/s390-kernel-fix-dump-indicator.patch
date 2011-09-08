@@ -1,0 +1,52 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 11 Dec 2009 17:31:33 -0500
+Subject: [s390] kernel: fix dump indicator
+Message-id: <20091211173903.145882454@redhat.com>
+Patchwork-id: 21891
+O-Subject: [RHEL6 PATCH 4/5] s390 - kernel: fix dump indicator
+Bugzilla: 546285
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+Kernel dumps are not readable by the lcrash or crash utility.
+The problem is that in certain cases, an incorrect dump might
+be written.
+Set dump indicator on read-scp-info command to get meaningful
+dumps.
+
+Bugzilla
+--------
+BZ 546285
+https://bugzilla.redhat.com/show_bug.cgi?id=546285
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=cb9d71604a6e3d6aa93bb663747a62fc520da483
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/char/sclp_cmd.c b/drivers/s390/char/sclp_cmd.c
+index 5cc11c6..28b5afc 100644
+--- a/drivers/s390/char/sclp_cmd.c
++++ b/drivers/s390/char/sclp_cmd.c
+@@ -84,6 +84,7 @@ static void __init sclp_read_info_early(void)
+ 		do {
+ 			memset(sccb, 0, sizeof(*sccb));
+ 			sccb->header.length = sizeof(*sccb);
++			sccb->header.function_code = 0x80;
+ 			sccb->header.control_mask[2] = 0x80;
+ 			rc = sclp_cmd_sync_early(commands[i], sccb);
+ 		} while (rc == -EBUSY);

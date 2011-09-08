@@ -1,0 +1,84 @@
+From: Michael S. Tsirkin <mst@redhat.com>
+Date: Thu, 4 Mar 2010 10:33:58 -0500
+Subject: [vhost] vhost-net: switch to smp barriers
+Message-id: <2edc1228b8b8900a75b717e7b81c36440ec8db89.1267698800.git.mst@redhat.com>
+Patchwork-id: 23480
+O-Subject: [RHEL6.0 PATCH 1/5] vhost-net: switch to smp barriers
+Bugzilla: 562837
+RH-Acked-by: David S. Miller <davem@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+
+BZ#562837
+https://bugzilla.redhat.com/show_bug.cgi?id=562837
+
+Description
+vhost-net only uses memory barriers to control SMP effects
+(communication with userspace potentially running on a different CPU),
+so it should use SMP barriers and not mandatory barriers for memory
+access ordering, as suggested by Documentation/memory-barriers.txt
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Acked-by: Rusty Russell <rusty@rustcorp.com.au>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+
+Upstream status
+This patch has been merged for 2.6.34, commit
+5659338c88963ea791118e5e11e314b24f90c3eb
+
+Brew build#: 2297441
+
+The change itself is trivial
+It has been tested in house on x86_64 platform
+brew build passed
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/vhost/vhost.c b/drivers/vhost/vhost.c
+index c8c25db..6eb1525 100644
+--- a/drivers/vhost/vhost.c
++++ b/drivers/vhost/vhost.c
+@@ -685,7 +685,7 @@ int vhost_log_write(struct vhost_virtqueue *vq, struct vhost_log *log,
+ 	int i, r;
+ 
+ 	/* Make sure data written is seen before log. */
+-	wmb();
++	smp_wmb();
+ 	for (i = 0; i < log_num; ++i) {
+ 		u64 l = min(log[i].len, len);
+ 		r = log_write(vq->log_base, log[i].addr, l);
+@@ -884,7 +884,7 @@ unsigned vhost_get_vq_desc(struct vhost_dev *dev, struct vhost_virtqueue *vq,
+ 		return vq->num;
+ 
+ 	/* Only get avail ring entries after they have been exposed by guest. */
+-	rmb();
++	smp_rmb();
+ 
+ 	/* Grab the next descriptor number they're advertising, and increment
+ 	 * the index we've seen. */
+@@ -996,14 +996,14 @@ int vhost_add_used(struct vhost_virtqueue *vq, unsigned int head, int len)
+ 		return -EFAULT;
+ 	}
+ 	/* Make sure buffer is written before we update index. */
+-	wmb();
++	smp_wmb();
+ 	if (put_user(vq->last_used_idx + 1, &vq->used->idx)) {
+ 		vq_err(vq, "Failed to increment used idx");
+ 		return -EFAULT;
+ 	}
+ 	if (unlikely(vq->log_used)) {
+ 		/* Make sure data is seen before log. */
+-		wmb();
++		smp_wmb();
+ 		log_write(vq->log_base, vq->log_addr + sizeof *vq->used->ring *
+ 			  (vq->last_used_idx % vq->num),
+ 			  sizeof *vq->used->ring);
+@@ -1060,7 +1060,7 @@ bool vhost_enable_notify(struct vhost_virtqueue *vq)
+ 	}
+ 	/* They could have slipped one in as we were doing that: make
+ 	 * sure it's written, then check again. */
+-	mb();
++	smp_mb();
+ 	r = get_user(avail_idx, &vq->avail->idx);
+ 	if (r) {
+ 		vq_err(vq, "Failed to check avail idx at %p: %d\n",

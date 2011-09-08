@@ -1,0 +1,75 @@
+From: Eric Sandeen <sandeen@redhat.com>
+Date: Wed, 23 Dec 2009 18:03:23 -0500
+Subject: [fs] fs-writeback: Add helper function to start writeback if idle
+Message-id: <4B325B6B.502@redhat.com>
+Patchwork-id: 22278
+O-Subject: [PATCH RHEL6 1/2] fs-writeback: Add helper function to start writeback
+	if idle
+Bugzilla: 526758
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+
+This is for Bug 526758 - ext4: Better ENOSPC handling needed
+
+This patch has been sent upstream, acked by Jens Axboe and
+Jan Kara, and merged into the ext4 patch queue but is not
+yet technically upstream.
+
+===
+
+ext4, at least, would like to start pushing on writeback if it starts
+to get close to ENOSPC when reserving worst-case blocks for delalloc
+writes.  Writing out delalloc data will convert those worst-case
+predictions into usually smaller actual usage, freeing up space
+before we hit ENOSPC based on this speculation.
+
+Thanks to Jens for the suggestion for the helper function,
+& the naming help.
+
+I've made the helper return status on whether writeback was
+started even though I don't plan to use it in the ext4 patch;
+it seems like it would be potentially useful to test this
+in some cases.
+
+Signed-off-by: Eric Sandeen <sandeen@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/fs-writeback.c b/fs/fs-writeback.c
+index 50c6789..7fc25bb 100644
+--- a/fs/fs-writeback.c
++++ b/fs/fs-writeback.c
+@@ -1217,6 +1217,23 @@ void writeback_inodes_sb(struct super_block *sb)
+ EXPORT_SYMBOL(writeback_inodes_sb);
+ 
+ /**
++ * writeback_inodes_sb_if_idle	-	start writeback if none underway
++ * @sb: the superblock
++ *
++ * Invoke writeback_inodes_sb if no writeback is currently underway.
++ * Returns 1 if writeback was started, 0 if not.
++ */
++int writeback_inodes_sb_if_idle(struct super_block *sb)
++{
++	if (!writeback_in_progress(sb->s_bdi)) {
++		writeback_inodes_sb(sb);
++		return 1;
++	} else
++		return 0;
++}
++EXPORT_SYMBOL(writeback_inodes_sb_if_idle);
++
++/**
+  * sync_inodes_sb	-	sync sb inode pages
+  * @sb: the superblock
+  *
+diff --git a/include/linux/writeback.h b/include/linux/writeback.h
+index 66ebddc..dc52482 100644
+--- a/include/linux/writeback.h
++++ b/include/linux/writeback.h
+@@ -69,6 +69,7 @@ struct writeback_control {
+ struct bdi_writeback;
+ int inode_wait(void *);
+ void writeback_inodes_sb(struct super_block *);
++int writeback_inodes_sb_if_idle(struct super_block *);
+ void sync_inodes_sb(struct super_block *);
+ void writeback_inodes_wbc(struct writeback_control *wbc);
+ long wb_do_writeback(struct bdi_writeback *wb, int force_wait);

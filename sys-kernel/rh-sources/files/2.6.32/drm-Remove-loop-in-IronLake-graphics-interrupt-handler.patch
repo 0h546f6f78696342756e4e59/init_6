@@ -1,0 +1,135 @@
+From: John Villalovos <jvillalo@redhat.com>
+Date: Thu, 4 Mar 2010 17:43:31 -0500
+Subject: [drm] Remove loop in IronLake graphics interrupt handler
+Message-id: <20100304174330.GA16939@linuxjohn.usersys.redhat.com>
+Patchwork-id: 23487
+O-Subject: [RHEL6 BZ557838] Remove loop in IronLake graphics interrupt handler
+Bugzilla: 557838
+RH-Acked-by: Dave Airlie <airlied@redhat.com>
+
+[RHEL6] Remove loop in IronLake graphics interrupt handler
+https://bugzilla.redhat.com/show_bug.cgi?id=557838
+
+This fixes a bug which can cause systems with IronLake graphics to crash.
+
+Currently the file 'drivers/gpu/drm/i915/i915_irq.c' in the RHEL 6 tree is
+synced up to commit c566ec49159b806db95a90fd8f37448376cd0ad2.  This patch is
+the very next commit to the file after commit
+c566ec49159b806db95a90fd8f37448376cd0ad2.
+
+Brew built, all architectures succeeded:
+https://brewweb.devel.redhat.com/taskinfo?taskID=2296101
+
+I tested this on an Intel Piketon system with a Clarkdale CPU and IronLake
+graphics and everything worked that I tested.
+
+commit 4a1bd7da883e460de903d9ca0daf9d2ec01f9ae0
+Author: John L. Villalovos <jvillalo@redhat.com>
+Date:   Fri Feb 12 10:18:54 2010 -0500
+
+    Backport of commit c7c85101afd0cb8ce497456d12ee1cad4aad152f
+        Upstream Author: Zou Nan hai <Nanhai.zou@intel.com>
+        Upstream Date:   Fri Jan 15 10:29:06 2010 +0800
+
+        drm/i915: remove loop in Ironlake interrupt handler
+
+        On Ironlake, there is an interrupt master control bit. With the bit
+        disabled before clearing IIR, we do not need to handle extra interrupt
+        in a loop. This patch removes the loop in Ironlake interrupt handler.
+        It fixed irq lost issue on some Ironlake platforms.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/i915/i915_irq.c b/drivers/gpu/drm/i915/i915_irq.c
+index 7cd8110..89a071a 100644
+--- a/drivers/gpu/drm/i915/i915_irq.c
++++ b/drivers/gpu/drm/i915/i915_irq.c
+@@ -274,7 +274,6 @@ irqreturn_t ironlake_irq_handler(struct drm_device *dev)
+ 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
+ 	int ret = IRQ_NONE;
+ 	u32 de_iir, gt_iir, de_ier, pch_iir;
+-	u32 new_de_iir, new_gt_iir, new_pch_iir;
+ 	struct drm_i915_master_private *master_priv;
+ 
+ 	/* disable master interrupt before clearing iir  */
+@@ -286,51 +285,42 @@ irqreturn_t ironlake_irq_handler(struct drm_device *dev)
+ 	gt_iir = I915_READ(GTIIR);
+ 	pch_iir = I915_READ(SDEIIR);
+ 
+-	for (;;) {
+-		if (de_iir == 0 && gt_iir == 0 && pch_iir == 0)
+-			break;
+-
+-		ret = IRQ_HANDLED;
++	if (de_iir == 0 && gt_iir == 0 && pch_iir == 0)
++		goto done;
+ 
+-		/* should clear PCH hotplug event before clear CPU irq */
+-		I915_WRITE(SDEIIR, pch_iir);
+-		new_pch_iir = I915_READ(SDEIIR);
++	ret = IRQ_HANDLED;
+ 
+-		I915_WRITE(DEIIR, de_iir);
+-		new_de_iir = I915_READ(DEIIR);
+-		I915_WRITE(GTIIR, gt_iir);
+-		new_gt_iir = I915_READ(GTIIR);
+-
+-		if (dev->primary->master) {
+-			master_priv = dev->primary->master->driver_priv;
+-			if (master_priv->sarea_priv)
+-				master_priv->sarea_priv->last_dispatch =
+-					READ_BREADCRUMB(dev_priv);
+-		}
+-
+-		if (gt_iir & GT_USER_INTERRUPT) {
+-			u32 seqno = i915_get_gem_seqno(dev);
+-			dev_priv->mm.irq_gem_seqno = seqno;
+-			trace_i915_gem_request_complete(dev, seqno);
+-			DRM_WAKEUP(&dev_priv->irq_queue);
+-			dev_priv->hangcheck_count = 0;
+-			mod_timer(&dev_priv->hangcheck_timer, jiffies + DRM_I915_HANGCHECK_PERIOD);
+-		}
++	if (dev->primary->master) {
++		master_priv = dev->primary->master->driver_priv;
++		if (master_priv->sarea_priv)
++			master_priv->sarea_priv->last_dispatch =
++				READ_BREADCRUMB(dev_priv);
++	}
+ 
+-		if (de_iir & DE_GSE)
+-			ironlake_opregion_gse_intr(dev);
++	if (gt_iir & GT_USER_INTERRUPT) {
++		u32 seqno = i915_get_gem_seqno(dev);
++		dev_priv->mm.irq_gem_seqno = seqno;
++		trace_i915_gem_request_complete(dev, seqno);
++		DRM_WAKEUP(&dev_priv->irq_queue);
++		dev_priv->hangcheck_count = 0;
++		mod_timer(&dev_priv->hangcheck_timer, jiffies + DRM_I915_HANGCHECK_PERIOD);
++	}
+ 
+-		/* check event from PCH */
+-		if ((de_iir & DE_PCH_EVENT) &&
+-			(pch_iir & SDE_HOTPLUG_MASK)) {
+-			queue_work(dev_priv->wq, &dev_priv->hotplug_work);
+-		}
++	if (de_iir & DE_GSE)
++		ironlake_opregion_gse_intr(dev);
+ 
+-		de_iir = new_de_iir;
+-		gt_iir = new_gt_iir;
+-		pch_iir = new_pch_iir;
++	/* check event from PCH */
++	if ((de_iir & DE_PCH_EVENT) &&
++	    (pch_iir & SDE_HOTPLUG_MASK)) {
++		queue_work(dev_priv->wq, &dev_priv->hotplug_work);
+ 	}
+ 
++	/* should clear PCH hotplug event before clear CPU irq */
++	I915_WRITE(SDEIIR, pch_iir);
++	I915_WRITE(GTIIR, gt_iir);
++	I915_WRITE(DEIIR, de_iir);
++
++done:
+ 	I915_WRITE(DEIER, de_ier);
+ 	(void)I915_READ(DEIER);
+ 

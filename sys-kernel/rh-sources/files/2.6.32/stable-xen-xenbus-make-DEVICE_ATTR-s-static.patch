@@ -1,0 +1,45 @@
+From: Jeremy Fitzhardinge <jeremy.fitzhardinge@citrix.com>
+Date: Tue, 24 Nov 2009 16:41:47 -0800
+Subject: [stable] xen/xenbus: make DEVICE_ATTR()s static
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit db05fed0ad72f264e39bcb366795f7367384ec92 upstream.
+
+They don't need to be global, and may cause linker clashes.
+
+Signed-off-by: Jeremy Fitzhardinge <jeremy.fitzhardinge@citrix.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/xen/xenbus/xenbus_probe.c b/drivers/xen/xenbus/xenbus_probe.c
+index 4f69159..649fcdf 100644
+--- a/drivers/xen/xenbus/xenbus_probe.c
++++ b/drivers/xen/xenbus/xenbus_probe.c
+@@ -454,21 +454,21 @@ static ssize_t xendev_show_nodename(struct device *dev,
+ {
+ 	return sprintf(buf, "%s\n", to_xenbus_device(dev)->nodename);
+ }
+-DEVICE_ATTR(nodename, S_IRUSR | S_IRGRP | S_IROTH, xendev_show_nodename, NULL);
++static DEVICE_ATTR(nodename, S_IRUSR | S_IRGRP | S_IROTH, xendev_show_nodename, NULL);
+ 
+ static ssize_t xendev_show_devtype(struct device *dev,
+ 				   struct device_attribute *attr, char *buf)
+ {
+ 	return sprintf(buf, "%s\n", to_xenbus_device(dev)->devicetype);
+ }
+-DEVICE_ATTR(devtype, S_IRUSR | S_IRGRP | S_IROTH, xendev_show_devtype, NULL);
++static DEVICE_ATTR(devtype, S_IRUSR | S_IRGRP | S_IROTH, xendev_show_devtype, NULL);
+ 
+ static ssize_t xendev_show_modalias(struct device *dev,
+ 				    struct device_attribute *attr, char *buf)
+ {
+ 	return sprintf(buf, "xen:%s\n", to_xenbus_device(dev)->devicetype);
+ }
+-DEVICE_ATTR(modalias, S_IRUSR | S_IRGRP | S_IROTH, xendev_show_modalias, NULL);
++static DEVICE_ATTR(modalias, S_IRUSR | S_IRGRP | S_IROTH, xendev_show_modalias, NULL);
+ 
+ int xenbus_probe_node(struct xen_bus_type *bus,
+ 		      const char *type,

@@ -1,0 +1,73 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Fri, 29 Jan 2010 15:44:15 -0500
+Subject: [uv] x86: Add function retrieving node controller revision number
+Message-id: <20100129102859.26138.26379.sendpatchset@sgi-xe250-01.lab.bos.redhat.com>
+Patchwork-id: 23004
+O-Subject: [RHEL6 PATCH 1/2] x86,
+	uv: Add function retrieving node controller revision number
+Bugzilla: 559752
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+commit 7a1110e861b2666ac09f5708d6fbe71d18ce64bb
+Author: Jack Steiner <steiner@sgi.com>
+Date:   Tue Jan 12 15:09:04 2010 -0600
+
+    x86, uv: Add function retrieving node controller revision number
+
+    Add function for determining the revision id of the SGI UV
+    node controller chip (HUB). This function is needed in a
+    subsequent patch.
+
+    Signed-off-by: Jack Steiner <steiner@sgi.com>
+    LKML-Reference: <20100112210904.GA24546@sgi.com>
+    Signed-off-by: H. Peter Anvin <hpa@zytor.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/uv/uv_hub.h b/arch/x86/include/asm/uv/uv_hub.h
+index ec1a81c..9f1e19b 100644
+--- a/arch/x86/include/asm/uv/uv_hub.h
++++ b/arch/x86/include/asm/uv/uv_hub.h
+@@ -495,5 +495,17 @@ static inline void uv_hub_send_ipi(int pnode, int apicid, int vector)
+ 	uv_write_global_mmr64(pnode, UVH_IPI_INT, val);
+ }
+ 
++/*
++ * Get the minimum revision number of the hub chips within the partition.
++ *     1 - initial rev 1.0 silicon
++ *     2 - rev 2.0 production silicon
++ */
++static inline int uv_get_min_hub_revision_id(void)
++{
++	extern int uv_min_hub_revision_id;
++
++	return uv_min_hub_revision_id;
++}
++
+ #endif /* CONFIG_X86_64 */
+ #endif /* _ASM_X86_UV_UV_HUB_H */
+diff --git a/arch/x86/kernel/apic/x2apic_uv_x.c b/arch/x86/kernel/apic/x2apic_uv_x.c
+index 5f92494..5f88c0d 100644
+--- a/arch/x86/kernel/apic/x2apic_uv_x.c
++++ b/arch/x86/kernel/apic/x2apic_uv_x.c
+@@ -36,6 +36,8 @@ DEFINE_PER_CPU(int, x2apic_extra_bits);
+ 
+ static enum uv_system_type uv_system_type;
+ static u64 gru_start_paddr, gru_end_paddr;
++int uv_min_hub_revision_id;
++EXPORT_SYMBOL_GPL(uv_min_hub_revision_id);
+ 
+ static inline bool is_GRU_range(u64 start, u64 end)
+ {
+@@ -55,6 +57,10 @@ static int early_get_nodeid(void)
+ 	mmr = early_ioremap(UV_LOCAL_MMR_BASE | UVH_NODE_ID, sizeof(*mmr));
+ 	node_id.v = *mmr;
+ 	early_iounmap(mmr, sizeof(*mmr));
++
++	/* Currently, all blades have same revision number */
++	uv_min_hub_revision_id = node_id.s.revision;
++
+ 	return node_id.s.node_id;
+ }
+ 

@@ -1,0 +1,281 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:12:05 -0500
+Subject: [kvm] split kvm_arch_set_memory_region into prepare and commit
+Message-id: <20100114171428.568554423@amt.cnet>
+Patchwork-id: 22541
+O-Subject: [RHEL 6 KVM 17/27] KVM: split kvm_arch_set_memory_region into prepare
+	and commit
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 646474ac41ade7f627f75661624f112bbe796169
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Wed Dec 23 14:35:18 2009 -0200
+
+KVM: split kvm_arch_set_memory_region into prepare and commit
+
+Required for SRCU convertion later.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/ia64/kvm/kvm-ia64.c b/arch/ia64/kvm/kvm-ia64.c
+index 532362b..e3b2281 100644
+--- a/arch/ia64/kvm/kvm-ia64.c
++++ b/arch/ia64/kvm/kvm-ia64.c
+@@ -1576,15 +1576,15 @@ out:
+ 	return r;
+ }
+ 
+-int kvm_arch_set_memory_region(struct kvm *kvm,
+-		struct kvm_userspace_memory_region *mem,
++int kvm_arch_prepare_memory_region(struct kvm *kvm,
++		struct kvm_memory_slot *memslot,
+ 		struct kvm_memory_slot old,
++		struct kvm_userspace_memory_region *mem,
+ 		int user_alloc)
+ {
+ 	unsigned long i;
+ 	unsigned long pfn;
+-	int npages = mem->memory_size >> PAGE_SHIFT;
+-	struct kvm_memory_slot *memslot = &kvm->memslots[mem->slot];
++	int npages = memslot->npages;
+ 	unsigned long base_gfn = memslot->base_gfn;
+ 
+ 	if (base_gfn + npages > (KVM_MAX_MEM_SIZE >> PAGE_SHIFT))
+@@ -1608,6 +1608,14 @@ int kvm_arch_set_memory_region(struct kvm *kvm,
+ 	return 0;
+ }
+ 
++void kvm_arch_commit_memory_region(struct kvm *kvm,
++		struct kvm_userspace_memory_region *mem,
++		struct kvm_memory_slot old,
++		int user_alloc)
++{
++	return;
++}
++
+ void kvm_arch_flush_shadow(struct kvm *kvm)
+ {
+ 	kvm_flush_remote_tlbs(kvm);
+diff --git a/arch/powerpc/kvm/powerpc.c b/arch/powerpc/kvm/powerpc.c
+index 2a4551f..1d8fca8 100644
+--- a/arch/powerpc/kvm/powerpc.c
++++ b/arch/powerpc/kvm/powerpc.c
+@@ -160,14 +160,24 @@ long kvm_arch_dev_ioctl(struct file *filp,
+ 	return -EINVAL;
+ }
+ 
+-int kvm_arch_set_memory_region(struct kvm *kvm,
+-                               struct kvm_userspace_memory_region *mem,
+-                               struct kvm_memory_slot old,
+-                               int user_alloc)
++int kvm_arch_prepare_memory_region(struct kvm *kvm,
++                                   struct kvm_memory_slot *memslot,
++                                   struct kvm_memory_slot old,
++                                   struct kvm_userspace_memory_region *mem,
++                                   int user_alloc)
+ {
+ 	return 0;
+ }
+ 
++void kvm_arch_commit_memory_region(struct kvm *kvm,
++               struct kvm_userspace_memory_region *mem,
++               struct kvm_memory_slot old,
++               int user_alloc)
++{
++       return;
++}
++
++
+ void kvm_arch_flush_shadow(struct kvm *kvm)
+ {
+ }
+diff --git a/arch/s390/kvm/kvm-s390.c b/arch/s390/kvm/kvm-s390.c
+index ca2d312..85f2396 100644
+--- a/arch/s390/kvm/kvm-s390.c
++++ b/arch/s390/kvm/kvm-s390.c
+@@ -688,14 +688,12 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
+ }
+ 
+ /* Section: memory related */
+-int kvm_arch_set_memory_region(struct kvm *kvm,
+-				struct kvm_userspace_memory_region *mem,
+-				struct kvm_memory_slot old,
+-				int user_alloc)
++int kvm_arch_prepare_memory_region(struct kvm *kvm,
++				   struct kvm_memory_slot *memslot,
++				   struct kvm_memory_slot old,
++				   struct kvm_userspace_memory_region *mem,
++				   int user_alloc)
+ {
+-	int i;
+-	struct kvm_vcpu *vcpu;
+-
+ 	/* A few sanity checks. We can have exactly one memory slot which has
+ 	   to start at guest virtual zero and which has to be located at a
+ 	   page boundary in userland and which has to end at a page boundary.
+@@ -718,14 +716,23 @@ int kvm_arch_set_memory_region(struct kvm *kvm,
+ 	if (!user_alloc)
+ 		return -EINVAL;
+ 
++	return 0;
++}
++
++void kvm_arch_commit_memory_region(struct kvm *kvm,
++				struct kvm_userspace_memory_region *mem,
++				struct kvm_memory_slot old,
++				int user_alloc)
++{
++	int i;
++	struct kvm_vcpu *vcpu;
++
+ 	/* request update of sie control block for all available vcpus */
+ 	kvm_for_each_vcpu(i, vcpu, kvm) {
+ 		if (test_and_set_bit(KVM_REQ_MMU_RELOAD, &vcpu->requests))
+ 			continue;
+ 		kvm_s390_inject_sigp_stop(vcpu, ACTION_RELOADVCPU_ON_STOP);
+ 	}
+-
+-	return 0;
+ }
+ 
+ void kvm_arch_flush_shadow(struct kvm *kvm)
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 30b51e2..d23e2a8 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -4979,13 +4979,13 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
+ 	kfree(kvm);
+ }
+ 
+-int kvm_arch_set_memory_region(struct kvm *kvm,
+-				struct kvm_userspace_memory_region *mem,
++int kvm_arch_prepare_memory_region(struct kvm *kvm,
++				struct kvm_memory_slot *memslot,
+ 				struct kvm_memory_slot old,
++				struct kvm_userspace_memory_region *mem,
+ 				int user_alloc)
+ {
+-	int npages = mem->memory_size >> PAGE_SHIFT;
+-	struct kvm_memory_slot *memslot = &kvm->memslots->memslots[mem->slot];
++	int npages = memslot->npages;
+ 
+ 	/*To keep backward compatibility with older userspace,
+ 	 *x86 needs to hanlde !user_alloc case.
+@@ -5005,26 +5005,35 @@ int kvm_arch_set_memory_region(struct kvm *kvm,
+ 			if (IS_ERR((void *)userspace_addr))
+ 				return PTR_ERR((void *)userspace_addr);
+ 
+-			/* set userspace_addr atomically for kvm_hva_to_rmapp */
+-			spin_lock(&kvm->mmu_lock);
+ 			memslot->userspace_addr = userspace_addr;
+-			spin_unlock(&kvm->mmu_lock);
+-		} else {
+-			if (!old.user_alloc && old.rmap) {
+-				int ret;
+-
+-				down_write(&current->mm->mmap_sem);
+-				ret = do_munmap(current->mm, old.userspace_addr,
+-						old.npages * PAGE_SIZE);
+-				up_write(&current->mm->mmap_sem);
+-				if (ret < 0)
+-					printk(KERN_WARNING
+-				       "kvm_vm_ioctl_set_memory_region: "
+-				       "failed to munmap memory\n");
+-			}
+ 		}
+ 	}
+ 
++
++	return 0;
++}
++
++void kvm_arch_commit_memory_region(struct kvm *kvm,
++				struct kvm_userspace_memory_region *mem,
++				struct kvm_memory_slot old,
++				int user_alloc)
++{
++
++	int npages = mem->memory_size >> PAGE_SHIFT;
++
++	if (!user_alloc && !old.user_alloc && old.rmap && !npages) {
++		int ret;
++
++		down_write(&current->mm->mmap_sem);
++		ret = do_munmap(current->mm, old.userspace_addr,
++				old.npages * PAGE_SIZE);
++		up_write(&current->mm->mmap_sem);
++		if (ret < 0)
++			printk(KERN_WARNING
++			       "kvm_vm_ioctl_set_memory_region: "
++			       "failed to munmap memory\n");
++	}
++
+ 	spin_lock(&kvm->mmu_lock);
+ 	if (!kvm->arch.n_requested_mmu_pages) {
+ 		unsigned int nr_mmu_pages = kvm_mmu_calculate_mmu_pages(kvm);
+@@ -5033,8 +5042,6 @@ int kvm_arch_set_memory_region(struct kvm *kvm,
+ 
+ 	kvm_mmu_slot_remove_write_access(kvm, mem->slot);
+ 	spin_unlock(&kvm->mmu_lock);
+-
+-	return 0;
+ }
+ 
+ void kvm_arch_flush_shadow(struct kvm *kvm)
+diff --git a/include/linux/kvm_host.h b/include/linux/kvm_host.h
+index 7ebb159..e9f8795 100644
+--- a/include/linux/kvm_host.h
++++ b/include/linux/kvm_host.h
+@@ -253,7 +253,12 @@ int kvm_set_memory_region(struct kvm *kvm,
+ int __kvm_set_memory_region(struct kvm *kvm,
+ 			    struct kvm_userspace_memory_region *mem,
+ 			    int user_alloc);
+-int kvm_arch_set_memory_region(struct kvm *kvm,
++int kvm_arch_prepare_memory_region(struct kvm *kvm,
++				struct kvm_memory_slot *memslot,
++				struct kvm_memory_slot old,
++				struct kvm_userspace_memory_region *mem,
++				int user_alloc);
++void kvm_arch_commit_memory_region(struct kvm *kvm,
+ 				struct kvm_userspace_memory_region *mem,
+ 				struct kvm_memory_slot old,
+ 				int user_alloc);
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index b9507f0..e22f1a0 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -1252,6 +1252,10 @@ skip_lpage:
+ 	if (!npages)
+ 		kvm_arch_flush_shadow(kvm);
+ 
++	r = kvm_arch_prepare_memory_region(kvm, &new, old, mem, user_alloc);
++	if (r)
++		goto out_free;
++
+ 	spin_lock(&kvm->mmu_lock);
+ 	if (mem->slot >= kvm->memslots->nmemslots)
+ 		kvm->memslots->nmemslots = mem->slot + 1;
+@@ -1259,13 +1263,7 @@ skip_lpage:
+ 	*memslot = new;
+ 	spin_unlock(&kvm->mmu_lock);
+ 
+-	r = kvm_arch_set_memory_region(kvm, mem, old, user_alloc);
+-	if (r) {
+-		spin_lock(&kvm->mmu_lock);
+-		*memslot = old;
+-		spin_unlock(&kvm->mmu_lock);
+-		goto out_free;
+-	}
++	kvm_arch_commit_memory_region(kvm, mem, old, user_alloc);
+ 
+ 	kvm_free_physmem_slot(&old, npages ? &new : NULL);
+ 	/* Slot deletion case: we have to update the current slot */

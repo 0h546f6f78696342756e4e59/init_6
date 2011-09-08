@@ -1,0 +1,27 @@
+From: Chris Wilson <chris@chris-wilson.co.uk>
+Date: Wed, 2 Dec 2009 15:15:30 +0000
+Subject: [stable] drm/i915: Set the error code after failing to insert new offset into mm ht.
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 5618ca6abc2d6f475b258badc017a5254cf43d1b upstream.
+
+Signed-off-by: Chris Wilson <chris@chris-wilson.co.uk>
+Signed-off-by: Eric Anholt <eric@anholt.net>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/gpu/drm/i915/i915_gem.c b/drivers/gpu/drm/i915/i915_gem.c
+index 514ff07..2680c9e 100644
+--- a/drivers/gpu/drm/i915/i915_gem.c
++++ b/drivers/gpu/drm/i915/i915_gem.c
+@@ -1288,6 +1288,7 @@ i915_gem_create_mmap_offset(struct drm_gem_object *obj)
+ 	list->hash.key = list->file_offset_node->start;
+ 	if (drm_ht_insert_item(&mm->offset_hash, &list->hash)) {
+ 		DRM_ERROR("failed to add to map hash\n");
++		ret = -ENOMEM;
+ 		goto out_free_mm;
+ 	}
+ 

@@ -1,0 +1,36 @@
+From: Mike Frysinger <vapier@gentoo.org>
+Date: Fri, 8 Jan 2010 00:40:42 -0500
+Subject: [stable] kernel/sysctl.c: fix stable merge error in NOMMU mmap_min_addr
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+Stable commit 0399123f3dcce1a515d021107ec0fb4413ca3efa didn't match the
+original upstream commit.  The CONFIG_MMU check was added much too early
+in the list disabling a lot of proc entries in the process.
+
+Signed-off-by: Mike Frysinger <vapier@gentoo.org>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/kernel/sysctl.c b/kernel/sysctl.c
+index dc87fa0..e2d3b0b 100644
+--- a/kernel/sysctl.c
++++ b/kernel/sysctl.c
+@@ -1237,7 +1237,6 @@ static struct ctl_table vm_table[] = {
+ 		.extra2		= (void *)&hugetlb_infinity,
+ 	},
+ #endif
+-#ifdef CONFIG_MMU
+ 	{
+ 		.ctl_name	= VM_LOWMEM_RESERVE_RATIO,
+ 		.procname	= "lowmem_reserve_ratio",
+@@ -1383,6 +1382,7 @@ static struct ctl_table vm_table[] = {
+ 		.strategy	= &sysctl_jiffies,
+ 	},
+ #endif
++#ifdef CONFIG_MMU
+ 	{
+ 		.ctl_name	= CTL_UNNUMBERED,
+ 		.procname	= "mmap_min_addr",

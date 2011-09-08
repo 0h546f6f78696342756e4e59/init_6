@@ -1,0 +1,39 @@
+From: Roland McGrath <roland@redhat.com>
+Date: Fri, 18 Dec 2009 10:23:49 -0500
+Subject: [ptrace_signal] check PT_PTRACED before reporting a signal
+Message-id: <34473f064dbfa3c5eb124318b4090bd93c8f33d7.1261131466.git.roland@redhat.com>
+Patchwork-id: 22116
+O-Subject: [RHEL6.0 PATCH 12/16] ptrace_signal: check PT_PTRACED before
+	reporting a signal
+Bugzilla: 549491
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+From: Oleg Nesterov <oleg@redhat.com>
+
+No functional changes, preparation for utrace-ptrace.
+
+Change ptrace_signal() to check PT_PTRACED instead of task_ptrace() != 0.
+Currently this is the same, PT_PTRACED must be always set if the task is
+ptraced.
+
+This change is needed to make sure ptrace_signal() does nothing if ptrace
+is implemented on top of utrace, eventually this code will be removed
+completely.
+
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Signed-off-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/signal.c b/kernel/signal.c
+index 7098c71..c32be9f 100644
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -1731,7 +1731,7 @@ static int do_signal_stop(int signr)
+ static int ptrace_signal(int signr, siginfo_t *info,
+ 			 struct pt_regs *regs, void *cookie)
+ {
+-	if (!task_ptrace(current))
++	if (!(task_ptrace(current) & PT_PTRACED))
+ 		return signr;
+ 
+ 	ptrace_signal_deliver(regs, cookie);

@@ -1,0 +1,37 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 18 Dec 2009 20:36:29 -0500
+Subject: [block] cfq-iosched: commenting non-obvious initialization
+Message-id: <1261168595-15386-6-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 22172
+O-Subject: [RHEL6 PATCH 05/11] cfq-iosched: commenting non-obvious initialization
+Bugzilla: 548796
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+The commit id is from the block tree.  fixes bug 548796
+
+commit edc71131c4dc6cc73e2a24aa0a7a79cfce738f12
+Author: Corrado Zoccolo <czoccolo@gmail.com>
+Date:   Wed Dec 9 20:56:04 2009 +0100
+
+    cfq-iosched: commenting non-obvious initialization
+
+    Added a comment to explain the initialization of last_delayed_sync.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 37084f0..b947710 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -3758,6 +3758,10 @@ static void *cfq_init_queue(struct request_queue *q)
+ 	cfqd->cfq_latency = 1;
+ 	cfqd->cfq_group_isolation = 0;
+ 	cfqd->hw_tag = -1;
++	/*
++	 * we optimistically start assuming sync ops weren't delayed in last
++	 * second, in order to have larger depth for async operations.
++	 */
+ 	cfqd->last_delayed_sync = jiffies - HZ;
+ 	INIT_RCU_HEAD(&cfqd->rcu);
+ 	return cfqd;

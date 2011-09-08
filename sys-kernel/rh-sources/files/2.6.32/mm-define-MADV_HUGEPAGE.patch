@@ -1,0 +1,84 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:16:58 -0500
+Subject: [mm] define MADV_HUGEPAGE
+Message-id: <20100201152036.004233409@redhat.com>
+Patchwork-id: 23016
+O-Subject: [RHEL6 01/37] define MADV_HUGEPAGE
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Define MADV_HUGEPAGE.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Arnd Bergmann <arnd@arndb.de>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/alpha/include/asm/mman.h b/arch/alpha/include/asm/mman.h
+index 99c56d4..f746541 100644
+--- a/arch/alpha/include/asm/mman.h
++++ b/arch/alpha/include/asm/mman.h
+@@ -53,6 +53,8 @@
+ #define MADV_MERGEABLE   12		/* KSM may merge identical pages */
+ #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
+ 
++#define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
++
+ /* compatibility flags */
+ #define MAP_FILE	0
+ 
+diff --git a/arch/mips/include/asm/mman.h b/arch/mips/include/asm/mman.h
+index c892bfb..9d8184c 100644
+--- a/arch/mips/include/asm/mman.h
++++ b/arch/mips/include/asm/mman.h
+@@ -77,6 +77,8 @@
+ #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
+ #define MADV_HWPOISON    100		/* poison a page for testing */
+ 
++#define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
++
+ /* compatibility flags */
+ #define MAP_FILE	0
+ 
+diff --git a/arch/parisc/include/asm/mman.h b/arch/parisc/include/asm/mman.h
+index 9749c8a..533c5dc 100644
+--- a/arch/parisc/include/asm/mman.h
++++ b/arch/parisc/include/asm/mman.h
+@@ -59,6 +59,8 @@
+ #define MADV_MERGEABLE   65		/* KSM may merge identical pages */
+ #define MADV_UNMERGEABLE 66		/* KSM may not merge identical pages */
+ 
++#define MADV_HUGEPAGE	67		/* Worth backing with hugepages */
++
+ /* compatibility flags */
+ #define MAP_FILE	0
+ #define MAP_VARIABLE	0
+diff --git a/arch/xtensa/include/asm/mman.h b/arch/xtensa/include/asm/mman.h
+index fca4db4..41be9a1 100644
+--- a/arch/xtensa/include/asm/mman.h
++++ b/arch/xtensa/include/asm/mman.h
+@@ -83,6 +83,8 @@
+ #define MADV_MERGEABLE   12		/* KSM may merge identical pages */
+ #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
+ 
++#define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
++
+ /* compatibility flags */
+ #define MAP_FILE	0
+ 
+diff --git a/include/asm-generic/mman-common.h b/include/asm-generic/mman-common.h
+index 40b9731..8bbc4cf 100644
+--- a/include/asm-generic/mman-common.h
++++ b/include/asm-generic/mman-common.h
+@@ -40,6 +40,8 @@
+ #define MADV_MERGEABLE   12		/* KSM may merge identical pages */
+ #define MADV_UNMERGEABLE 13		/* KSM may not merge identical pages */
+ 
++#define MADV_HUGEPAGE	14		/* Worth backing with hugepages */
++
+ /* compatibility flags */
+ #define MAP_FILE	0
+ 

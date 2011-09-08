@@ -1,0 +1,160 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:13 -0500
+Subject: [block] blkio: Some debugging aids for CFQ
+Message-id: <1260298712-12756-41-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21784
+O-Subject: [RHEL6 PATCH 40/59] blkio: Some debugging aids for CFQ
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit 2868ef7b39490e6b41c2c61cd9a5cd891e778b54
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Thu Dec 3 12:59:48 2009 -0500
+
+    blkio: Some debugging aids for CFQ
+
+    o Some debugging aids for CFQ.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/Kconfig b/block/Kconfig
+index 6ba1a8e..e20fbde 100644
+--- a/block/Kconfig
++++ b/block/Kconfig
+@@ -90,6 +90,15 @@ config BLK_CGROUP
+ 	control disk bandwidth allocation (proportional time slice allocation)
+ 	to such task groups.
+ 
++config DEBUG_BLK_CGROUP
++	bool
++	depends on BLK_CGROUP
++	default n
++	---help---
++	Enable some debugging help. Currently it stores the cgroup path
++	in the blk group which can be used by cfq for tracing various
++	group related activity.
++
+ endif # BLOCK
+ 
+ config BLOCK_COMPAT
+diff --git a/block/Kconfig.iosched b/block/Kconfig.iosched
+index 254155d..0a4b28f 100644
+--- a/block/Kconfig.iosched
++++ b/block/Kconfig.iosched
+@@ -50,6 +50,15 @@ config CFQ_GROUP_IOSCHED
+ 	---help---
+ 	  Enable group IO scheduling in CFQ.
+ 
++config DEBUG_CFQ_IOSCHED
++	bool "Debug CFQ Scheduling"
++	depends on CFQ_GROUP_IOSCHED
++	select DEBUG_BLK_CGROUP
++	default n
++	---help---
++	  Enable CFQ IO scheduling debugging in CFQ. Currently it makes
++	  blktrace output more verbose.
++
+ choice
+ 	prompt "Default I/O scheduler"
+ 	default DEFAULT_CFQ
+diff --git a/block/blk-cgroup.c b/block/blk-cgroup.c
+index 0426ab6..6bc99a3 100644
+--- a/block/blk-cgroup.c
++++ b/block/blk-cgroup.c
+@@ -33,6 +33,10 @@ void blkiocg_add_blkio_group(struct blkio_cgroup *blkcg,
+ 	blkg->blkcg_id = css_id(&blkcg->css);
+ 	hlist_add_head_rcu(&blkg->blkcg_node, &blkcg->blkg_list);
+ 	spin_unlock_irqrestore(&blkcg->lock, flags);
++#ifdef CONFIG_DEBUG_BLK_CGROUP
++	/* Need to take css reference ? */
++	cgroup_path(blkcg->css.cgroup, blkg->path, sizeof(blkg->path));
++#endif
+ }
+ 
+ static void __blkiocg_del_blkio_group(struct blkio_group *blkg)
+diff --git a/block/blk-cgroup.h b/block/blk-cgroup.h
+index cd50a2f..3573199 100644
+--- a/block/blk-cgroup.h
++++ b/block/blk-cgroup.h
+@@ -27,12 +27,25 @@ struct blkio_group {
+ 	void *key;
+ 	struct hlist_node blkcg_node;
+ 	unsigned short blkcg_id;
++#ifdef CONFIG_DEBUG_BLK_CGROUP
++	/* Store cgroup path */
++	char path[128];
++#endif
+ };
+ 
+ #define BLKIO_WEIGHT_MIN	100
+ #define BLKIO_WEIGHT_MAX	1000
+ #define BLKIO_WEIGHT_DEFAULT	500
+ 
++#ifdef CONFIG_DEBUG_BLK_CGROUP
++static inline char *blkg_path(struct blkio_group *blkg)
++{
++	return blkg->path;
++}
++#else
++static inline char *blkg_path(struct blkio_group *blkg) { return NULL; }
++#endif
++
+ #ifdef CONFIG_BLK_CGROUP
+ extern struct blkio_cgroup blkio_root_cgroup;
+ extern struct blkio_cgroup *cgroup_to_blkio_cgroup(struct cgroup *cgroup);
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index f652173..1fecb55 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -340,8 +340,21 @@ CFQ_CFQQ_FNS(coop);
+ CFQ_CFQQ_FNS(deep);
+ #undef CFQ_CFQQ_FNS
+ 
++#ifdef CONFIG_DEBUG_CFQ_IOSCHED
++#define cfq_log_cfqq(cfqd, cfqq, fmt, args...)	\
++	blk_add_trace_msg((cfqd)->queue, "cfq%d%c %s " fmt, (cfqq)->pid, \
++			cfq_cfqq_sync((cfqq)) ? 'S' : 'A', \
++			blkg_path(&(cfqq)->cfqg->blkg), ##args);
++
++#define cfq_log_cfqg(cfqd, cfqg, fmt, args...)				\
++	blk_add_trace_msg((cfqd)->queue, "%s " fmt,			\
++				blkg_path(&(cfqg)->blkg), ##args);      \
++
++#else
+ #define cfq_log_cfqq(cfqd, cfqq, fmt, args...)	\
+ 	blk_add_trace_msg((cfqd)->queue, "cfq%d " fmt, (cfqq)->pid, ##args)
++#define cfq_log_cfqg(cfqd, cfqg, fmt, args...)		do {} while (0);
++#endif
+ #define cfq_log(cfqd, fmt, args...)	\
+ 	blk_add_trace_msg((cfqd)->queue, "cfq " fmt, ##args)
+ 
+@@ -831,6 +844,7 @@ cfq_group_service_tree_del(struct cfq_data *cfqd, struct cfq_group *cfqg)
+ 	if (cfqg->nr_cfqq)
+ 		return;
+ 
++	cfq_log_cfqg(cfqd, cfqg, "del_from_rr group");
+ 	cfqg->on_st = false;
+ 	cfqd->nr_groups--;
+ 	st->total_weight -= cfqg->weight;
+@@ -888,6 +902,9 @@ static void cfq_group_served(struct cfq_data *cfqd, struct cfq_group *cfqg,
+ 		cfqg->saved_serving_prio = cfqd->serving_prio;
+ 	} else
+ 		cfqg->saved_workload_slice = 0;
++
++	cfq_log_cfqg(cfqd, cfqg, "served: vt=%llu min_vt=%llu", cfqg->vdisktime,
++					st->min_vdisktime);
+ }
+ 
+ #ifdef CONFIG_CFQ_GROUP_IOSCHED
+@@ -3101,7 +3118,7 @@ static void cfq_completed_request(struct request_queue *q, struct request *rq)
+ 	unsigned long now;
+ 
+ 	now = jiffies;
+-	cfq_log_cfqq(cfqd, cfqq, "complete");
++	cfq_log_cfqq(cfqd, cfqq, "complete rqnoidle %d", !!rq_noidle(rq));
+ 
+ 	cfq_update_hw_tag(cfqd);
+ 

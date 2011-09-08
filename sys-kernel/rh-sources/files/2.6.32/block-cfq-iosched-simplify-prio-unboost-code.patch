@@ -1,0 +1,42 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:48 -0500
+Subject: [block] cfq-iosched: simplify prio-unboost code
+Message-id: <1260298712-12756-16-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21760
+O-Subject: [RHEL6 PATCH 15/59] cfq-iosched: simplify prio-unboost code
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit dddb74519aec2081204d203a97578c9fc4e9fb64
+Author: Corrado Zoccolo <czoccolo@gmail.com>
+Date:   Mon Nov 2 10:40:37 2009 +0100
+
+    cfq-iosched: simplify prio-unboost code
+
+    Eliminate redundant checks.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 3ac0dd8..4ab240c 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -2625,12 +2625,10 @@ static void cfq_prio_boost(struct cfq_queue *cfqq)
+ 			cfqq->ioprio = IOPRIO_NORM;
+ 	} else {
+ 		/*
+-		 * check if we need to unboost the queue
++		 * unboost the queue (if needed)
+ 		 */
+-		if (cfqq->ioprio_class != cfqq->org_ioprio_class)
+-			cfqq->ioprio_class = cfqq->org_ioprio_class;
+-		if (cfqq->ioprio != cfqq->org_ioprio)
+-			cfqq->ioprio = cfqq->org_ioprio;
++		cfqq->ioprio_class = cfqq->org_ioprio_class;
++		cfqq->ioprio = cfqq->org_ioprio;
+ 	}
+ }
+ 

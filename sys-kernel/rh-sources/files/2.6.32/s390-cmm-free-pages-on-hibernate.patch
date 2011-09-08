@@ -1,0 +1,167 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Tue, 15 Dec 2009 17:46:55 -0500
+Subject: [s390] cmm: free pages on hibernate
+Message-id: <1260899216-12234-4-git-send-email-brueckner@redhat.com>
+Patchwork-id: 21978
+O-Subject: [RHEL6 PATCH 3/4] [s390] cmm: free pages on hibernate
+Bugzilla: 546407
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+The pages allocated by the cmm memory balloon are not freed before
+hibernation and saved, but there is no content in these pages that
+need to be preserved.  This results in wasteful hibernation images.
+
+The problem is solved by freeing the cmm balloon before hibernation.
+
+Bugzilla
+--------
+BZ 546407
+https://bugzilla.redhat.com/show_bug.cgi?id=546407
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=52b169c864ea8622c4755172844fd24168c81195
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/s390/mm/cmm.c b/arch/s390/mm/cmm.c
+index b201135..5e5f384 100644
+--- a/arch/s390/mm/cmm.c
++++ b/arch/s390/mm/cmm.c
+@@ -18,6 +18,7 @@
+ #include <linux/swap.h>
+ #include <linux/kthread.h>
+ #include <linux/oom.h>
++#include <linux/suspend.h>
+ 
+ #include <asm/pgalloc.h>
+ #include <asm/uaccess.h>
+@@ -44,6 +45,7 @@ static volatile long cmm_pages_target;
+ static volatile long cmm_timed_pages_target;
+ static long cmm_timeout_pages;
+ static long cmm_timeout_seconds;
++static int cmm_suspended;
+ 
+ static struct cmm_page_array *cmm_page_list;
+ static struct cmm_page_array *cmm_timed_page_list;
+@@ -147,9 +149,9 @@ cmm_thread(void *dummy)
+ 
+ 	while (1) {
+ 		rc = wait_event_interruptible(cmm_thread_wait,
+-			(cmm_pages != cmm_pages_target ||
+-			 cmm_timed_pages != cmm_timed_pages_target ||
+-			 kthread_should_stop()));
++			(!cmm_suspended && (cmm_pages != cmm_pages_target ||
++			 cmm_timed_pages != cmm_timed_pages_target)) ||
++			 kthread_should_stop());
+ 		if (kthread_should_stop() || rc == -ERESTARTSYS) {
+ 			cmm_pages_target = cmm_pages;
+ 			cmm_timed_pages_target = cmm_timed_pages;
+@@ -411,6 +413,38 @@ cmm_smsg_target(char *from, char *msg)
+ 
+ static struct ctl_table_header *cmm_sysctl_header;
+ 
++static int cmm_suspend(void)
++{
++	cmm_suspended = 1;
++	cmm_free_pages(cmm_pages, &cmm_pages, &cmm_page_list);
++	cmm_free_pages(cmm_timed_pages, &cmm_timed_pages, &cmm_timed_page_list);
++	return 0;
++}
++
++static int cmm_resume(void)
++{
++	cmm_suspended = 0;
++	cmm_kick_thread();
++	return 0;
++}
++
++static int cmm_power_event(struct notifier_block *this,
++			   unsigned long event, void *ptr)
++{
++	switch (event) {
++	case PM_POST_HIBERNATION:
++		return cmm_resume();
++	case PM_HIBERNATION_PREPARE:
++		return cmm_suspend();
++	default:
++		return NOTIFY_DONE;
++	}
++}
++
++static struct notifier_block cmm_power_notifier = {
++	.notifier_call = cmm_power_event,
++};
++
+ static int
+ cmm_init (void)
+ {
+@@ -419,7 +453,7 @@ cmm_init (void)
+ #ifdef CONFIG_CMM_PROC
+ 	cmm_sysctl_header = register_sysctl_table(cmm_dir_table);
+ 	if (!cmm_sysctl_header)
+-		goto out;
++		goto out_sysctl;
+ #endif
+ #ifdef CONFIG_CMM_IUCV
+ 	rc = smsg_register_callback(SMSG_PREFIX, cmm_smsg_target);
+@@ -429,17 +463,21 @@ cmm_init (void)
+ 	rc = register_oom_notifier(&cmm_oom_nb);
+ 	if (rc < 0)
+ 		goto out_oom_notify;
++	rc = register_pm_notifier(&cmm_power_notifier);
++	if (rc)
++		goto out_pm;
+ 	init_waitqueue_head(&cmm_thread_wait);
+ 	init_timer(&cmm_timer);
+ 	cmm_thread_ptr = kthread_run(cmm_thread, NULL, "cmmthread");
+ 	rc = IS_ERR(cmm_thread_ptr) ? PTR_ERR(cmm_thread_ptr) : 0;
+-	if (!rc)
+-		goto out;
+-	/*
+-	 * kthread_create failed. undo all the stuff from above again.
+-	 */
+-	unregister_oom_notifier(&cmm_oom_nb);
++	if (rc)
++		goto out_kthread;
++	return 0;
+ 
++out_kthread:
++	unregister_pm_notifier(&cmm_power_notifier);
++out_pm:
++	unregister_oom_notifier(&cmm_oom_nb);
+ out_oom_notify:
+ #ifdef CONFIG_CMM_IUCV
+ 	smsg_unregister_callback(SMSG_PREFIX, cmm_smsg_target);
+@@ -447,8 +485,8 @@ out_smsg:
+ #endif
+ #ifdef CONFIG_CMM_PROC
+ 	unregister_sysctl_table(cmm_sysctl_header);
++out_sysctl:
+ #endif
+-out:
+ 	return rc;
+ }
+ 
+@@ -456,6 +494,7 @@ static void
+ cmm_exit(void)
+ {
+ 	kthread_stop(cmm_thread_ptr);
++	unregister_pm_notifier(&cmm_power_notifier);
+ 	unregister_oom_notifier(&cmm_oom_nb);
+ 	cmm_free_pages(cmm_pages, &cmm_pages, &cmm_page_list);
+ 	cmm_free_pages(cmm_timed_pages, &cmm_timed_pages, &cmm_timed_page_list);

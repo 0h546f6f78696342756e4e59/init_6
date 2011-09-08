@@ -1,0 +1,31 @@
+From: Guennadi Liakhovetski <g.liakhovetski@gmx.de>
+Date: Thu, 17 Dec 2009 14:51:35 +0100
+Subject: [stable] ASoC: wm8974: fix a wrong bit definition
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 48c03ce72f2665f79a3fe54fc6d71b8cc3d30803 upstream.
+
+The wm8974 datasheet defines BUFIOEN as bit 2.
+
+Signed-off-by: Guennadi Liakhovetski <g.liakhovetski@gmx.de>
+Acked-by: Liam Girdwood <lrg@slimlogic.co.uk>
+Signed-off-by: Mark Brown <broonie@opensource.wolfsonmicro.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/sound/soc/codecs/wm8974.c b/sound/soc/codecs/wm8974.c
+index 98d663a..b0bd1c0 100644
+--- a/sound/soc/codecs/wm8974.c
++++ b/sound/soc/codecs/wm8974.c
+@@ -47,7 +47,7 @@ static const u16 wm8974_reg[WM8974_CACHEREGNUM] = {
+ };
+ 
+ #define WM8974_POWER1_BIASEN  0x08
+-#define WM8974_POWER1_BUFIOEN 0x10
++#define WM8974_POWER1_BUFIOEN 0x04
+ 
+ struct wm8974_priv {
+ 	struct snd_soc_codec codec;

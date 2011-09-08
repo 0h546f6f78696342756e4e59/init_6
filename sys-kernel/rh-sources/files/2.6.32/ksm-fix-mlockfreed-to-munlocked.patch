@@ -1,0 +1,86 @@
+From: Izik Eidus <ieidus@redhat.com>
+Date: Thu, 17 Dec 2009 15:51:58 -0500
+Subject: [ksm] fix mlockfreed to munlocked
+Message-id: <1261065127-3342-24-git-send-email-ieidus@redhat.com>
+Patchwork-id: 22063
+O-Subject: [PATCH 23/32] ksm: fix mlockfreed to munlocked
+Bugzilla: 548586
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+From: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+
+When KSM merges an mlocked page, it has been forgetting to munlock it:
+that's been left to free_page_mlock(), which reports it in /proc/vmstat as
+unevictable_pgs_mlockfreed instead of unevictable_pgs_munlocked (and
+whinges "Page flag mlocked set for process" in mmotm, whereas mainline is
+silently forgiving).  Call munlock_vma_page() to fix that.
+
+Signed-off-by: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+Cc: Izik Eidus <ieidus@redhat.com>
+Cc: Andrea Arcangeli <aarcange@redhat.com>
+Cc: Chris Wright <chrisw@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Mel Gorman <mel@csn.ul.ie>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Izik Eidus <ieidus@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/internal.h b/mm/internal.h
+index cb7d92d..a4b927c 100644
+--- a/mm/internal.h
++++ b/mm/internal.h
+@@ -105,9 +105,10 @@ static inline int is_mlocked_vma(struct vm_area_struct *vma, struct page *page)
+ }
+ 
+ /*
+- * must be called with vma's mmap_sem held for read, and page locked.
++ * must be called with vma's mmap_sem held for read or write, and page locked.
+  */
+ extern void mlock_vma_page(struct page *page);
++extern void munlock_vma_page(struct page *page);
+ 
+ /*
+  * Clear the page's PageMlocked().  This can be useful in a situation where
+diff --git a/mm/ksm.c b/mm/ksm.c
+index 7487856..af5f571 100644
+--- a/mm/ksm.c
++++ b/mm/ksm.c
+@@ -34,6 +34,7 @@
+ #include <linux/ksm.h>
+ 
+ #include <asm/tlbflush.h>
++#include "internal.h"
+ 
+ /*
+  * A few notes about the KSM scanning process,
+@@ -762,6 +763,9 @@ static int try_to_merge_one_page(struct vm_area_struct *vma,
+ 	    pages_identical(page, kpage))
+ 		err = replace_page(vma, page, kpage, orig_pte);
+ 
++	if ((vma->vm_flags & VM_LOCKED) && !err)
++		munlock_vma_page(page);
++
+ 	unlock_page(page);
+ out:
+ 	return err;
+diff --git a/mm/mlock.c b/mm/mlock.c
+index 48691fb..adcbe90 100644
+--- a/mm/mlock.c
++++ b/mm/mlock.c
+@@ -99,14 +99,14 @@ void mlock_vma_page(struct page *page)
+  * not get another chance to clear PageMlocked.  If we successfully
+  * isolate the page and try_to_munlock() detects other VM_LOCKED vmas
+  * mapping the page, it will restore the PageMlocked state, unless the page
+- * is mapped in a non-linear vma.  So, we go ahead and SetPageMlocked(),
++ * is mapped in a non-linear vma.  So, we go ahead and ClearPageMlocked(),
+  * perhaps redundantly.
+  * If we lose the isolation race, and the page is mapped by other VM_LOCKED
+  * vmas, we'll detect this in vmscan--via try_to_munlock() or try_to_unmap()
+  * either of which will restore the PageMlocked state by calling
+  * mlock_vma_page() above, if it can grab the vma's mmap sem.
+  */
+-static void munlock_vma_page(struct page *page)
++void munlock_vma_page(struct page *page)
+ {
+ 	BUG_ON(!PageLocked(page));
+ 

@@ -1,0 +1,74 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Sat, 19 Dec 2009 23:44:47 -0500
+Subject: [scsi] mpt2sas: mpt2sas_base_get_sense_buffer_dma returns little endian
+Message-id: <20091219194426.5875.41887.sendpatchset@localhost.localdomain>
+Patchwork-id: 22236
+O-Subject: [RHEL6 15/20] bz478848 mpt2sas: mpt2sas_base_get_sense_buffer_dma
+	returns little endian
+Bugzilla: 470848
+RH-Acked-by: Rob Evers <revers@redhat.com>
+
+mpt2sas: return DID_TRANSPORT_DISRUPTED in nexus loss and SCSI_MLQUEUE_DEVICE_BUSY if device is busy
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_base.c b/drivers/scsi/mpt2sas/mpt2sas_base.c
+index 7f0ea3f..9934168 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_base.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_base.c
+@@ -1328,12 +1328,13 @@ mpt2sas_base_get_sense_buffer(struct MPT2SAS_ADAPTER *ioc, u16 smid)
+  * @ioc: per adapter object
+  * @smid: system request message index
+  *
+- * Returns phys pointer to sense buffer.
++ * Returns phys pointer to the low 32bit address of the sense buffer.
+  */
+-dma_addr_t
++__le32
+ mpt2sas_base_get_sense_buffer_dma(struct MPT2SAS_ADAPTER *ioc, u16 smid)
+ {
+-	return ioc->sense_dma + ((smid - 1) * SCSI_SENSE_BUFFERSIZE);
++	return cpu_to_le32(ioc->sense_dma +
++			((smid - 1) * SCSI_SENSE_BUFFERSIZE));
+ }
+ 
+ /**
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_base.h b/drivers/scsi/mpt2sas/mpt2sas_base.h
+index 879fd70..7efb6ab 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_base.h
++++ b/drivers/scsi/mpt2sas/mpt2sas_base.h
+@@ -771,7 +771,7 @@ int mpt2sas_base_hard_reset_handler(struct MPT2SAS_ADAPTER *ioc, int sleep_flag,
+ void *mpt2sas_base_get_msg_frame(struct MPT2SAS_ADAPTER *ioc, u16 smid);
+ void *mpt2sas_base_get_sense_buffer(struct MPT2SAS_ADAPTER *ioc, u16 smid);
+ void mpt2sas_base_build_zero_len_sge(struct MPT2SAS_ADAPTER *ioc, void *paddr);
+-dma_addr_t mpt2sas_base_get_sense_buffer_dma(struct MPT2SAS_ADAPTER *ioc,
++__le32 mpt2sas_base_get_sense_buffer_dma(struct MPT2SAS_ADAPTER *ioc,
+     u16 smid);
+ 
+ /* hi-priority queue */
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_ctl.c b/drivers/scsi/mpt2sas/mpt2sas_ctl.c
+index 8dfc5f6..afdb4f3 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_ctl.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_ctl.c
+@@ -740,7 +740,7 @@ _ctl_do_mpt_command(struct MPT2SAS_ADAPTER *ioc,
+ 		Mpi2SCSIIORequest_t *scsiio_request =
+ 		    (Mpi2SCSIIORequest_t *)mpi_request;
+ 		scsiio_request->SenseBufferLowAddress =
+-		    (u32)mpt2sas_base_get_sense_buffer_dma(ioc, smid);
++		    mpt2sas_base_get_sense_buffer_dma(ioc, smid);
+ 		priv_sense = mpt2sas_base_get_sense_buffer(ioc, smid);
+ 		memset(priv_sense, 0, SCSI_SENSE_BUFFERSIZE);
+ 		mpt2sas_base_put_smid_scsi_io(ioc, smid,
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_scsih.c b/drivers/scsi/mpt2sas/mpt2sas_scsih.c
+index 78fe9f1..e9111b3 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_scsih.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_scsih.c
+@@ -2942,7 +2942,7 @@ _scsih_qcmd(struct scsi_cmnd *scmd, void (*done)(struct scsi_cmnd *))
+ 	mpi_request->MsgFlags = MPI2_SCSIIO_MSGFLAGS_SYSTEM_SENSE_ADDR;
+ 	mpi_request->SenseBufferLength = SCSI_SENSE_BUFFERSIZE;
+ 	mpi_request->SenseBufferLowAddress =
+-	    (u32)mpt2sas_base_get_sense_buffer_dma(ioc, smid);
++	    mpt2sas_base_get_sense_buffer_dma(ioc, smid);
+ 	mpi_request->SGLOffset0 = offsetof(Mpi2SCSIIORequest_t, SGL) / 4;
+ 	mpi_request->SGLFlags = cpu_to_le16(MPI2_SCSIIO_SGLFLAGS_TYPE_MPI +
+ 	    MPI2_SCSIIO_SGLFLAGS_SYSTEM_ADDR);

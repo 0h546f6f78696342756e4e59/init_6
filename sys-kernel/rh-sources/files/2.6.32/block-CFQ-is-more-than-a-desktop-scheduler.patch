@@ -1,0 +1,37 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:35 -0500
+Subject: [block] CFQ is more than a desktop scheduler
+Message-id: <1260298712-12756-3-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21753
+O-Subject: [RHEL6 PATCH 02/59] block: CFQ is more than a desktop scheduler
+Bugzilla: 533932
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+Related to bug 533932.
+
+commit 08dc8726d4be85bca793141c827574fd32a681bb
+Author: Jens Axboe <jens.axboe@oracle.com>
+Date:   Sat Oct 3 09:40:47 2009 +0200
+
+    block: CFQ is more than a desktop scheduler
+
+    Update Kconfig.iosched entry.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/Kconfig.iosched b/block/Kconfig.iosched
+index 7e803fc..fb509c7 100644
+--- a/block/Kconfig.iosched
++++ b/block/Kconfig.iosched
+@@ -37,7 +37,9 @@ config IOSCHED_CFQ
+ 	---help---
+ 	  The CFQ I/O scheduler tries to distribute bandwidth equally
+ 	  among all processes in the system. It should provide a fair
+-	  working environment, suitable for desktop systems.
++	  and low latency working environment, suitable for both desktop
++	  and server systems.
++
+ 	  This is the default I/O scheduler.
+ 
+ choice

@@ -1,0 +1,47 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Mon, 21 Dec 2009 12:29:42 -0500
+Subject: [scsi] eliminate double free
+Message-id: <4B2F6A36.7050705@redhat.com>
+Patchwork-id: 22243
+O-Subject: [RHEL6 PATCH] bz#549351 scsi: eliminate double free
+Bugzilla: 549351
+RH-Acked-by: Mike Christie <mchristi@redhat.com>
+RH-Acked-by: Jiri Pirko <jpirko@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+This is for bz#549351
+
+Backport of http://www.spinics.net/lists/linux-scsi/msg41224.html
+
+"The few lines below the kfree of hdr_buf may go to the label err_free which
+will also free hdr_buf.  The most straightforward solution seems to be to
+just move the kfree of hdr_buf after these gotos."
+
+I haven't tested this, seems obvious.
+
+Tomas
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/ses.c b/drivers/scsi/ses.c
+index 55b034b..3c8a024 100644
+--- a/drivers/scsi/ses.c
++++ b/drivers/scsi/ses.c
+@@ -591,8 +591,6 @@ static int ses_intf_add(struct device *cdev,
+ 		ses_dev->page10_len = len;
+ 		buf = NULL;
+ 	}
+-	kfree(hdr_buf);
+-
+ 	scomp = kzalloc(sizeof(struct ses_component) * components, GFP_KERNEL);
+ 	if (!scomp)
+ 		goto err_free;
+@@ -604,6 +602,8 @@ static int ses_intf_add(struct device *cdev,
+ 		goto err_free;
+ 	}
+ 
++	kfree(hdr_buf);
++
+ 	edev->scratch = ses_dev;
+ 	for (i = 0; i < components; i++)
+ 		edev->component[i].scratch = scomp + i;

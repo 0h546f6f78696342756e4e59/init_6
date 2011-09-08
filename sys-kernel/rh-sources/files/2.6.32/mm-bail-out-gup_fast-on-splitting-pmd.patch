@@ -1,0 +1,44 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:12 -0500
+Subject: [mm] bail out gup_fast on splitting pmd
+Message-id: <20100201152038.302796176@redhat.com>
+Patchwork-id: 23029
+O-Subject: [RHEL6 15/37] bail out gup_fast on splitting pmd
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Force gup_fast to take the slow path and block if the pmd is splitting, not
+only if it's none.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Mel Gorman <mel@csn.ul.ie>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/mm/gup.c b/arch/x86/mm/gup.c
+index 8932215..0c99779 100644
+--- a/arch/x86/mm/gup.c
++++ b/arch/x86/mm/gup.c
+@@ -160,7 +160,18 @@ static int gup_pmd_range(pud_t pud, unsigned long addr, unsigned long end,
+ 		pmd_t pmd = *pmdp;
+ 
+ 		next = pmd_addr_end(addr, end);
+-		if (pmd_none(pmd))
++		/*
++		 * The pmd_trans_splitting() check below explains why
++		 * pmdp_splitting_flush has to flush the tlb, to stop
++		 * this gup-fast code from running while we set the
++		 * splitting bit in the pmd. Returning zero will take
++		 * the slow path that will call wait_split_huge_page()
++		 * if the pmd is still in splitting state. gup-fast
++		 * can't because it has irq disabled and
++		 * wait_split_huge_page() would never return as the
++		 * tlb flush IPI wouldn't run.
++		 */
++		if (pmd_none(pmd) || pmd_trans_splitting(pmd))
+ 			return 0;
+ 		if (unlikely(pmd_large(pmd))) {
+ 			if (!gup_huge_pmd(pmd, addr, next, write, pages, nr))

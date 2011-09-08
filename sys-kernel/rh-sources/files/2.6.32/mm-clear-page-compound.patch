@@ -1,0 +1,61 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:15 -0500
+Subject: [mm] clear page compound
+Message-id: <20100201152038.762465831@redhat.com>
+Patchwork-id: 23048
+O-Subject: [RHEL6 18/37] clear page compound
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+split_huge_page must transform a compound page to a regular page and needs
+ClearPageCompound.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/page-flags.h b/include/linux/page-flags.h
+index 36371f1..fe24d84 100644
+--- a/include/linux/page-flags.h
++++ b/include/linux/page-flags.h
+@@ -349,7 +349,7 @@ static inline void set_page_writeback(struct page *page)
+  * tests can be used in performance sensitive paths. PageCompound is
+  * generally not used in hot code paths.
+  */
+-__PAGEFLAG(Head, head)
++__PAGEFLAG(Head, head) CLEARPAGEFLAG(Head, head)
+ __PAGEFLAG(Tail, tail)
+ 
+ static inline int PageCompound(struct page *page)
+@@ -357,6 +357,13 @@ static inline int PageCompound(struct page *page)
+ 	return page->flags & ((1L << PG_head) | (1L << PG_tail));
+ 
+ }
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++static inline void ClearPageCompound(struct page *page)
++{
++	BUG_ON(!PageHead(page));
++	ClearPageHead(page);
++}
++#endif
+ #else
+ /*
+  * Reduce page flag use as much as possible by overlapping
+@@ -394,6 +401,14 @@ static inline void __ClearPageTail(struct page *page)
+ 	page->flags &= ~PG_head_tail_mask;
+ }
+ 
++#ifdef CONFIG_TRANSPARENT_HUGEPAGE
++static inline void ClearPageCompound(struct page *page)
++{
++	BUG_ON(page->flags & PG_head_tail_mask != (1 << PG_compound));
++	ClearPageCompound(page);
++}
++#endif
++
+ #endif /* !PAGEFLAGS_EXTENDED */
+ 
+ #ifdef CONFIG_MMU

@@ -1,0 +1,56 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Thu, 10 Dec 2009 17:31:47 -0500
+Subject: [gfs2] remove division from new statfs code
+Message-id: <1260466307-12654-14-git-send-email-swhiteho@redhat.com>
+Patchwork-id: 21866
+O-Subject: [RHEL6] [13/13] GFS2: remove division from new statfs code
+Bugzilla: 298561
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+From: Benjamin Marzinski <bmarzins@redhat.com>
+
+It's not necessary to do any 64bit division for the statfs sync code, so
+remove it.
+
+Signed-off-by: Benjamin Marzinski <bmarzins@redhat.com>
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/super.c b/fs/gfs2/super.c
+index 3fee2fd..b1dcfab 100644
+--- a/fs/gfs2/super.c
++++ b/fs/gfs2/super.c
+@@ -472,7 +472,8 @@ void gfs2_statfs_change(struct gfs2_sbd *sdp, s64 total, s64 free,
+ 	struct gfs2_statfs_change_host *l_sc = &sdp->sd_statfs_local;
+ 	struct gfs2_statfs_change_host *m_sc = &sdp->sd_statfs_master;
+ 	struct buffer_head *l_bh;
+-	int percent, sync_percent;
++	s64 x, y;
++	int need_sync = 0;
+ 	int error;
+ 
+ 	error = gfs2_meta_inode_buffer(l_ip, &l_bh);
+@@ -486,16 +487,16 @@ void gfs2_statfs_change(struct gfs2_sbd *sdp, s64 total, s64 free,
+ 	l_sc->sc_free += free;
+ 	l_sc->sc_dinodes += dinodes;
+ 	gfs2_statfs_change_out(l_sc, l_bh->b_data + sizeof(struct gfs2_dinode));
+-	if (m_sc->sc_free)
+-		percent = (100 * l_sc->sc_free) / m_sc->sc_free;
+-	else
+-		percent = 100;
++	if (sdp->sd_args.ar_statfs_percent) {
++		x = 100 * l_sc->sc_free;
++		y = m_sc->sc_free * sdp->sd_args.ar_statfs_percent;
++		if (x >= y || x <= -y)
++			need_sync = 1;
++	}
+ 	spin_unlock(&sdp->sd_statfs_spin);
+ 
+ 	brelse(l_bh);
+-	sync_percent = sdp->sd_args.ar_statfs_percent;
+-	if (sync_percent && (percent >= sync_percent ||
+-			     percent <= -sync_percent))
++	if (need_sync)
+ 		gfs2_wake_up_statfs(sdp);
+ }
+ 

@@ -1,0 +1,34 @@
+From: Bhavna Sarathy <bnagendr@redhat.com>
+Date: Thu, 28 Jan 2010 18:50:51 -0500
+Subject: [x86] Fix crash when profiling more than 28 events
+Message-id: <20100128185421.15990.24469.sendpatchset@localhost.localdomain>
+Patchwork-id: 22977
+O-Subject: [RHEL6 PATCH] Fix crash when profiling more than 28 events
+Bugzilla: 557570
+RH-Acked-by: Don Zickus <dzickus@redhat.com>
+
+Resolves BZ 557570
+
+With multiplexing enabled oprofile crashs when profiling more than 28
+events. This patch fixes this.
+
+Tested successfully by Oprofile QA team.
+
+Signed-off-by: Bhavna Sarathy <bhavna.sarathy@amd.com>
+Signed-off-by: Suravee Suthikulpanit <suravee.suthikulpanit@amd.com>
+Signed-off-by: Robert Richter <robert.richter@amd.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/oprofile/nmi_int.c b/arch/x86/oprofile/nmi_int.c
+index cb88b1a..76d4f56 100644
+--- a/arch/x86/oprofile/nmi_int.c
++++ b/arch/x86/oprofile/nmi_int.c
+@@ -222,7 +222,7 @@ static void nmi_cpu_switch(void *dummy)
+ 
+ 	/* move to next set */
+ 	si += model->num_counters;
+-	if ((si > model->num_virt_counters) || (counter_config[si].count == 0))
++	if ((si >= model->num_virt_counters) || (counter_config[si].count == 0))
+ 		per_cpu(switch_index, cpu) = 0;
+ 	else
+ 		per_cpu(switch_index, cpu) = si;

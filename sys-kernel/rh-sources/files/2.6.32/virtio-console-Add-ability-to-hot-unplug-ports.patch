@@ -1,0 +1,121 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Wed, 27 Jan 2010 05:12:27 -0500
+Subject: [virtio] console: Add ability to hot-unplug ports
+Message-id: <1264569149-20151-31-git-send-email-amit.shah@redhat.com>
+Patchwork-id: 22940
+O-Subject: [RHEL6 PATCH 30/32] virtio: console: Add ability to hot-unplug ports
+Bugzilla: 543824
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+
+Remove port data; deregister from the hvc core if it's a console port.
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/virtio_console.c b/drivers/char/virtio_console.c
+index 5e86b21..1b5fa5c 100644
+--- a/drivers/char/virtio_console.c
++++ b/drivers/char/virtio_console.c
+@@ -798,6 +798,37 @@ static struct attribute_group port_attribute_group = {
+ 	.attrs = port_sysfs_entries,
+ };
+ 
++/* Remove all port-specific data. */
++static int remove_port(struct port *port)
++{
++	spin_lock_irq(&port->portdev->ports_lock);
++	list_del(&port->list);
++	spin_unlock_irq(&port->portdev->ports_lock);
++
++	if (is_console_port(port)) {
++		spin_lock_irq(&pdrvdata_lock);
++		list_del(&port->cons.list);
++		spin_unlock_irq(&pdrvdata_lock);
++		hvc_remove(port->cons.hvc);
++	}
++	if (port->guest_connected)
++		send_control_msg(port, VIRTIO_CONSOLE_PORT_OPEN, 0);
++
++	while (port->in_vq->vq_ops->detach_unused_buf(port->in_vq))
++		;
++
++	sysfs_remove_group(&port->dev->kobj, &port_attribute_group);
++	device_destroy(pdrvdata.class, port->dev->devt);
++	cdev_del(&port->cdev);
++
++	discard_port_data(port);
++	free_buf(port->outbuf);
++	kfree(port->name);
++
++	kfree(port);
++	return 0;
++}
++
+ /* Any private messages that the Host and Guest want to share */
+ static void handle_control_message(struct ports_device *portdev,
+ 				   struct port_buffer *buf)
+@@ -869,6 +900,32 @@ static void handle_control_message(struct ports_device *portdev,
+ 				err);
+ 
+ 		break;
++	case VIRTIO_CONSOLE_PORT_REMOVE:
++		/*
++		 * Hot unplug the port.  We don't decrement nr_ports
++		 * since we don't want to deal with extra complexities
++		 * of using the lowest-available port id: We can just
++		 * pick up the nr_ports number as the id and not have
++		 * userspace send it to us.  This helps us in two
++		 * ways:
++		 *
++		 * - We don't need to have a 'port_id' field in the
++		 *   config space when a port is hot-added.  This is a
++		 *   good thing as we might queue up multiple hotplug
++		 *   requests issued in our workqueue.
++		 *
++		 * - Another way to deal with this would have been to
++		 *   use a bitmap of the active ports and select the
++		 *   lowest non-active port from that map.  That
++		 *   bloats the already tight config space and we
++		 *   would end up artificially limiting the
++		 *   max. number of ports to sizeof(bitmap).  Right
++		 *   now we can support 2^32 ports (as the port id is
++		 *   stored in a u32 type).
++		 *
++		 */
++		remove_port(port);
++		break;
+ 	}
+ }
+ 
+@@ -1100,12 +1157,17 @@ static void config_work_handler(struct work_struct *work)
+ 		/*
+ 		 * Port 0 got hot-added.  Since we already did all the
+ 		 * other initialisation for it, just tell the Host
+-		 * that the port is ready.
++		 * that the port is ready if we find the port.  In
++		 * case the port was hot-removed earlier, we call
++		 * add_port to add the port.
+ 		 */
+ 		struct port *port;
+ 
+ 		port = find_port_by_id(portdev, 0);
+-		send_control_msg(port, VIRTIO_CONSOLE_PORT_READY, 1);
++		if (!port)
++			add_port(portdev, 0);
++		else
++			send_control_msg(port, VIRTIO_CONSOLE_PORT_READY, 1);
+ 		return;
+ 	}
+ 	if (virtconconf.nr_ports > portdev->config.max_nr_ports) {
+diff --git a/include/linux/virtio_console.h b/include/linux/virtio_console.h
+index 13e56c8..dd08675 100644
+--- a/include/linux/virtio_console.h
++++ b/include/linux/virtio_console.h
+@@ -41,6 +41,7 @@ struct virtio_console_control {
+ #define VIRTIO_CONSOLE_RESIZE		2
+ #define VIRTIO_CONSOLE_PORT_OPEN	3
+ #define VIRTIO_CONSOLE_PORT_NAME	4
++#define VIRTIO_CONSOLE_PORT_REMOVE	5
+ 
+ #ifdef __KERNEL__
+ int __init virtio_cons_early_init(int (*put_chars)(u32, const char *, int));

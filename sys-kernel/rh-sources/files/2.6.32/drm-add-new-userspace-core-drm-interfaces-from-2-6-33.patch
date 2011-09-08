@@ -1,0 +1,961 @@
+From: Dave Airlie <airlied@redhat.com>
+Date: Tue, 12 Jan 2010 05:35:37 -0500
+Subject: [drm] add new userspace core drm interfaces from 2.6.33
+Message-id: <1263274540-13581-6-git-send-email-airlied@redhat.com>
+Patchwork-id: 22418
+O-Subject: [PATCH 5/8] drm: add new userspace core drm interfaces from 2.6.33
+Bugzilla: 554601
+
+From: Kristian Høgsberg <krh@bitplanet.net>
+
+drm: Add async event synchronization for drmWaitVblank
+drm: when queuing an event with NEXTONMISS, return queued sequence to userspace
+drm/kms: add page flipping ioctl
+drm: use page flip event to signal flip completion
+drm: Add support for drm master_[set|drop] callbacks.
+drm: Add dirty ioctl and property
+drm: Avoid calling vblank function is vblank wasn't initialized
+drm: Export symbols needed for the vmwgfx driver.
+
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/drm_crtc.c b/drivers/gpu/drm/drm_crtc.c
+index 44d3b87..fa19c2b 100644
+--- a/drivers/gpu/drm/drm_crtc.c
++++ b/drivers/gpu/drm/drm_crtc.c
+@@ -125,6 +125,15 @@ static struct drm_prop_enum_list drm_tv_subconnector_enum_list[] =
+ DRM_ENUM_NAME_FN(drm_get_tv_subconnector_name,
+ 		 drm_tv_subconnector_enum_list)
+ 
++static struct drm_prop_enum_list drm_dirty_info_enum_list[] = {
++	{ DRM_MODE_DIRTY_OFF,      "Off"      },
++	{ DRM_MODE_DIRTY_ON,       "On"       },
++	{ DRM_MODE_DIRTY_ANNOTATE, "Annotate" },
++};
++
++DRM_ENUM_NAME_FN(drm_get_dirty_info_name,
++		 drm_dirty_info_enum_list)
++
+ struct drm_conn_prop_enum_list {
+ 	int type;
+ 	char *name;
+@@ -804,6 +813,36 @@ int drm_mode_create_dithering_property(struct drm_device *dev)
+ EXPORT_SYMBOL(drm_mode_create_dithering_property);
+ 
+ /**
++ * drm_mode_create_dirty_property - create dirty property
++ * @dev: DRM device
++ *
++ * Called by a driver the first time it's needed, must be attached to desired
++ * connectors.
++ */
++int drm_mode_create_dirty_info_property(struct drm_device *dev)
++{
++	struct drm_property *dirty_info;
++	int i;
++
++	if (dev->mode_config.dirty_info_property)
++		return 0;
++
++	dirty_info =
++		drm_property_create(dev, DRM_MODE_PROP_ENUM |
++				    DRM_MODE_PROP_IMMUTABLE,
++				    "dirty",
++				    ARRAY_SIZE(drm_dirty_info_enum_list));
++	for (i = 0; i < ARRAY_SIZE(drm_dirty_info_enum_list); i++)
++		drm_property_add_enum(dirty_info, i,
++				      drm_dirty_info_enum_list[i].type,
++				      drm_dirty_info_enum_list[i].name);
++	dev->mode_config.dirty_info_property = dirty_info;
++
++	return 0;
++}
++EXPORT_SYMBOL(drm_mode_create_dirty_info_property);
++
++/**
+  * drm_mode_config_init - initialize DRM mode_configuration structure
+  * @dev: DRM device
+  *
+@@ -1755,6 +1794,71 @@ out:
+ 	return ret;
+ }
+ 
++int drm_mode_dirtyfb_ioctl(struct drm_device *dev,
++			   void *data, struct drm_file *file_priv)
++{
++	struct drm_clip_rect __user *clips_ptr;
++	struct drm_clip_rect *clips = NULL;
++	struct drm_mode_fb_dirty_cmd *r = data;
++	struct drm_mode_object *obj;
++	struct drm_framebuffer *fb;
++	unsigned flags;
++	int num_clips;
++	int ret = 0;
++
++	mutex_lock(&dev->mode_config.mutex);
++	obj = drm_mode_object_find(dev, r->fb_id, DRM_MODE_OBJECT_FB);
++	if (!obj) {
++		DRM_ERROR("invalid framebuffer id\n");
++		ret = -EINVAL;
++		goto out_err1;
++	}
++	fb = obj_to_fb(obj);
++
++	num_clips = r->num_clips;
++	clips_ptr = (struct drm_clip_rect *)(unsigned long)r->clips_ptr;
++
++	if (!num_clips != !clips_ptr) {
++		ret = -EINVAL;
++		goto out_err1;
++	}
++
++	flags = DRM_MODE_FB_DIRTY_FLAGS & r->flags;
++
++	/* If userspace annotates copy, clips must come in pairs */
++	if (flags & DRM_MODE_FB_DIRTY_ANNOTATE_COPY && (num_clips % 2)) {
++		ret = -EINVAL;
++		goto out_err1;
++	}
++
++	if (num_clips && clips_ptr) {
++		clips = kzalloc(num_clips * sizeof(*clips), GFP_KERNEL);
++		if (!clips) {
++			ret = -ENOMEM;
++			goto out_err1;
++		}
++
++		ret = copy_from_user(clips, clips_ptr,
++				     num_clips * sizeof(*clips));
++		if (ret)
++			goto out_err2;
++	}
++
++	if (fb->funcs->dirty) {
++		ret = fb->funcs->dirty(fb, flags, r->color, clips, num_clips);
++	} else {
++		ret = -ENOSYS;
++		goto out_err2;
++	}
++
++out_err2:
++	kfree(clips);
++out_err1:
++	mutex_unlock(&dev->mode_config.mutex);
++	return ret;
++}
++
++
+ /**
+  * drm_fb_release - remove and free the FBs on this file
+  * @filp: file * from the ioctl
+@@ -2480,3 +2584,72 @@ out:
+ 	mutex_unlock(&dev->mode_config.mutex);
+ 	return ret;
+ }
++
++int drm_mode_page_flip_ioctl(struct drm_device *dev,
++			     void *data, struct drm_file *file_priv)
++{
++	struct drm_mode_crtc_page_flip *page_flip = data;
++	struct drm_mode_object *obj;
++	struct drm_crtc *crtc;
++	struct drm_framebuffer *fb;
++	struct drm_pending_vblank_event *e = NULL;
++	unsigned long flags;
++	int ret = -EINVAL;
++
++	if (page_flip->flags & ~DRM_MODE_PAGE_FLIP_FLAGS ||
++	    page_flip->reserved != 0)
++		return -EINVAL;
++
++	mutex_lock(&dev->mode_config.mutex);
++	obj = drm_mode_object_find(dev, page_flip->crtc_id, DRM_MODE_OBJECT_CRTC);
++	if (!obj)
++		goto out;
++	crtc = obj_to_crtc(obj);
++
++	if (crtc->funcs->page_flip == NULL)
++		goto out;
++
++	obj = drm_mode_object_find(dev, page_flip->fb_id, DRM_MODE_OBJECT_FB);
++	if (!obj)
++		goto out;
++	fb = obj_to_fb(obj);
++
++	if (page_flip->flags & DRM_MODE_PAGE_FLIP_EVENT) {
++		ret = -ENOMEM;
++		spin_lock_irqsave(&dev->event_lock, flags);
++		if (file_priv->event_space < sizeof e->event) {
++			spin_unlock_irqrestore(&dev->event_lock, flags);
++			goto out;
++		}
++		file_priv->event_space -= sizeof e->event;
++		spin_unlock_irqrestore(&dev->event_lock, flags);
++
++		e = kzalloc(sizeof *e, GFP_KERNEL);
++		if (e == NULL) {
++			spin_lock_irqsave(&dev->event_lock, flags);
++			file_priv->event_space += sizeof e->event;
++			spin_unlock_irqrestore(&dev->event_lock, flags);
++			goto out;
++		}
++
++		e->event.base.type = DRM_EVENT_FLIP_COMPLETE;
++		e->event.base.length = sizeof e->event;
++		e->event.user_data = page_flip->user_data;
++		e->base.event = &e->event.base;
++		e->base.file_priv = file_priv;
++		e->base.destroy =
++			(void (*) (struct drm_pending_event *)) kfree;
++	}
++
++	ret = crtc->funcs->page_flip(crtc, fb, e);
++	if (ret) {
++		spin_lock_irqsave(&dev->event_lock, flags);
++		file_priv->event_space += sizeof e->event;
++		spin_unlock_irqrestore(&dev->event_lock, flags);
++		kfree(e);
++	}
++
++out:
++	mutex_unlock(&dev->mode_config.mutex);
++	return ret;
++}
+diff --git a/drivers/gpu/drm/drm_drv.c b/drivers/gpu/drm/drm_drv.c
+index 7bf0b61..766c468 100644
+--- a/drivers/gpu/drm/drm_drv.c
++++ b/drivers/gpu/drm/drm_drv.c
+@@ -145,6 +145,8 @@ static struct drm_ioctl_desc drm_ioctls[] = {
+ 	DRM_IOCTL_DEF(DRM_IOCTL_MODE_GETFB, drm_mode_getfb, DRM_MASTER|DRM_CONTROL_ALLOW),
+ 	DRM_IOCTL_DEF(DRM_IOCTL_MODE_ADDFB, drm_mode_addfb, DRM_MASTER|DRM_CONTROL_ALLOW),
+ 	DRM_IOCTL_DEF(DRM_IOCTL_MODE_RMFB, drm_mode_rmfb, DRM_MASTER|DRM_CONTROL_ALLOW),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_PAGE_FLIP, drm_mode_page_flip_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW),
++	DRM_IOCTL_DEF(DRM_IOCTL_MODE_DIRTYFB, drm_mode_dirtyfb_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW)
+ };
+ 
+ #define DRM_CORE_IOCTL_COUNT	ARRAY_SIZE( drm_ioctls )
+diff --git a/drivers/gpu/drm/drm_fops.c b/drivers/gpu/drm/drm_fops.c
+index 251bc0e..08d14df 100644
+--- a/drivers/gpu/drm/drm_fops.c
++++ b/drivers/gpu/drm/drm_fops.c
+@@ -257,6 +257,9 @@ static int drm_open_helper(struct inode *inode, struct file *filp,
+ 
+ 	INIT_LIST_HEAD(&priv->lhead);
+ 	INIT_LIST_HEAD(&priv->fbs);
++	INIT_LIST_HEAD(&priv->event_list);
++	init_waitqueue_head(&priv->event_wait);
++	priv->event_space = 4096; /* set aside 4k for event buffer */
+ 
+ 	if (dev->driver->driver_features & DRIVER_GEM)
+ 		drm_gem_open(dev, priv);
+@@ -297,6 +300,18 @@ static int drm_open_helper(struct inode *inode, struct file *filp,
+ 				goto out_free;
+ 			}
+ 		}
++		mutex_lock(&dev->struct_mutex);
++		if (dev->driver->master_set) {
++			ret = dev->driver->master_set(dev, priv, true);
++			if (ret) {
++				/* drop both references if this fails */
++				drm_master_put(&priv->minor->master);
++				drm_master_put(&priv->master);
++				mutex_unlock(&dev->struct_mutex);
++				goto out_free;
++			}
++		}
++		mutex_unlock(&dev->struct_mutex);
+ 	} else {
+ 		/* get a reference to the master */
+ 		priv->master = drm_master_get(priv->minor->master);
+@@ -413,6 +428,30 @@ static void drm_master_release(struct drm_device *dev, struct file *filp)
+ 	}
+ }
+ 
++static void drm_events_release(struct drm_file *file_priv)
++{
++	struct drm_device *dev = file_priv->minor->dev;
++	struct drm_pending_event *e, *et;
++	struct drm_pending_vblank_event *v, *vt;
++	unsigned long flags;
++
++	spin_lock_irqsave(&dev->event_lock, flags);
++
++	/* Remove pending flips */
++	list_for_each_entry_safe(v, vt, &dev->vblank_event_list, base.link)
++		if (v->base.file_priv == file_priv) {
++			list_del(&v->base.link);
++			drm_vblank_put(dev, v->pipe);
++			v->base.destroy(&v->base);
++		}
++
++	/* Remove unconsumed events */
++	list_for_each_entry_safe(e, et, &file_priv->event_list, link)
++		e->destroy(e);
++
++	spin_unlock_irqrestore(&dev->event_lock, flags);
++}
++
+ /**
+  * Release file.
+  *
+@@ -451,6 +490,8 @@ int drm_release(struct inode *inode, struct file *filp)
+ 	if (file_priv->minor->master)
+ 		drm_master_release(dev, filp);
+ 
++	drm_events_release(file_priv);
++
+ 	if (dev->driver->driver_features & DRIVER_GEM)
+ 		drm_gem_release(dev, file_priv);
+ 
+@@ -504,6 +545,8 @@ int drm_release(struct inode *inode, struct file *filp)
+ 
+ 		if (file_priv->minor->master == file_priv->master) {
+ 			/* drop the reference held my the minor */
++			if (dev->driver->master_drop)
++				dev->driver->master_drop(dev, file_priv, true);
+ 			drm_master_put(&file_priv->minor->master);
+ 		}
+ 	}
+@@ -544,9 +587,74 @@ int drm_release(struct inode *inode, struct file *filp)
+ }
+ EXPORT_SYMBOL(drm_release);
+ 
+-/** No-op. */
++static bool
++drm_dequeue_event(struct drm_file *file_priv,
++		  size_t total, size_t max, struct drm_pending_event **out)
++{
++	struct drm_device *dev = file_priv->minor->dev;
++	struct drm_pending_event *e;
++	unsigned long flags;
++	bool ret = false;
++
++	spin_lock_irqsave(&dev->event_lock, flags);
++
++	*out = NULL;
++	if (list_empty(&file_priv->event_list))
++		goto out;
++	e = list_first_entry(&file_priv->event_list,
++			     struct drm_pending_event, link);
++	if (e->event->length + total > max)
++		goto out;
++
++	file_priv->event_space += e->event->length;
++	list_del(&e->link);
++	*out = e;
++	ret = true;
++
++out:
++	spin_unlock_irqrestore(&dev->event_lock, flags);
++	return ret;
++}
++
++ssize_t drm_read(struct file *filp, char __user *buffer,
++		 size_t count, loff_t *offset)
++{
++	struct drm_file *file_priv = filp->private_data;
++	struct drm_pending_event *e;
++	size_t total;
++	ssize_t ret;
++
++	ret = wait_event_interruptible(file_priv->event_wait,
++				       !list_empty(&file_priv->event_list));
++	if (ret < 0)
++		return ret;
++
++	total = 0;
++	while (drm_dequeue_event(file_priv, total, count, &e)) {
++		if (copy_to_user(buffer + total,
++				 e->event, e->event->length)) {
++			total = -EFAULT;
++			break;
++		}
++
++		total += e->event->length;
++		e->destroy(e);
++	}
++
++	return total;
++}
++EXPORT_SYMBOL(drm_read);
++
+ unsigned int drm_poll(struct file *filp, struct poll_table_struct *wait)
+ {
+-	return 0;
++	struct drm_file *file_priv = filp->private_data;
++	unsigned int mask = 0;
++
++	poll_wait(filp, &file_priv->event_wait, wait);
++
++	if (!list_empty(&file_priv->event_list))
++		mask |= POLLIN | POLLRDNORM;
++
++	return mask;
+ }
+ EXPORT_SYMBOL(drm_poll);
+diff --git a/drivers/gpu/drm/drm_irq.c b/drivers/gpu/drm/drm_irq.c
+index 332d743..b98384d 100644
+--- a/drivers/gpu/drm/drm_irq.c
++++ b/drivers/gpu/drm/drm_irq.c
+@@ -115,6 +115,7 @@ void drm_vblank_cleanup(struct drm_device *dev)
+ 
+ 	dev->num_crtcs = 0;
+ }
++EXPORT_SYMBOL(drm_vblank_cleanup);
+ 
+ int drm_vblank_init(struct drm_device *dev, int num_crtcs)
+ {
+@@ -163,7 +164,6 @@ int drm_vblank_init(struct drm_device *dev, int num_crtcs)
+ 	}
+ 
+ 	dev->vblank_disable_allowed = 0;
+-
+ 	return 0;
+ 
+ err:
+@@ -493,6 +493,9 @@ EXPORT_SYMBOL(drm_vblank_off);
+  */
+ void drm_vblank_pre_modeset(struct drm_device *dev, int crtc)
+ {
++	/* vblank is not initialized (IRQ not installed ?) */
++	if (!dev->num_crtcs)
++		return;
+ 	/*
+ 	 * To avoid all the problems that might happen if interrupts
+ 	 * were enabled/disabled around or between these calls, we just
+@@ -568,6 +571,63 @@ out:
+ 	return ret;
+ }
+ 
++static int drm_queue_vblank_event(struct drm_device *dev, int pipe,
++				  union drm_wait_vblank *vblwait,
++				  struct drm_file *file_priv)
++{
++	struct drm_pending_vblank_event *e;
++	struct timeval now;
++	unsigned long flags;
++	unsigned int seq;
++
++	e = kzalloc(sizeof *e, GFP_KERNEL);
++	if (e == NULL)
++		return -ENOMEM;
++
++	e->pipe = pipe;
++	e->event.base.type = DRM_EVENT_VBLANK;
++	e->event.base.length = sizeof e->event;
++	e->event.user_data = vblwait->request.signal;
++	e->base.event = &e->event.base;
++	e->base.file_priv = file_priv;
++	e->base.destroy = (void (*) (struct drm_pending_event *)) kfree;
++
++	do_gettimeofday(&now);
++	spin_lock_irqsave(&dev->event_lock, flags);
++
++	if (file_priv->event_space < sizeof e->event) {
++		spin_unlock_irqrestore(&dev->event_lock, flags);
++		kfree(e);
++		return -ENOMEM;
++	}
++
++	file_priv->event_space -= sizeof e->event;
++	seq = drm_vblank_count(dev, pipe);
++	if ((vblwait->request.type & _DRM_VBLANK_NEXTONMISS) &&
++	    (seq - vblwait->request.sequence) <= (1 << 23)) {
++		vblwait->request.sequence = seq + 1;
++		vblwait->reply.sequence = vblwait->request.sequence;
++	}
++
++	DRM_DEBUG("event on vblank count %d, current %d, crtc %d\n",
++		  vblwait->request.sequence, seq, pipe);
++
++	e->event.sequence = vblwait->request.sequence;
++	if ((seq - vblwait->request.sequence) <= (1 << 23)) {
++		e->event.tv_sec = now.tv_sec;
++		e->event.tv_usec = now.tv_usec;
++		drm_vblank_put(dev, e->pipe);
++		list_add_tail(&e->base.link, &e->base.file_priv->event_list);
++		wake_up_interruptible(&e->base.file_priv->event_wait);
++	} else {
++		list_add_tail(&e->base.link, &dev->vblank_event_list);
++	}
++
++	spin_unlock_irqrestore(&dev->event_lock, flags);
++
++	return 0;
++}
++
+ /**
+  * Wait for VBLANK.
+  *
+@@ -627,6 +687,9 @@ int drm_wait_vblank(struct drm_device *dev, void *data,
+ 		goto done;
+ 	}
+ 
++	if (flags & _DRM_VBLANK_EVENT)
++		return drm_queue_vblank_event(dev, crtc, vblwait, file_priv);
++
+ 	if ((flags & _DRM_VBLANK_NEXTONMISS) &&
+ 	    (seq - vblwait->request.sequence) <= (1<<23)) {
+ 		vblwait->request.sequence = seq + 1;
+@@ -659,6 +722,38 @@ done:
+ 	return ret;
+ }
+ 
++void drm_handle_vblank_events(struct drm_device *dev, int crtc)
++{
++	struct drm_pending_vblank_event *e, *t;
++	struct timeval now;
++	unsigned long flags;
++	unsigned int seq;
++
++	do_gettimeofday(&now);
++	seq = drm_vblank_count(dev, crtc);
++
++	spin_lock_irqsave(&dev->event_lock, flags);
++
++	list_for_each_entry_safe(e, t, &dev->vblank_event_list, base.link) {
++		if (e->pipe != crtc)
++			continue;
++		if ((seq - e->event.sequence) > (1<<23))
++			continue;
++
++		DRM_DEBUG("vblank event on %d, current %d\n",
++			  e->event.sequence, seq);
++
++		e->event.sequence = seq;
++		e->event.tv_sec = now.tv_sec;
++		e->event.tv_usec = now.tv_usec;
++		drm_vblank_put(dev, e->pipe);
++		list_move_tail(&e->base.link, &e->base.file_priv->event_list);
++		wake_up_interruptible(&e->base.file_priv->event_wait);
++	}
++
++	spin_unlock_irqrestore(&dev->event_lock, flags);
++}
++
+ /**
+  * drm_handle_vblank - handle a vblank event
+  * @dev: DRM device
+@@ -669,7 +764,11 @@ done:
+  */
+ void drm_handle_vblank(struct drm_device *dev, int crtc)
+ {
++	if (!dev->num_crtcs)
++		return;
++
+ 	atomic_inc(&dev->_vblank_count[crtc]);
+ 	DRM_WAKEUP(&dev->vbl_queue[crtc]);
++	drm_handle_vblank_events(dev, crtc);
+ }
+ EXPORT_SYMBOL(drm_handle_vblank);
+diff --git a/drivers/gpu/drm/drm_stub.c b/drivers/gpu/drm/drm_stub.c
+index 55bb8a8..ad73e14 100644
+--- a/drivers/gpu/drm/drm_stub.c
++++ b/drivers/gpu/drm/drm_stub.c
+@@ -128,6 +128,7 @@ struct drm_master *drm_master_get(struct drm_master *master)
+ 	kref_get(&master->refcount);
+ 	return master;
+ }
++EXPORT_SYMBOL(drm_master_get);
+ 
+ static void drm_master_destroy(struct kref *kref)
+ {
+@@ -170,10 +171,13 @@ void drm_master_put(struct drm_master **master)
+ 	kref_put(&(*master)->refcount, drm_master_destroy);
+ 	*master = NULL;
+ }
++EXPORT_SYMBOL(drm_master_put);
+ 
+ int drm_setmaster_ioctl(struct drm_device *dev, void *data,
+ 			struct drm_file *file_priv)
+ {
++	int ret = 0;
++
+ 	if (file_priv->is_master)
+ 		return 0;
+ 
+@@ -188,6 +192,13 @@ int drm_setmaster_ioctl(struct drm_device *dev, void *data,
+ 		mutex_lock(&dev->struct_mutex);
+ 		file_priv->minor->master = drm_master_get(file_priv->master);
+ 		file_priv->is_master = 1;
++		if (dev->driver->master_set) {
++			ret = dev->driver->master_set(dev, file_priv, false);
++			if (unlikely(ret != 0)) {
++				file_priv->is_master = 0;
++				drm_master_put(&file_priv->minor->master);
++			}
++		}
+ 		mutex_unlock(&dev->struct_mutex);
+ 	}
+ 
+@@ -204,6 +215,8 @@ int drm_dropmaster_ioctl(struct drm_device *dev, void *data,
+ 		return -EINVAL;
+ 
+ 	mutex_lock(&dev->struct_mutex);
++	if (dev->driver->master_drop)
++		dev->driver->master_drop(dev, file_priv, false);
+ 	drm_master_put(&file_priv->minor->master);
+ 	file_priv->is_master = 0;
+ 	mutex_unlock(&dev->struct_mutex);
+@@ -220,9 +233,11 @@ static int drm_fill_in_dev(struct drm_device * dev, struct pci_dev *pdev,
+ 	INIT_LIST_HEAD(&dev->ctxlist);
+ 	INIT_LIST_HEAD(&dev->vmalist);
+ 	INIT_LIST_HEAD(&dev->maplist);
++	INIT_LIST_HEAD(&dev->vblank_event_list);
+ 
+ 	spin_lock_init(&dev->count_lock);
+ 	spin_lock_init(&dev->drw_lock);
++	spin_lock_init(&dev->event_lock);
+ 	init_timer(&dev->timer);
+ 	mutex_init(&dev->struct_mutex);
+ 	mutex_init(&dev->ctxlist_mutex);
+diff --git a/drivers/gpu/drm/i915/i915_drv.c b/drivers/gpu/drm/i915/i915_drv.c
+index 26fc458..24286ca 100644
+--- a/drivers/gpu/drm/i915/i915_drv.c
++++ b/drivers/gpu/drm/i915/i915_drv.c
+@@ -333,6 +333,7 @@ static struct drm_driver driver = {
+ 		 .mmap = drm_gem_mmap,
+ 		 .poll = drm_poll,
+ 		 .fasync = drm_fasync,
++		 .read = drm_read,
+ #ifdef CONFIG_COMPAT
+ 		 .compat_ioctl = i915_compat_ioctl,
+ #endif
+diff --git a/include/drm/drm.h b/include/drm/drm.h
+index 7cb50bd..9f08546 100644
+--- a/include/drm/drm.h
++++ b/include/drm/drm.h
+@@ -454,6 +454,7 @@ struct drm_irq_busid {
+ enum drm_vblank_seq_type {
+ 	_DRM_VBLANK_ABSOLUTE = 0x0,	/**< Wait for specific vblank sequence number */
+ 	_DRM_VBLANK_RELATIVE = 0x1,	/**< Wait for given number of vblanks */
++	_DRM_VBLANK_EVENT = 0x4000000,   /**< Send event instead of blocking */
+ 	_DRM_VBLANK_FLIP = 0x8000000,   /**< Scheduled buffer swap should flip */
+ 	_DRM_VBLANK_NEXTONMISS = 0x10000000,	/**< If missed, wait for next vblank */
+ 	_DRM_VBLANK_SECONDARY = 0x20000000,	/**< Secondary display controller */
+@@ -461,8 +462,8 @@ enum drm_vblank_seq_type {
+ };
+ 
+ #define _DRM_VBLANK_TYPES_MASK (_DRM_VBLANK_ABSOLUTE | _DRM_VBLANK_RELATIVE)
+-#define _DRM_VBLANK_FLAGS_MASK (_DRM_VBLANK_SIGNAL | _DRM_VBLANK_SECONDARY | \
+-				_DRM_VBLANK_NEXTONMISS)
++#define _DRM_VBLANK_FLAGS_MASK (_DRM_VBLANK_EVENT | _DRM_VBLANK_SIGNAL | \
++				_DRM_VBLANK_SECONDARY | _DRM_VBLANK_NEXTONMISS)
+ 
+ struct drm_wait_vblank_request {
+ 	enum drm_vblank_seq_type type;
+@@ -686,6 +687,8 @@ struct drm_gem_open {
+ #define DRM_IOCTL_MODE_GETFB		DRM_IOWR(0xAD, struct drm_mode_fb_cmd)
+ #define DRM_IOCTL_MODE_ADDFB		DRM_IOWR(0xAE, struct drm_mode_fb_cmd)
+ #define DRM_IOCTL_MODE_RMFB		DRM_IOWR(0xAF, unsigned int)
++#define DRM_IOCTL_MODE_PAGE_FLIP	DRM_IOWR(0xB0, struct drm_mode_crtc_page_flip)
++#define DRM_IOCTL_MODE_DIRTYFB		DRM_IOWR(0xB1, struct drm_mode_fb_dirty_cmd)
+ 
+ /**
+  * Device specific ioctls should only be in their respective headers
+@@ -698,6 +701,35 @@ struct drm_gem_open {
+ #define DRM_COMMAND_BASE                0x40
+ #define DRM_COMMAND_END			0xA0
+ 
++/**
++ * Header for events written back to userspace on the drm fd.  The
++ * type defines the type of event, the length specifies the total
++ * length of the event (including the header), and user_data is
++ * typically a 64 bit value passed with the ioctl that triggered the
++ * event.  A read on the drm fd will always only return complete
++ * events, that is, if for example the read buffer is 100 bytes, and
++ * there are two 64 byte events pending, only one will be returned.
++ *
++ * Event types 0 - 0x7fffffff are generic drm events, 0x80000000 and
++ * up are chipset specific.
++ */
++struct drm_event {
++	__u32 type;
++	__u32 length;
++};
++
++#define DRM_EVENT_VBLANK 0x01
++#define DRM_EVENT_FLIP_COMPLETE 0x02
++
++struct drm_event_vblank {
++	struct drm_event base;
++	__u64 user_data;
++	__u32 tv_sec;
++	__u32 tv_usec;
++	__u32 sequence;
++	__u32 reserved;
++};
++
+ /* typedef area */
+ #ifndef __KERNEL__
+ typedef struct drm_clip_rect drm_clip_rect_t;
+diff --git a/include/drm/drmP.h b/include/drm/drmP.h
+index fc97873..6ea99d1 100644
+--- a/include/drm/drmP.h
++++ b/include/drm/drmP.h
+@@ -404,6 +404,14 @@ struct drm_buf_entry {
+ 	struct drm_freelist freelist;
+ };
+ 
++/* Event queued up for userspace to read */
++struct drm_pending_event {
++	struct drm_event *event;
++	struct list_head link;
++	struct drm_file *file_priv;
++	void (*destroy)(struct drm_pending_event *event);
++};
++
+ /** File private data */
+ struct drm_file {
+ 	int authenticated;
+@@ -427,6 +435,10 @@ struct drm_file {
+ 	struct drm_master *master; /* master this node is currently associated with
+ 				      N.B. not always minor->master */
+ 	struct list_head fbs;
++
++	wait_queue_head_t event_wait;
++	struct list_head event_list;
++	int event_space;
+ };
+ 
+ /** Wait queue */
+@@ -773,6 +785,15 @@ struct drm_driver {
+ 	/* Master routines */
+ 	int (*master_create)(struct drm_device *dev, struct drm_master *master);
+ 	void (*master_destroy)(struct drm_device *dev, struct drm_master *master);
++	/**
++	 * master_set is called whenever the minor master is set.
++	 * master_drop is called whenever the minor master is dropped.
++	 */
++
++	int (*master_set)(struct drm_device *dev, struct drm_file *file_priv,
++			  bool from_open);
++	void (*master_drop)(struct drm_device *dev, struct drm_file *file_priv,
++			    bool from_release);
+ 
+ 	int (*proc_init)(struct drm_minor *minor);
+ 	void (*proc_cleanup)(struct drm_minor *minor);
+@@ -878,6 +899,12 @@ struct drm_minor {
+ 	struct drm_mode_group mode_group;
+ };
+ 
++struct drm_pending_vblank_event {
++	struct drm_pending_event base;
++	int pipe;
++	struct drm_event_vblank event;
++};
++
+ /**
+  * DRM device structure. This structure represent a complete card that
+  * may contain multiple heads.
+@@ -977,6 +1004,12 @@ struct drm_device {
+ 
+ 	u32 max_vblank_count;           /**< size of vblank counter register */
+ 
++	/**
++	 * List of events
++	 */
++	struct list_head vblank_event_list;
++	spinlock_t event_lock;
++
+ 	/*@} */
+ 	cycles_t ctx_start;
+ 	cycles_t lck_start;
+@@ -1113,6 +1146,8 @@ extern int drm_lastclose(struct drm_device *dev);
+ extern int drm_open(struct inode *inode, struct file *filp);
+ extern int drm_stub_open(struct inode *inode, struct file *filp);
+ extern int drm_fasync(int fd, struct file *filp, int on);
++extern ssize_t drm_read(struct file *filp, char __user *buffer,
++			size_t count, loff_t *offset);
+ extern int drm_release(struct inode *inode, struct file *filp);
+ 
+ 				/* Mapping support (drm_vm.h) */
+diff --git a/include/drm/drm_crtc.h b/include/drm/drm_crtc.h
+index e8ad990..ffd84b9 100644
+--- a/include/drm/drm_crtc.h
++++ b/include/drm/drm_crtc.h
+@@ -242,6 +242,21 @@ struct drm_framebuffer_funcs {
+ 	int (*create_handle)(struct drm_framebuffer *fb,
+ 			     struct drm_file *file_priv,
+ 			     unsigned int *handle);
++	/**
++	 * Optinal callback for the dirty fb ioctl.
++	 *
++	 * Userspace can notify the driver via this callback
++	 * that a area of the framebuffer has changed and should
++	 * be flushed to the display hardware.
++	 *
++	 * See documentation in drm_mode.h for the struct
++	 * drm_mode_fb_dirty_cmd for more information as all
++	 * the semantics and arguments have a one to one mapping
++	 * on this function.
++	 */
++	int (*dirty)(struct drm_framebuffer *framebuffer, unsigned flags,
++		     unsigned color, struct drm_clip_rect *clips,
++		     unsigned num_clips);
+ };
+ 
+ struct drm_framebuffer {
+@@ -290,6 +305,7 @@ struct drm_property {
+ struct drm_crtc;
+ struct drm_connector;
+ struct drm_encoder;
++struct drm_pending_vblank_event;
+ 
+ /**
+  * drm_crtc_funcs - control CRTCs for a given device
+@@ -333,6 +349,19 @@ struct drm_crtc_funcs {
+ 	void (*destroy)(struct drm_crtc *crtc);
+ 
+ 	int (*set_config)(struct drm_mode_set *set);
++
++	/*
++	 * Flip to the given framebuffer.  This implements the page
++	 * flip ioctl descibed in drm_mode.h, specifically, the
++	 * implementation must return immediately and block all
++	 * rendering to the current fb until the flip has completed.
++	 * If userspace set the event flag in the ioctl, the event
++	 * argument will point to an event to send back when the flip
++	 * completes, otherwise it will be NULL.
++	 */
++	int (*page_flip)(struct drm_crtc *crtc,
++			 struct drm_framebuffer *fb,
++			 struct drm_pending_vblank_event *event);
+ };
+ 
+ /**
+@@ -596,6 +625,7 @@ struct drm_mode_config {
+ 	/* Optional properties */
+ 	struct drm_property *scaling_mode_property;
+ 	struct drm_property *dithering_mode_property;
++	struct drm_property *dirty_info_property;
+ };
+ 
+ #define obj_to_crtc(x) container_of(x, struct drm_crtc, base)
+@@ -704,6 +734,7 @@ extern int drm_mode_create_tv_properties(struct drm_device *dev, int num_formats
+ 				     char *formats[]);
+ extern int drm_mode_create_scaling_mode_property(struct drm_device *dev);
+ extern int drm_mode_create_dithering_property(struct drm_device *dev);
++extern int drm_mode_create_dirty_info_property(struct drm_device *dev);
+ extern char *drm_get_encoder_name(struct drm_encoder *encoder);
+ 
+ extern int drm_mode_connector_attach_encoder(struct drm_connector *connector,
+@@ -732,6 +763,8 @@ extern int drm_mode_rmfb(struct drm_device *dev,
+ 			 void *data, struct drm_file *file_priv);
+ extern int drm_mode_getfb(struct drm_device *dev,
+ 			  void *data, struct drm_file *file_priv);
++extern int drm_mode_dirtyfb_ioctl(struct drm_device *dev,
++				  void *data, struct drm_file *file_priv);
+ extern int drm_mode_addmode_ioctl(struct drm_device *dev,
+ 				  void *data, struct drm_file *file_priv);
+ extern int drm_mode_rmmode_ioctl(struct drm_device *dev,
+@@ -758,6 +791,8 @@ extern int drm_mode_gamma_get_ioctl(struct drm_device *dev,
+ extern int drm_mode_gamma_set_ioctl(struct drm_device *dev,
+ 				    void *data, struct drm_file *file_priv);
+ extern bool drm_detect_hdmi_monitor(struct edid *edid);
++extern int drm_mode_page_flip_ioctl(struct drm_device *dev,
++				    void *data, struct drm_file *file_priv);
+ extern struct drm_display_mode *drm_cvt_mode(struct drm_device *dev,
+ 				int hdisplay, int vdisplay, int vrefresh,
+ 				bool reduced, bool interlaced, bool margins);
+diff --git a/include/drm/drm_mode.h b/include/drm/drm_mode.h
+index 5886af7..aa8d2ff 100644
+--- a/include/drm/drm_mode.h
++++ b/include/drm/drm_mode.h
+@@ -78,6 +78,11 @@
+ #define DRM_MODE_DITHERING_OFF	0
+ #define DRM_MODE_DITHERING_ON	1
+ 
++/* Dirty info options */
++#define DRM_MODE_DIRTY_OFF      0
++#define DRM_MODE_DIRTY_ON       1
++#define DRM_MODE_DIRTY_ANNOTATE 2
++
+ struct drm_mode_modeinfo {
+ 	__u32 clock;
+ 	__u16 hdisplay, hsync_start, hsync_end, htotal, hskew;
+@@ -226,6 +231,45 @@ struct drm_mode_fb_cmd {
+ 	__u32 handle;
+ };
+ 
++#define DRM_MODE_FB_DIRTY_ANNOTATE_COPY 0x01
++#define DRM_MODE_FB_DIRTY_ANNOTATE_FILL 0x02
++#define DRM_MODE_FB_DIRTY_FLAGS         0x03
++
++/*
++ * Mark a region of a framebuffer as dirty.
++ *
++ * Some hardware does not automatically update display contents
++ * as a hardware or software draw to a framebuffer. This ioctl
++ * allows userspace to tell the kernel and the hardware what
++ * regions of the framebuffer have changed.
++ *
++ * The kernel or hardware is free to update more then just the
++ * region specified by the clip rects. The kernel or hardware
++ * may also delay and/or coalesce several calls to dirty into a
++ * single update.
++ *
++ * Userspace may annotate the updates, the annotates are a
++ * promise made by the caller that the change is either a copy
++ * of pixels or a fill of a single color in the region specified.
++ *
++ * If the DRM_MODE_FB_DIRTY_ANNOTATE_COPY flag is given then
++ * the number of updated regions are half of num_clips given,
++ * where the clip rects are paired in src and dst. The width and
++ * height of each one of the pairs must match.
++ *
++ * If the DRM_MODE_FB_DIRTY_ANNOTATE_FILL flag is given the caller
++ * promises that the region specified of the clip rects is filled
++ * completely with a single color as given in the color argument.
++ */
++
++struct drm_mode_fb_dirty_cmd {
++	__u32 fb_id;
++	__u32 flags;
++	__u32 color;
++	__u32 num_clips;
++	__u64 clips_ptr;
++};
++
+ struct drm_mode_mode_cmd {
+ 	__u32 connector_id;
+ 	struct drm_mode_modeinfo mode;
+@@ -269,4 +313,37 @@ struct drm_mode_crtc_lut {
+ 	__u64 blue;
+ };
+ 
++#define DRM_MODE_PAGE_FLIP_EVENT 0x01
++#define DRM_MODE_PAGE_FLIP_FLAGS DRM_MODE_PAGE_FLIP_EVENT
++
++/*
++ * Request a page flip on the specified crtc.
++ *
++ * This ioctl will ask KMS to schedule a page flip for the specified
++ * crtc.  Once any pending rendering targeting the specified fb (as of
++ * ioctl time) has completed, the crtc will be reprogrammed to display
++ * that fb after the next vertical refresh.  The ioctl returns
++ * immediately, but subsequent rendering to the current fb will block
++ * in the execbuffer ioctl until the page flip happens.  If a page
++ * flip is already pending as the ioctl is called, EBUSY will be
++ * returned.
++ *
++ * The ioctl supports one flag, DRM_MODE_PAGE_FLIP_EVENT, which will
++ * request that drm sends back a vblank event (see drm.h: struct
++ * drm_event_vblank) when the page flip is done.  The user_data field
++ * passed in with this ioctl will be returned as the user_data field
++ * in the vblank event struct.
++ *
++ * The reserved field must be zero until we figure out something
++ * clever to use it for.
++ */
++
++struct drm_mode_crtc_page_flip {
++	__u32 crtc_id;
++	__u32 fb_id;
++	__u32 flags;
++	__u32 reserved;
++	__u64 user_data;
++};
++
+ #endif

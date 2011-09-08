@@ -1,0 +1,79 @@
+From: Peter Bogdanovic <pbogdano@redhat.com>
+Date: Mon, 25 Jan 2010 04:53:01 -0500
+Subject: [x86] io-apic: Move the effort of clearing remoteIRR explicitly before migrating the irq
+Message-id: <20100125044605.817.12945.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 22786
+O-Subject: [PATCH RHEL6 6/9 BZ 463633] x86,
+	io-apic: Move the effort of clearing remoteIRR explicitly before
+	migrating the irq
+Bugzilla: 463633
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+x86, io-apic: Move the effort of clearing remoteIRR explicitly before migrating the irq
+
+ca64c47cecd0321b2e0dcbd7aaff44b68ce20654
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=ca64c47cecd0321b2e0dcbd7aaff44b68ce20654
+
+When the level-triggered interrupt is seen as an edge interrupt,
+we try to clear the remoteIRR explicitly (using either an
+io-apic eoi register when present or through the idea of
+changing trigger mode of the io-apic RTE to edge and then back
+to level). But this explicit try also needs to happen before we
+try to migrate the irq. Otherwise irq migration attempt will
+fail anyhow, as it postpones the irq migration to a later
+attempt when it sees the remoteIRR in the io-apic RTE still set.
+
+Signed-off-by: "Maciej W. Rozycki" <macro@linux-mips.org>
+Reviewed-by: Suresh Siddha <suresh.b.siddha@intel.com>
+Cc: ebiederm@xmission.com
+Cc: garyhade@us.ibm.com
+LKML-Reference: <20091201233334.975416130@sbs-t61.sc.intel.com>
+Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+diff --git a/arch/x86/kernel/apic/io_apic.c b/arch/x86/kernel/apic/io_apic.c
+index 674a29d..e97a89c 100644
+--- a/arch/x86/kernel/apic/io_apic.c
++++ b/arch/x86/kernel/apic/io_apic.c
+@@ -2574,6 +2574,20 @@ static void ack_apic_level(unsigned int irq)
+ 	 */
+ 	ack_APIC_irq();
+ 
++	/* Tail end of version 0x11 I/O APIC bug workaround */
++	if (!(v & (1 << (i & 0x1f)))) {
++		atomic_inc(&irq_mis_count);
++
++		if (use_eoi_reg)
++			eoi_ioapic_irq(desc);
++		else {
++			spin_lock(&ioapic_lock);
++			__mask_and_edge_IO_APIC_irq(cfg);
++			__unmask_and_level_IO_APIC_irq(cfg);
++			spin_unlock(&ioapic_lock);
++		}
++	}
++
+ 	/* Now we can move and renable the irq */
+ 	if (unlikely(do_unmask_irq)) {
+ 		/* Only migrate the irq if the ack has been received.
+@@ -2607,20 +2621,6 @@ static void ack_apic_level(unsigned int irq)
+ 			move_masked_irq(irq);
+ 		unmask_IO_APIC_irq_desc(desc);
+ 	}
+-
+-	/* Tail end of version 0x11 I/O APIC bug workaround */
+-	if (!(v & (1 << (i & 0x1f)))) {
+-		atomic_inc(&irq_mis_count);
+-
+-		if (use_eoi_reg)
+-			eoi_ioapic_irq(desc);
+-		else {
+-			spin_lock(&ioapic_lock);
+-			__mask_and_edge_IO_APIC_irq(cfg);
+-			__unmask_and_level_IO_APIC_irq(cfg);
+-			spin_unlock(&ioapic_lock);
+-		}
+-	}
+ }
+ 
+ #ifdef CONFIG_INTR_REMAP

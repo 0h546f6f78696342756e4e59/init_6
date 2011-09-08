@@ -1,0 +1,32 @@
+From: Daniel T Chen <crimsun@ubuntu.com>
+Date: Sun, 27 Dec 2009 15:48:40 -0500
+Subject: [stable] ALSA: atiixp: Specify codec for Foxconn RC4107MA-RS2
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit dfb12eeb0f04b37e5eb3858864d074af4ecd2ac7 upstream.
+
+BugLink: https://bugs.launchpad.net/ubuntu/+bug/498863
+
+This mainboard needs ac97_codec=0.
+
+Tested-by: Apoorv Parle <apparle@yahoo.co.in>
+Signed-off-by: Daniel T Chen <crimsun@ubuntu.com>
+Signed-off-by: Takashi Iwai <tiwai@suse.de>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/sound/pci/atiixp.c b/sound/pci/atiixp.c
+index d6752df..42b4fbb 100644
+--- a/sound/pci/atiixp.c
++++ b/sound/pci/atiixp.c
+@@ -297,6 +297,7 @@ static struct pci_device_id snd_atiixp_ids[] = {
+ MODULE_DEVICE_TABLE(pci, snd_atiixp_ids);
+ 
+ static struct snd_pci_quirk atiixp_quirks[] __devinitdata = {
++	SND_PCI_QUIRK(0x105b, 0x0c81, "Foxconn RC4107MA-RS2", 0),
+ 	SND_PCI_QUIRK(0x15bd, 0x3100, "DFI RS482", 0),
+ 	{ } /* terminator */
+ };

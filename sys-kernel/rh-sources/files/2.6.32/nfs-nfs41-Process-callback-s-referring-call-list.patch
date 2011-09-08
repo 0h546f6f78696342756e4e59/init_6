@@ -1,0 +1,75 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 21:00:37 -0500
+Subject: [nfs] nfs41: Process callback's referring call list
+Message-id: <4B6740F5.1080807@RedHat.com>
+Patchwork-id: 23072
+O-Subject: [RHEL6] [PATCH 3/13] nfs41: Process callback's referring call list
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit f93f599e8f6f8c26a99beb8324b15bc8c5f3663a
+Author: Mike Sager <sager@netapp.com>
+Date:   Tue Jan 19 12:54:41 2010 -0500
+
+    nfs41: Process callback's referring call list
+
+    If a CB_SEQUENCE referring call triple matches a slot table entry, the
+    client is still waiting for a response to the original request.  In this
+    case, return NFS4ERR_DELAY as the response to the callback.
+
+    Signed-off-by: Mike Sager <sager@netapp.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/callback_proc.c b/fs/nfs/callback_proc.c
+index 631b44c..49c4b54 100644
+--- a/fs/nfs/callback_proc.c
++++ b/fs/nfs/callback_proc.c
+@@ -280,17 +280,12 @@ out:
+ 	return status;
+ }
+ 
+-/* FIXME: referring calls should be processed */
+ unsigned nfs4_callback_sequence(struct cb_sequenceargs *args,
+ 				struct cb_sequenceres *res)
+ {
+ 	struct nfs_client *clp;
+ 	int i, status;
+ 
+-	for (i = 0; i < args->csa_nrclists; i++)
+-		kfree(args->csa_rclists[i].rcl_refcalls);
+-	kfree(args->csa_rclists);
+-
+ 	status = htonl(NFS4ERR_BADSESSION);
+ 	clp = find_client_with_session(args->csa_addr, 4, &args->csa_sessionid);
+ 	if (clp == NULL)
+@@ -301,6 +296,16 @@ unsigned nfs4_callback_sequence(struct cb_sequenceargs *args,
+ 	if (status)
+ 		goto out_putclient;
+ 
++	/*
++	 * Check for pending referring calls.  If a match is found, a
++	 * related callback was received before the response to the original
++	 * call.
++	 */
++	if (referring_call_exists(clp, args->csa_nrclists, args->csa_rclists)) {
++		status = htonl(NFS4ERR_DELAY);
++		goto out_putclient;
++	}
++
+ 	memcpy(&res->csr_sessionid, &args->csa_sessionid,
+ 	       sizeof(res->csr_sessionid));
+ 	res->csr_sequenceid = args->csa_sequenceid;
+@@ -311,6 +316,10 @@ unsigned nfs4_callback_sequence(struct cb_sequenceargs *args,
+ out_putclient:
+ 	nfs_put_client(clp);
+ out:
++	for (i = 0; i < args->csa_nrclists; i++)
++		kfree(args->csa_rclists[i].rcl_refcalls);
++	kfree(args->csa_rclists);
++
+ 	dprintk("%s: exit with status = %d\n", __func__, ntohl(status));
+ 	res->csr_status = status;
+ 	return res->csr_status;

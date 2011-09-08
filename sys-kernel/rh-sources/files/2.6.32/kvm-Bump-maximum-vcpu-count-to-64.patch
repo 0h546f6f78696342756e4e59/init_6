@@ -1,0 +1,43 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:12:14 -0500
+Subject: [kvm] Bump maximum vcpu count to 64
+Message-id: <20100114171430.636946985@amt.cnet>
+Patchwork-id: 22536
+O-Subject: [RHEL 6 KVM 26/27] KVM: Bump maximum vcpu count to 64
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 843e0ada166893e2f481d3b11fe656fd0a240dac
+Author: Avi Kivity <avi@redhat.com>
+Date:   Sun Dec 27 17:00:46 2009 +0200
+
+KVM: Bump maximum vcpu count to 64
+
+With slots_lock converted to rcu, the entire kvm hotpath on modern processors
+(with npt or ept) now scales beautifully.  Increase the maximum vcpu count to
+64 to reflect this.
+
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/kvm_host.h b/arch/x86/include/asm/kvm_host.h
+index 2ba7c13..8619a4a 100644
+--- a/arch/x86/include/asm/kvm_host.h
++++ b/arch/x86/include/asm/kvm_host.h
+@@ -25,7 +25,7 @@
+ #include <asm/mtrr.h>
+ #include <asm/msr-index.h>
+ 
+-#define KVM_MAX_VCPUS 16
++#define KVM_MAX_VCPUS 64
+ #define KVM_MEMORY_SLOTS 32
+ /* memory slots that does not exposed to userspace */
+ #define KVM_PRIVATE_MEM_SLOTS 4

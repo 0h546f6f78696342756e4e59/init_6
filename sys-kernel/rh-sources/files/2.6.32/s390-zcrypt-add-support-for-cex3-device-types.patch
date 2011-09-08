@@ -1,0 +1,113 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 4 Dec 2009 13:57:39 -0500
+Subject: [s390] zcrypt: add support for cex3 device types
+Message-id: <20091204135947.566786113@redhat.com>
+Patchwork-id: 21683
+O-Subject: [RHEL6 PATCH 3/6] s390 - zcrypt: add support for cex3 device types
+Bugzilla: 537495
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+===========
+This patch renames the CEX2C2 and CEX2A2 types to CEX3 device types.
+
+Bugzilla
+========
+BZ 537495
+https://bugzilla.redhat.com/show_bug.cgi?id=537495
+
+Upstream status of the patch
+============================
+The patch will be upstream as of kernel version 2.6.33.
+The patch has been already posted to LKML:
+http://marc.info/?l=linux-kernel&m=125812550116417&w=4
+
+Test status
+===========
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/crypto/ap_bus.h b/drivers/s390/crypto/ap_bus.h
+index c374667..4785d07 100644
+--- a/drivers/s390/crypto/ap_bus.h
++++ b/drivers/s390/crypto/ap_bus.h
+@@ -97,8 +97,8 @@ struct ap_queue_status {
+ #define AP_DEVICE_TYPE_PCIXCC	5
+ #define AP_DEVICE_TYPE_CEX2A	6
+ #define AP_DEVICE_TYPE_CEX2C	7
+-#define AP_DEVICE_TYPE_CEX2A2	8
+-#define AP_DEVICE_TYPE_CEX2C2	9
++#define AP_DEVICE_TYPE_CEX3A	8
++#define AP_DEVICE_TYPE_CEX3C	9
+ 
+ /*
+  * AP reset flag states
+diff --git a/drivers/s390/crypto/zcrypt_api.c b/drivers/s390/crypto/zcrypt_api.c
+index 65b6a96..fe21477 100644
+--- a/drivers/s390/crypto/zcrypt_api.c
++++ b/drivers/s390/crypto/zcrypt_api.c
+@@ -1009,6 +1009,10 @@ static int zcrypt_status_read(char *resp_buff, char **start, off_t offset,
+ 		       zcrypt_count_type(ZCRYPT_CEX2C));
+ 	len += sprintf(resp_buff + len, "CEX2A count: %d\n",
+ 		       zcrypt_count_type(ZCRYPT_CEX2A));
++	len += sprintf(resp_buff + len, "CEX3C count: %d\n",
++		       zcrypt_count_type(ZCRYPT_CEX3C));
++	len += sprintf(resp_buff + len, "CEX3A count: %d\n",
++		       zcrypt_count_type(ZCRYPT_CEX3A));
+ 	len += sprintf(resp_buff + len, "requestq count: %d\n",
+ 		       zcrypt_requestq_count());
+ 	len += sprintf(resp_buff + len, "pendingq count: %d\n",
+@@ -1017,7 +1021,7 @@ static int zcrypt_status_read(char *resp_buff, char **start, off_t offset,
+ 		       atomic_read(&zcrypt_open_count));
+ 	zcrypt_status_mask(workarea);
+ 	len += sprinthx("Online devices: 1=PCICA 2=PCICC 3=PCIXCC(MCL2) "
+-			"4=PCIXCC(MCL3) 5=CEX2C 6=CEX2A",
++			"4=PCIXCC(MCL3) 5=CEX2C 6=CEX2A 7=CEX3C 8=CEX3A",
+ 			resp_buff+len, workarea, AP_DEVICES);
+ 	zcrypt_qdepth_mask(workarea);
+ 	len += sprinthx("Waiting work element counts",
+@@ -1095,8 +1099,9 @@ static int zcrypt_status_write(struct file *file, const char __user *buffer,
+ 		 * '0' for no device, '1' for PCICA, '2' for PCICC,
+ 		 * '3' for PCIXCC_MCL2, '4' for PCIXCC_MCL3,
+ 		 * '5' for CEX2C and '6' for CEX2A'
++		 * '7' for CEX3C and '8' for CEX3A
+ 		 */
+-		if (*ptr >= '0' && *ptr <= '6')
++		if (*ptr >= '0' && *ptr <= '8')
+ 			j++;
+ 		else if (*ptr == 'd' || *ptr == 'D')
+ 			zcrypt_disable_card(j++);
+diff --git a/drivers/s390/crypto/zcrypt_cex2a.c b/drivers/s390/crypto/zcrypt_cex2a.c
+index ad61a6a..d25b6df 100644
+--- a/drivers/s390/crypto/zcrypt_cex2a.c
++++ b/drivers/s390/crypto/zcrypt_cex2a.c
+@@ -49,7 +49,7 @@
+ 
+ static struct ap_device_id zcrypt_cex2a_ids[] = {
+ 	{ AP_DEVICE(AP_DEVICE_TYPE_CEX2A) },
+-	{ AP_DEVICE(AP_DEVICE_TYPE_CEX2A2) },
++	{ AP_DEVICE(AP_DEVICE_TYPE_CEX3A) },
+ 	{ /* end of list */ },
+ };
+ 
+diff --git a/drivers/s390/crypto/zcrypt_pcixcc.c b/drivers/s390/crypto/zcrypt_pcixcc.c
+index addaadd..cdaa401 100644
+--- a/drivers/s390/crypto/zcrypt_pcixcc.c
++++ b/drivers/s390/crypto/zcrypt_pcixcc.c
+@@ -72,7 +72,7 @@ struct response_type {
+ static struct ap_device_id zcrypt_pcixcc_ids[] = {
+ 	{ AP_DEVICE(AP_DEVICE_TYPE_PCIXCC) },
+ 	{ AP_DEVICE(AP_DEVICE_TYPE_CEX2C) },
+-	{ AP_DEVICE(AP_DEVICE_TYPE_CEX2C2) },
++	{ AP_DEVICE(AP_DEVICE_TYPE_CEX3C) },
+ 	{ /* end of list */ },
+ };
+ 

@@ -1,0 +1,79 @@
+From: Jaroslav Kysela <jkysela@redhat.com>
+Date: Thu, 21 Jan 2010 15:26:59 -0500
+Subject: [sound] Fix SPDIF-In for AD1988 codecs + add Intel Cougar IDs
+Message-id: <201001211527.o0LFQxT4012539@int-mx08.intmail.prod.int.phx2.redhat.com>
+Patchwork-id: 22691
+O-Subject: [PATCH RHEL 6.0] Fix SPDIF-In for AD1988 codecs + add Intel Cougar IDs
+Bugzilla: 557473
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+Bugzilla
+========
+BZ#557473
+https://bugzilla.redhat.com/bugzilla/show_bug.cgi?id=557473
+
+Description
+===========
+The SPDIF-input pin 0x1c is muted by default in hardware for AD1988 HDA codecs.
+Unmute appropriate pin to get captured samples instead zeros.
+
+This patch adds also the Intel Cougar Point (PCH) HD Audio Controller
+DeviceIDs.
+
+Test status
+===========
+AD1988 patch was tested on a Lenovo Thinkstation machine.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/sound/pci/hda/hda_intel.c b/sound/pci/hda/hda_intel.c
+index 3408c8a..d719618 100644
+--- a/sound/pci/hda/hda_intel.c
++++ b/sound/pci/hda/hda_intel.c
+@@ -125,6 +125,7 @@ MODULE_SUPPORTED_DEVICE("{{Intel, ICH6},"
+ 			 "{Intel, ICH9},"
+ 			 "{Intel, ICH10},"
+ 			 "{Intel, PCH},"
++			 "{Intel, CPT},"
+ 			 "{Intel, SCH},"
+ 			 "{ATI, SB450},"
+ 			 "{ATI, SB600},"
+@@ -2676,6 +2677,8 @@ static struct pci_device_id azx_ids[] = {
+ 	{ PCI_DEVICE(0x8086, 0x3a6e), .driver_data = AZX_DRIVER_ICH },
+ 	/* PCH */
+ 	{ PCI_DEVICE(0x8086, 0x3b56), .driver_data = AZX_DRIVER_ICH },
++	/* CPT */
++	{ PCI_DEVICE(0x8086, 0x1c20), .driver_data = AZX_DRIVER_ICH },
+ 	/* SCH */
+ 	{ PCI_DEVICE(0x8086, 0x811b), .driver_data = AZX_DRIVER_SCH },
+ 	/* ATI SB 450/600 */
+diff --git a/sound/pci/hda/patch_analog.c b/sound/pci/hda/patch_analog.c
+index f6e7bdd..d4dd59f 100644
+--- a/sound/pci/hda/patch_analog.c
++++ b/sound/pci/hda/patch_analog.c
+@@ -2397,6 +2397,12 @@ static struct hda_verb ad1988_spdif_init_verbs[] = {
+ 	{ }
+ };
+ 
++static struct hda_verb ad1988_spdif_in_init_verbs[] = {
++	/* unmute SPDIF input pin */
++	{0x1c, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_UNMUTE(0)},
++	{ }
++};
++
+ /* AD1989 has no ADC -> SPDIF route */
+ static struct hda_verb ad1989_spdif_init_verbs[] = {
+ 	/* SPDIF-1 out pin */
+@@ -3132,8 +3138,11 @@ static int patch_ad1988(struct hda_codec *codec)
+ 				ad1988_spdif_init_verbs;
+ 		}
+ 	}
+-	if (spec->dig_in_nid && codec->vendor_id < 0x11d4989a)
++	if (spec->dig_in_nid && codec->vendor_id < 0x11d4989a) {
+ 		spec->mixers[spec->num_mixers++] = ad1988_spdif_in_mixers;
++		spec->init_verbs[spec->num_init_verbs++] =
++			ad1988_spdif_in_init_verbs;
++	}
+ 
+ 	codec->patch_ops = ad198x_patch_ops;
+ 	switch (board_config) {

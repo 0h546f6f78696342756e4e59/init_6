@@ -1,0 +1,91 @@
+From: Jerome Marchand <jmarchan@redhat.com>
+Date: Fri, 12 Feb 2010 16:23:47 -0500
+Subject: [kernel] Prevent futex user corruption to crash the kernel
+Message-id: <4B758093.5090206@redhat.com>
+Patchwork-id: 23255
+O-Subject: [RHEL6 PATCH] BZ563957: Futex user corruption can crash the kernel
+Bugzilla: 563957
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+Bugzilla:
+https://bugzilla.redhat.com/show_bug.cgi?id=563957
+
+Description:
+A user application corrupting a futex value can crash the kernel.
+
+More detailed description of first commit (from upstream):
+If the owner of a PI futex dies we fix up the pi_state and set
+pi_state->owner to NULL. When a malicious or just sloppy programmed
+user space application sets the futex value to 0 e.g. by calling
+pthread_mutex_init(), then the futex can be acquired again. A new
+waiter manages to enqueue itself on the pi_state w/o damage, but on
+unlock the kernel dereferences pi_state->owner and oopses.
+
+Prevent this by checking pi_state->owner in the unlock path. If
+pi_state->owner is not current we know that user space manipulated the
+futex value. Ignore the mess and return -EINVAL.
+
+This catches the above case and also the case where a task hijacks the
+futex by setting the tid value and then tries to unlock it.
+
+The second commit corrects a bogus warning about what is in fact user
+space corruption.
+Return EINVAL instead and let user space deal with it.
+
+Upstream status:
+commit 51246bfd189064079c54421507236fd2723b18f3
+commit 59647b6ac3050dd964bc556fe6ef22f4db5b935c
+
+Brew build:
+https://brewweb.devel.redhat.com/taskinfo?taskID=2243701
+
+Regards,
+Jerome
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/futex.c b/kernel/futex.c
+index 4b58e0e..779f299 100644
+--- a/kernel/futex.c
++++ b/kernel/futex.c
+@@ -581,8 +581,25 @@ lookup_pi_state(u32 uval, struct futex_hash_bucket *hb,
+ 				return -EINVAL;
+ 
+ 			WARN_ON(!atomic_read(&pi_state->refcount));
+-			WARN_ON(pid && pi_state->owner &&
+-				pi_state->owner->pid != pid);
++
++			/*
++			 * When pi_state->owner is NULL then the owner died
++			 * and another waiter is on the fly. pi_state->owner
++			 * is fixed up by the task which acquires
++			 * pi_state->rt_mutex.
++			 *
++			 * We do not check for pid == 0 which can happen when
++			 * the owner died and robust_list_exit() cleared the
++			 * TID.
++			 */
++			if (pid && pi_state->owner) {
++				/*
++				 * Bail out if user space manipulated the
++				 * futex value.
++				 */
++				if (pid != task_pid_vnr(pi_state->owner))
++					return -EINVAL;
++			}
+ 
+ 			atomic_inc(&pi_state->refcount);
+ 			*ps = pi_state;
+@@ -808,6 +825,12 @@ static int wake_futex_pi(u32 __user *uaddr, u32 uval, struct futex_q *this)
+ 
+ 	if (!pi_state)
+ 		return -EINVAL;
++	/*
++	 * If current does not own the pi_state then the futex is
++	 * inconsistent and user space fiddled with the futex value.
++	 */
++	if (pi_state->owner != current)
++		return -EINVAL;
+ 
+ 	spin_lock(&pi_state->pi_mutex.wait_lock);
+ 	new_owner = rt_mutex_next_owner(&pi_state->pi_mutex);

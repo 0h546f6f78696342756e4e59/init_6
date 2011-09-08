@@ -1,0 +1,32 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Mon, 23 Nov 2009 16:47:10 -0500
+Subject: [s390x] fix build failure with CONFIG_FTRACE_SYSCALLS
+Message-id: <20091123164709.GO3441@redhat.com>
+Patchwork-id: 21469
+O-Subject: [RHEL6 PATCH] s390x: fix build failure with CONFIG_FTRACE_SYSCALLS
+Bugzilla: 538978
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+https://bugzilla.redhat.com/show_bug.cgi?id=538978
+Upstream: pending, http://patchwork.kernel.org/patch/61178/
+
+When building a s390x kernel with CONFIG_FTRACE_SYSCALLS but without
+CONFIG_DYNAMIC_FTRACE, the build fails because of lacking of symbols
+in ftrace.o.
+
+Patch tested in a scratch build, solving the problem.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/s390/kernel/Makefile b/arch/s390/kernel/Makefile
+index c7be8e1..6c0d260 100644
+--- a/arch/s390/kernel/Makefile
++++ b/arch/s390/kernel/Makefile
+@@ -44,6 +44,7 @@ obj-$(CONFIG_KPROBES)		+= kprobes.o
+ obj-$(CONFIG_FUNCTION_TRACER)	+= $(if $(CONFIG_64BIT),mcount64.o,mcount.o)
+ obj-$(CONFIG_DYNAMIC_FTRACE)	+= ftrace.o
+ obj-$(CONFIG_FUNCTION_GRAPH_TRACER) += ftrace.o
++obj-$(CONFIG_FTRACE_SYSCALLS)	+= ftrace.o
+ 
+ # Kexec part
+ S390_KEXEC_OBJS := machine_kexec.o crash.o

@@ -1,0 +1,61 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:23 -0500
+Subject: [mm] introduce _GFP_NO_KSWAPD
+Message-id: <20100201152040.056289971@redhat.com>
+Patchwork-id: 23040
+O-Subject: [RHEL6 26/37] _GFP_NO_KSWAPD
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Transparent hugepage allocations must be allowed not to invoke kswapd or any
+other kind of indirect reclaim (especially when the defrag sysfs is control
+disabled). It's unacceptable to swap out anonymous pages (potentially
+anonymous transparent hugepages) in order to create new transparent hugepages.
+This is true for the MADV_HUGEPAGE areas too (swapping out a kvm virtual
+machine and so having it suffer an unbearable slowdown, so another one with
+guest physical memory marked MADV_HUGEPAGE can run 30% faster if it is running
+memory intensive workloads, makes no sense). If a transparent hugepage
+allocation fails the slowdown is minor and there is total fallback, so kswapd
+should never be asked to swapout memory to allow the high order allocation to
+succeed.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/gfp.h b/include/linux/gfp.h
+index 557bdad..64d72e5 100644
+--- a/include/linux/gfp.h
++++ b/include/linux/gfp.h
+@@ -59,13 +59,15 @@ struct vm_area_struct;
+ #define __GFP_NOTRACK	((__force gfp_t)0)
+ #endif
+ 
++#define __GFP_NO_KSWAPD	((__force gfp_t)0x400000u)
++
+ /*
+  * This may seem redundant, but it's a way of annotating false positives vs.
+  * allocations that simply cannot be supported (e.g. page tables).
+  */
+ #define __GFP_NOTRACK_FALSE_POSITIVE (__GFP_NOTRACK)
+ 
+-#define __GFP_BITS_SHIFT 22	/* Room for 22 __GFP_FOO bits */
++#define __GFP_BITS_SHIFT 23	/* Room for 23 __GFP_FOO bits */
+ #define __GFP_BITS_MASK ((__force gfp_t)((1 << __GFP_BITS_SHIFT) - 1))
+ 
+ /* This equals 0, but use constants in case they ever change */
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index 947da14..ec9b70d 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -1818,7 +1818,8 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+ 		goto nopage;
+ 
+ restart:
+-	wake_all_kswapd(order, zonelist, high_zoneidx);
++	if (!(gfp_mask & __GFP_NO_KSWAPD))
++		wake_all_kswapd(order, zonelist, high_zoneidx);
+ 
+ 	/*
+ 	 * OK, we're below the kswapd watermark and have kicked background

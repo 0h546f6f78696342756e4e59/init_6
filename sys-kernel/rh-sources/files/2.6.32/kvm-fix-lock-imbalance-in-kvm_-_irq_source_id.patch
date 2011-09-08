@@ -1,0 +1,66 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:34:06 -0500
+Subject: [kvm] fix lock imbalance in kvm_*_irq_source_id()
+Message-id: <20100112214156.625759315@amt.cnet>
+Patchwork-id: 22456
+O-Subject: [RHEL 6 KVM 17/20] KVM: fix lock imbalance in kvm_*_irq_source_id()
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+commit 0c6ddcebd8303ada6faefa6f72ac18b6230320c4
+Author: Jiri Slaby <jirislaby@gmail.com>
+Date:   Fri Sep 25 09:33:38 2009 +0200
+
+KVM: fix lock imbalance in kvm_*_irq_source_id()
+
+Stanse found 2 lock imbalances in kvm_request_irq_source_id and
+kvm_free_irq_source_id. They omit to unlock kvm->irq_lock on fail paths.
+
+Fix that by adding unlock labels at the end of the functions and jump
+there from the fail paths.
+
+Signed-off-by: Jiri Slaby <jirislaby@gmail.com>
+Cc: Marcelo Tosatti <mtosatti@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/virt/kvm/irq_comm.c b/virt/kvm/irq_comm.c
+index 2a0b2cf..0d454d3 100644
+--- a/virt/kvm/irq_comm.c
++++ b/virt/kvm/irq_comm.c
+@@ -219,11 +219,13 @@ int kvm_request_irq_source_id(struct kvm *kvm)
+ 
+ 	if (irq_source_id >= BITS_PER_LONG) {
+ 		printk(KERN_WARNING "kvm: exhaust allocatable IRQ sources!\n");
+-		return -EFAULT;
++		irq_source_id = -EFAULT;
++		goto unlock;
+ 	}
+ 
+ 	ASSERT(irq_source_id != KVM_USERSPACE_IRQ_SOURCE_ID);
+ 	set_bit(irq_source_id, bitmap);
++unlock:
+ 	mutex_unlock(&kvm->irq_lock);
+ 
+ 	return irq_source_id;
+@@ -239,7 +241,7 @@ void kvm_free_irq_source_id(struct kvm *kvm, int irq_source_id)
+ 	if (irq_source_id < 0 ||
+ 	    irq_source_id >= BITS_PER_LONG) {
+ 		printk(KERN_ERR "kvm: IRQ source ID out of range!\n");
+-		return;
++		goto unlock;
+ 	}
+ 	for (i = 0; i < KVM_IOAPIC_NUM_PINS; i++) {
+ 		clear_bit(irq_source_id, &kvm->arch.vioapic->irq_states[i]);
+@@ -250,6 +252,7 @@ void kvm_free_irq_source_id(struct kvm *kvm, int irq_source_id)
+ #endif
+ 	}
+ 	clear_bit(irq_source_id, &kvm->arch.irq_sources_bitmap);
++unlock:
+ 	mutex_unlock(&kvm->irq_lock);
+ }
+ 

@@ -1,0 +1,59 @@
+From: Dmitry Monakhov <dmonakhov@openvz.org>
+Date: Mon, 14 Dec 2009 15:21:12 +0300
+Subject: [stable] Add unlocked version of inode_add_bytes() function
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit b462707e7ccad058ae151e5c5b06eb5cadcb737f upstream.
+
+Quota code requires unlocked version of this function. Off course
+we can just copy-paste the code, but copy-pasting is always an evil.
+
+Signed-off-by: Dmitry Monakhov <dmonakhov@openvz.org>
+Signed-off-by: Jan Kara <jack@suse.cz>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/fs/stat.c b/fs/stat.c
+index 075694e..c4ecd52 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -401,9 +401,9 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, char __user *, filename,
+ }
+ #endif /* __ARCH_WANT_STAT64 */
+ 
+-void inode_add_bytes(struct inode *inode, loff_t bytes)
++/* Caller is here responsible for sufficient locking (ie. inode->i_lock) */
++void __inode_add_bytes(struct inode *inode, loff_t bytes)
+ {
+-	spin_lock(&inode->i_lock);
+ 	inode->i_blocks += bytes >> 9;
+ 	bytes &= 511;
+ 	inode->i_bytes += bytes;
+@@ -411,6 +411,12 @@ void inode_add_bytes(struct inode *inode, loff_t bytes)
+ 		inode->i_blocks++;
+ 		inode->i_bytes -= 512;
+ 	}
++}
++
++void inode_add_bytes(struct inode *inode, loff_t bytes)
++{
++	spin_lock(&inode->i_lock);
++	__inode_add_bytes(inode, bytes);
+ 	spin_unlock(&inode->i_lock);
+ }
+ 
+diff --git a/include/linux/fs.h b/include/linux/fs.h
+index 891f7d6..d93c4dc 100644
+--- a/include/linux/fs.h
++++ b/include/linux/fs.h
+@@ -2315,6 +2315,7 @@ extern const struct inode_operations page_symlink_inode_operations;
+ extern int generic_readlink(struct dentry *, char __user *, int);
+ extern void generic_fillattr(struct inode *, struct kstat *);
+ extern int vfs_getattr(struct vfsmount *, struct dentry *, struct kstat *);
++void __inode_add_bytes(struct inode *inode, loff_t bytes);
+ void inode_add_bytes(struct inode *inode, loff_t bytes);
+ void inode_sub_bytes(struct inode *inode, loff_t bytes);
+ loff_t inode_get_bytes(struct inode *inode);

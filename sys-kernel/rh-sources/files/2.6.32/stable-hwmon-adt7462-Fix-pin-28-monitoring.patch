@@ -1,0 +1,31 @@
+From: Roger Blofeld <blofeldus@yahoo.com>
+Date: Sun, 10 Jan 2010 20:52:32 +0100
+Subject: [stable] hwmon: (adt7462) Fix pin 28 monitoring
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit bb595c923bc51dff9cdd112de18deb57ac7945d2 upstream.
+
+The ADT7462_PIN28_VOLT value is a 4-bit field, so the corresponding
+shift must be 4.
+
+Signed-off-by: Roger Blofeld <blofeldus@yahoo.com>
+Signed-off-by: Jean Delvare <khali@linux-fr.org>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/hwmon/adt7462.c b/drivers/hwmon/adt7462.c
+index 1852f27..262c133 100644
+--- a/drivers/hwmon/adt7462.c
++++ b/drivers/hwmon/adt7462.c
+@@ -97,7 +97,7 @@ I2C_CLIENT_INSMOD_1(adt7462);
+ #define		ADT7462_PIN24_SHIFT		6
+ #define		ADT7462_PIN26_VOLT_INPUT	0x08
+ #define		ADT7462_PIN25_VOLT_INPUT	0x20
+-#define		ADT7462_PIN28_SHIFT		6	/* cfg3 */
++#define		ADT7462_PIN28_SHIFT		4	/* cfg3 */
+ #define		ADT7462_PIN28_VOLT		0x5
+ 
+ #define ADT7462_REG_ALARM1			0xB8

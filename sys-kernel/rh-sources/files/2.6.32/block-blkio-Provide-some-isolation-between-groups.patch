@@ -1,0 +1,96 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:15 -0500
+Subject: [block] blkio: Provide some isolation between groups
+Message-id: <1260298712-12756-43-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21795
+O-Subject: [RHEL6 PATCH 42/59] blkio: Provide some isolation between groups
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit 8682e1f15f26dae9a9e8af794d179055fbd81166
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Thu Dec 3 12:59:50 2009 -0500
+
+    blkio: Provide some isolation between groups
+
+    o Do not allow following three operations across groups for isolation.
+    	- selection of co-operating queues
+    	- preemtpions across groups
+    	- request merging across groups.
+
+    o Async queues are currently global and not per group. Allow preemption of
+      an async queue if a sync queue in other group gets backlogged.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 8029dc6..03c9ab9 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -1460,6 +1460,9 @@ static int cfq_allow_merge(struct request_queue *q, struct request *rq,
+ 	struct cfq_io_context *cic;
+ 	struct cfq_queue *cfqq;
+ 
++	/* Deny merge if bio and rq don't belong to same cfq group */
++	if ((RQ_CFQQ(rq))->cfqg != cfq_get_cfqg(cfqd, 0))
++		return false;
+ 	/*
+ 	 * Disallow merge of a sync bio into an async request.
+ 	 */
+@@ -1697,6 +1700,10 @@ static struct cfq_queue *cfq_close_cooperator(struct cfq_data *cfqd,
+ 	if (!cfqq)
+ 		return NULL;
+ 
++	/* If new queue belongs to different cfq_group, don't choose it */
++	if (cur_cfqq->cfqg != cfqq->cfqg)
++		return NULL;
++
+ 	/*
+ 	 * It only makes sense to merge sync queues.
+ 	 */
+@@ -2949,22 +2956,12 @@ cfq_should_preempt(struct cfq_data *cfqd, struct cfq_queue *new_cfqq,
+ 	if (!cfqq)
+ 		return false;
+ 
+-	if (cfq_slice_used(cfqq))
+-		return true;
+-
+ 	if (cfq_class_idle(new_cfqq))
+ 		return false;
+ 
+ 	if (cfq_class_idle(cfqq))
+ 		return true;
+ 
+-	/* Allow preemption only if we are idling on sync-noidle tree */
+-	if (cfqd->serving_type == SYNC_NOIDLE_WORKLOAD &&
+-	    cfqq_type(new_cfqq) == SYNC_NOIDLE_WORKLOAD &&
+-	    new_cfqq->service_tree->count == 2 &&
+-	    RB_EMPTY_ROOT(&cfqq->sort_list))
+-		return true;
+-
+ 	/*
+ 	 * if the new request is sync, but the currently running queue is
+ 	 * not, let the sync request have priority.
+@@ -2972,6 +2969,19 @@ cfq_should_preempt(struct cfq_data *cfqd, struct cfq_queue *new_cfqq,
+ 	if (rq_is_sync(rq) && !cfq_cfqq_sync(cfqq))
+ 		return true;
+ 
++	if (new_cfqq->cfqg != cfqq->cfqg)
++		return false;
++
++	if (cfq_slice_used(cfqq))
++		return true;
++
++	/* Allow preemption only if we are idling on sync-noidle tree */
++	if (cfqd->serving_type == SYNC_NOIDLE_WORKLOAD &&
++	    cfqq_type(new_cfqq) == SYNC_NOIDLE_WORKLOAD &&
++	    new_cfqq->service_tree->count == 2 &&
++	    RB_EMPTY_ROOT(&cfqq->sort_list))
++		return true;
++
+ 	/*
+ 	 * So both queues are sync. Let the new request get disk time if
+ 	 * it's a metadata request and the current queue is doing regular IO.

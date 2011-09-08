@@ -1,0 +1,55 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Thu, 10 Dec 2009 17:31:39 -0500
+Subject: [gfs2] Add proper error reporting to quota sync via sysfs
+Message-id: <1260466307-12654-6-git-send-email-swhiteho@redhat.com>
+Patchwork-id: 21858
+O-Subject: [RHEL6] [05/13] GFS2: Add proper error reporting to quota sync via
+	sysfs
+Bugzilla: 298561
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+For some reason, the errors were not making it to userspace.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/sys.c b/fs/gfs2/sys.c
+index be1b8ac..c5dad1e 100644
+--- a/fs/gfs2/sys.c
++++ b/fs/gfs2/sys.c
+@@ -178,6 +178,7 @@ static ssize_t quota_sync_store(struct gfs2_sbd *sdp, const char *buf,
+ static ssize_t quota_refresh_user_store(struct gfs2_sbd *sdp, const char *buf,
+ 					size_t len)
+ {
++	int error;
+ 	u32 id;
+ 
+ 	if (!capable(CAP_SYS_ADMIN))
+@@ -185,13 +186,14 @@ static ssize_t quota_refresh_user_store(struct gfs2_sbd *sdp, const char *buf,
+ 
+ 	id = simple_strtoul(buf, NULL, 0);
+ 
+-	gfs2_quota_refresh(sdp, 1, id);
+-	return len;
++	error = gfs2_quota_refresh(sdp, 1, id);
++	return error ? error : len;
+ }
+ 
+ static ssize_t quota_refresh_group_store(struct gfs2_sbd *sdp, const char *buf,
+ 					 size_t len)
+ {
++	int error;
+ 	u32 id;
+ 
+ 	if (!capable(CAP_SYS_ADMIN))
+@@ -199,8 +201,8 @@ static ssize_t quota_refresh_group_store(struct gfs2_sbd *sdp, const char *buf,
+ 
+ 	id = simple_strtoul(buf, NULL, 0);
+ 
+-	gfs2_quota_refresh(sdp, 0, id);
+-	return len;
++	error = gfs2_quota_refresh(sdp, 0, id);
++	return error ? error : len;
+ }
+ 
+ static ssize_t demote_rq_store(struct gfs2_sbd *sdp, const char *buf, size_t len)

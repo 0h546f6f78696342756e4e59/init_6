@@ -1,0 +1,113 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 18 Dec 2009 15:19:02 -0500
+Subject: [s390] cio: kernel panic after unexpected interrupt
+Message-id: <1261149549-27749-7-git-send-email-brueckner@redhat.com>
+Patchwork-id: 22130
+O-Subject: [RHEL6 PATCH 06/13] [s390] cio: kernel panic after unexpected
+	interrupt
+Bugzilla: 548490
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+Unexpected kernel panic with message
+  "kernel BUG at drivers/s390/cio/device_fsm.c"
+occurs after an I/O device entered not operational state.
+
+When a device becomes temporarily not operational in a way that it
+cannot be cleanly shut down, it could later report interrupts which
+are unexpected and cause a kernel panic.
+
+Repeat the shut down procedure when unexpected interrupts are
+received for devices which are not operational.
+
+Bugzilla
+--------
+BZ 548490
+https://bugzilla.redhat.com/show_bug.cgi?id=548490
+
+Upstream status of the patch
+----------------------------
+The patch is upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=16b9a0571da4ee5cd15ca75e871722b0b5aee64d
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/cio/device_fsm.c b/drivers/s390/cio/device_fsm.c
+index a70c46c..c397442 100644
+--- a/drivers/s390/cio/device_fsm.c
++++ b/drivers/s390/cio/device_fsm.c
+@@ -1055,14 +1055,14 @@ void ccw_device_trigger_reprobe(struct ccw_device *cdev)
+ 		ccw_device_start_id(cdev, 0);
+ }
+ 
+-static void
+-ccw_device_offline_irq(struct ccw_device *cdev, enum dev_event dev_event)
++static void ccw_device_disabled_irq(struct ccw_device *cdev,
++				    enum dev_event dev_event)
+ {
+ 	struct subchannel *sch;
+ 
+ 	sch = to_subchannel(cdev->dev.parent);
+ 	/*
+-	 * An interrupt in state offline means a previous disable was not
++	 * An interrupt in a disabled state means a previous disable was not
+ 	 * successful - should not happen, but we try to disable again.
+ 	 */
+ 	cio_disable_subchannel(sch);
+@@ -1125,25 +1125,12 @@ ccw_device_nop(struct ccw_device *cdev, enum dev_event dev_event)
+ }
+ 
+ /*
+- * Bug operation action. 
+- */
+-static void
+-ccw_device_bug(struct ccw_device *cdev, enum dev_event dev_event)
+-{
+-	CIO_MSG_EVENT(0, "Internal state [%i][%i] not handled for device "
+-		      "0.%x.%04x\n", cdev->private->state, dev_event,
+-		      cdev->private->dev_id.ssid,
+-		      cdev->private->dev_id.devno);
+-	BUG();
+-}
+-
+-/*
+  * device statemachine
+  */
+ fsm_func_t *dev_jumptable[NR_DEV_STATES][NR_DEV_EVENTS] = {
+ 	[DEV_STATE_NOT_OPER] = {
+ 		[DEV_EVENT_NOTOPER]	= ccw_device_nop,
+-		[DEV_EVENT_INTERRUPT]	= ccw_device_bug,
++		[DEV_EVENT_INTERRUPT]	= ccw_device_disabled_irq,
+ 		[DEV_EVENT_TIMEOUT]	= ccw_device_nop,
+ 		[DEV_EVENT_VERIFY]	= ccw_device_nop,
+ 	},
+@@ -1161,7 +1148,7 @@ fsm_func_t *dev_jumptable[NR_DEV_STATES][NR_DEV_EVENTS] = {
+ 	},
+ 	[DEV_STATE_OFFLINE] = {
+ 		[DEV_EVENT_NOTOPER]	= ccw_device_generic_notoper,
+-		[DEV_EVENT_INTERRUPT]	= ccw_device_offline_irq,
++		[DEV_EVENT_INTERRUPT]	= ccw_device_disabled_irq,
+ 		[DEV_EVENT_TIMEOUT]	= ccw_device_nop,
+ 		[DEV_EVENT_VERIFY]	= ccw_device_offline_verify,
+ 	},
+@@ -1218,7 +1205,7 @@ fsm_func_t *dev_jumptable[NR_DEV_STATES][NR_DEV_EVENTS] = {
+ 	[DEV_STATE_DISCONNECTED] = {
+ 		[DEV_EVENT_NOTOPER]	= ccw_device_nop,
+ 		[DEV_EVENT_INTERRUPT]	= ccw_device_start_id,
+-		[DEV_EVENT_TIMEOUT]	= ccw_device_bug,
++		[DEV_EVENT_TIMEOUT]	= ccw_device_nop,
+ 		[DEV_EVENT_VERIFY]	= ccw_device_start_id,
+ 	},
+ 	[DEV_STATE_DISCONNECTED_SENSE_ID] = {

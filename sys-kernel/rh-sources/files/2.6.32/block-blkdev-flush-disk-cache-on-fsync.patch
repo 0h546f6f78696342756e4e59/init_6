@@ -1,0 +1,55 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:47 -0500
+Subject: [block] blkdev: flush disk cache on ->fsync
+Message-id: <1260298712-12756-15-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21801
+O-Subject: [RHEL6 PATCH 14/59] blkdev: flush disk cache on ->fsync
+Bugzilla: 545199
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+resolves bug 545199
+
+commit ab0a9735e06914ce4d2a94ffa41497dbc142fe7f
+Author: Christoph Hellwig <hch@lst.de>
+Date:   Thu Oct 29 14:14:04 2009 +0100
+
+    blkdev: flush disk cache on ->fsync
+
+    Currently there is no barrier support in the block device code.  That
+    means we cannot guarantee any sort of data integerity when using the
+    block device node with dis kwrite caches enabled.  Using the raw block
+    device node is a typical use case for virtualization (and I assume
+    databases, too).  This patch changes block_fsync to issue a cache flush
+    and thus make fsync on block device nodes actually useful.
+
+    Note that in mainline we would also need to add such code to the
+    ->aio_write method for O_SYNC handling, but assuming that Jan's patch
+    series for the O_SYNC rewrite goes in it will also call into ->fsync
+    for 2.6.32.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/block_dev.c b/fs/block_dev.c
+index 8bed055..73d6a73 100644
+--- a/fs/block_dev.c
++++ b/fs/block_dev.c
+@@ -405,7 +405,17 @@ static loff_t block_llseek(struct file *file, loff_t offset, int origin)
+  
+ static int block_fsync(struct file *filp, struct dentry *dentry, int datasync)
+ {
+-	return sync_blockdev(I_BDEV(filp->f_mapping->host));
++	struct block_device *bdev = I_BDEV(filp->f_mapping->host);
++	int error;
++
++	error = sync_blockdev(bdev);
++	if (error)
++		return error;
++	
++	error = blkdev_issue_flush(bdev, NULL);
++	if (error == -EOPNOTSUPP)
++		error = 0;
++	return error;
+ }
+ 
+ /*

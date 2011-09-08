@@ -1,0 +1,202 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:12:10 -0500
+Subject: [kvm] x86: switch kvm_set_memory_alias to SRCU update
+Message-id: <20100114171429.750834119@amt.cnet>
+Patchwork-id: 22522
+O-Subject: [RHEL 6 KVM 22/27] KVM: x86: switch kvm_set_memory_alias to SRCU
+	update
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 466cee28aa4f0f3f19ee379a7e52b01453572272
+Author: Marcelo Tosatti <mtosatti@redhat.com>
+Date:   Wed Dec 23 14:35:23 2009 -0200
+
+KVM: x86: switch kvm_set_memory_alias to SRCU update
+
+Using a similar two-step procedure as for memslots.
+
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/include/asm/kvm_host.h b/arch/x86/include/asm/kvm_host.h
+index 785b96a..2ba7c13 100644
+--- a/arch/x86/include/asm/kvm_host.h
++++ b/arch/x86/include/asm/kvm_host.h
+@@ -377,8 +377,12 @@ struct kvm_mem_alias {
+ 	gfn_t base_gfn;
+ 	unsigned long npages;
+ 	gfn_t target_gfn;
++#define KVM_ALIAS_INVALID     1UL
++	unsigned long flags;
+ };
+ 
++#define KVM_ARCH_HAS_UNALIAS_INSTANTIATION
++
+ struct kvm_mem_aliases {
+ 	struct kvm_mem_alias aliases[KVM_ALIAS_SLOTS];
+ 	int naliases;
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 126f17c..6b06ce2 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -38,6 +38,7 @@
+ #include <linux/intel-iommu.h>
+ #include <linux/cpufreq.h>
+ #include <linux/user-return-notifier.h>
++#include <linux/srcu.h>
+ #include <trace/events/kvm.h>
+ #undef TRACE_INCLUDE_FILE
+ #define CREATE_TRACE_POINTS
+@@ -2048,11 +2049,32 @@ static int kvm_vm_ioctl_get_nr_mmu_pages(struct kvm *kvm)
+ 	return kvm->arch.n_alloc_mmu_pages;
+ }
+ 
++gfn_t unalias_gfn_instantiation(struct kvm *kvm, gfn_t gfn)
++{
++	int i;
++	struct kvm_mem_alias *alias;
++	struct kvm_mem_aliases *aliases;
++
++	aliases = rcu_dereference(kvm->arch.aliases);
++
++	for (i = 0; i < aliases->naliases; ++i) {
++		alias = &aliases->aliases[i];
++		if (alias->flags & KVM_ALIAS_INVALID)
++			continue;
++		if (gfn >= alias->base_gfn
++		    && gfn < alias->base_gfn + alias->npages)
++			return alias->target_gfn + gfn - alias->base_gfn;
++	}
++	return gfn;
++}
++
+ gfn_t unalias_gfn(struct kvm *kvm, gfn_t gfn)
+ {
+ 	int i;
+ 	struct kvm_mem_alias *alias;
+-	struct kvm_mem_aliases *aliases = kvm->arch.aliases;
++	struct kvm_mem_aliases *aliases;
++
++	aliases = rcu_dereference(kvm->arch.aliases);
+ 
+ 	for (i = 0; i < aliases->naliases; ++i) {
+ 		alias = &aliases->aliases[i];
+@@ -2073,7 +2095,7 @@ static int kvm_vm_ioctl_set_memory_alias(struct kvm *kvm,
+ {
+ 	int r, n;
+ 	struct kvm_mem_alias *p;
+-	struct kvm_mem_aliases *aliases;
++	struct kvm_mem_aliases *aliases, *old_aliases;
+ 
+ 	r = -EINVAL;
+ 	/* General sanity checks */
+@@ -2090,28 +2112,48 @@ static int kvm_vm_ioctl_set_memory_alias(struct kvm *kvm,
+ 	    < alias->target_phys_addr)
+ 		goto out;
+ 
++	r = -ENOMEM;
++	aliases = kzalloc(sizeof(struct kvm_mem_aliases), GFP_KERNEL);
++	if (!aliases)
++		goto out;
++
+ 	down_write(&kvm->slots_lock);
+-	spin_lock(&kvm->mmu_lock);
+ 
+-	aliases = kvm->arch.aliases;
++	/* invalidate any gfn reference in case of deletion/shrinking */
++	memcpy(aliases, kvm->arch.aliases, sizeof(struct kvm_mem_aliases));
++	aliases->aliases[alias->slot].flags |= KVM_ALIAS_INVALID;
++	old_aliases = kvm->arch.aliases;
++	rcu_assign_pointer(kvm->arch.aliases, aliases);
++	synchronize_srcu_expedited(&kvm->srcu);
++	kvm_mmu_zap_all(kvm);
++	kfree(old_aliases);
++
++	r = -ENOMEM;
++	aliases = kzalloc(sizeof(struct kvm_mem_aliases), GFP_KERNEL);
++	if (!aliases)
++		goto out_unlock;
++
++	memcpy(aliases, kvm->arch.aliases, sizeof(struct kvm_mem_aliases));
+ 
+ 	p = &aliases->aliases[alias->slot];
+ 	p->base_gfn = alias->guest_phys_addr >> PAGE_SHIFT;
+ 	p->npages = alias->memory_size >> PAGE_SHIFT;
+ 	p->target_gfn = alias->target_phys_addr >> PAGE_SHIFT;
++	p->flags &= ~(KVM_ALIAS_INVALID);
+ 
+ 	for (n = KVM_ALIAS_SLOTS; n > 0; --n)
+ 		if (aliases->aliases[n - 1].npages)
+ 			break;
+ 	aliases->naliases = n;
+ 
+-	spin_unlock(&kvm->mmu_lock);
+-	kvm_mmu_zap_all(kvm);
++	old_aliases = kvm->arch.aliases;
++	rcu_assign_pointer(kvm->arch.aliases, aliases);
++	synchronize_srcu_expedited(&kvm->srcu);
++	kfree(old_aliases);
++	r = 0;
+ 
++out_unlock:
+ 	up_write(&kvm->slots_lock);
+-
+-	return 0;
+-
+ out:
+ 	return r;
+ }
+diff --git a/include/linux/kvm_host.h b/include/linux/kvm_host.h
+index 3cdb083..b8212f4 100644
+--- a/include/linux/kvm_host.h
++++ b/include/linux/kvm_host.h
+@@ -266,6 +266,8 @@ void kvm_arch_commit_memory_region(struct kvm *kvm,
+ void kvm_disable_largepages(void);
+ void kvm_arch_flush_shadow(struct kvm *kvm);
+ gfn_t unalias_gfn(struct kvm *kvm, gfn_t gfn);
++gfn_t unalias_gfn_instantiation(struct kvm *kvm, gfn_t gfn);
++
+ struct page *gfn_to_page(struct kvm *kvm, gfn_t gfn);
+ unsigned long gfn_to_hva(struct kvm *kvm, gfn_t gfn);
+ void kvm_release_page_clean(struct page *page);
+@@ -538,6 +540,10 @@ static inline int mmu_notifier_retry(struct kvm_vcpu *vcpu, unsigned long mmu_se
+ }
+ #endif
+ 
++#ifndef KVM_ARCH_HAS_UNALIAS_INSTANTIATION
++#define unalias_gfn_instantiation unalias_gfn
++#endif
++
+ #ifdef CONFIG_HAVE_KVM_IRQCHIP
+ 
+ #define KVM_MAX_IRQ_ROUTES 1024
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index ddca96f..55b00f1 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -1453,7 +1453,7 @@ int kvm_is_visible_gfn(struct kvm *kvm, gfn_t gfn)
+ 	int i;
+ 	struct kvm_memslots *slots = rcu_dereference(kvm->memslots);
+ 
+-	gfn = unalias_gfn(kvm, gfn);
++	gfn = unalias_gfn_instantiation(kvm, gfn);
+ 	for (i = 0; i < KVM_MEMORY_SLOTS; ++i) {
+ 		struct kvm_memory_slot *memslot = &slots->memslots[i];
+ 
+@@ -1490,7 +1490,7 @@ unsigned long gfn_to_hva(struct kvm *kvm, gfn_t gfn)
+ {
+ 	struct kvm_memory_slot *slot;
+ 
+-	gfn = unalias_gfn(kvm, gfn);
++	gfn = unalias_gfn_instantiation(kvm, gfn);
+ 	slot = gfn_to_memslot_unaliased(kvm, gfn);
+ 	if (!slot || slot->flags & KVM_MEMSLOT_INVALID)
+ 		return bad_hva();

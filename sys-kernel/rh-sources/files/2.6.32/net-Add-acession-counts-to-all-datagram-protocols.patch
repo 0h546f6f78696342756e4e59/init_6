@@ -1,0 +1,536 @@
+From: Neil Horman <nhorman@redhat.com>
+Date: Fri, 16 Oct 2009 12:42:40 -0400
+Subject: [net] Add acession counts to all datagram protocols
+Message-id: <20091016124240.GA10514@hmsreliant.think-freely.org>
+Patchwork-id: 21127
+O-Subject: Re: [RHEL6 PATCH] net: Add acession counts to all datagram
+	protocols (bz445366)
+Bugzilla: 445366
+
+	We have a request to allow libpcap based utilities to provide more
+detail regarding drops during a network trace capture.  The idea is to indicate
+how many frames (if any) were lost betweeen any two recorded frames.  This
+obviously is going to take some work for wireshark/tcpdump/libpcap/etc, but as
+far as the kernel goes, we need to be able to export that information.  This
+patch does that.  It tracks how my frames were dropped on an af_packet socket
+between any two successfully received frames.  For a non-zero 'gap', a cmsg is
+added during the recvmsg call from user space to report that gap information to
+user space.  This was recently accepted in the net-next tree as commit
+977750076d98c7ff6cbda51858bb5a5894a9d9ab. Satisfies bz 445366
+
+Neil
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/alpha/include/asm/socket.h b/arch/alpha/include/asm/socket.h
+index 26773e3..06edfef 100644
+--- a/arch/alpha/include/asm/socket.h
++++ b/arch/alpha/include/asm/socket.h
+@@ -67,6 +67,8 @@
+ #define SO_TIMESTAMPING		37
+ #define SCM_TIMESTAMPING	SO_TIMESTAMPING
+ 
++#define SO_RXQ_OVFL             40
++
+ /* O_NONBLOCK clashes with the bits used for socket types.  Therefore we
+  * have to define SOCK_NONBLOCK to a different value here.
+  */
+diff --git a/arch/arm/include/asm/socket.h b/arch/arm/include/asm/socket.h
+index 92ac61d..0c6f71d 100644
+--- a/arch/arm/include/asm/socket.h
++++ b/arch/arm/include/asm/socket.h
+@@ -60,4 +60,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* _ASM_SOCKET_H */
+diff --git a/arch/avr32/include/asm/socket.h b/arch/avr32/include/asm/socket.h
+index fe863f9..fcea21e 100644
+--- a/arch/avr32/include/asm/socket.h
++++ b/arch/avr32/include/asm/socket.h
+@@ -60,4 +60,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* __ASM_AVR32_SOCKET_H */
+diff --git a/arch/cris/include/asm/socket.h b/arch/cris/include/asm/socket.h
+index 45ec49b..23fe90b 100644
+--- a/arch/cris/include/asm/socket.h
++++ b/arch/cris/include/asm/socket.h
+@@ -62,6 +62,7 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* _ASM_SOCKET_H */
+ 
+ 
+diff --git a/arch/frv/include/asm/socket.h b/arch/frv/include/asm/socket.h
+index 2dea726..27df633 100644
+--- a/arch/frv/include/asm/socket.h
++++ b/arch/frv/include/asm/socket.h
+@@ -60,5 +60,6 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* _ASM_SOCKET_H */
+ 
+diff --git a/arch/h8300/include/asm/socket.h b/arch/h8300/include/asm/socket.h
+index 1547f01..5046127 100644
+--- a/arch/h8300/include/asm/socket.h
++++ b/arch/h8300/include/asm/socket.h
+@@ -60,4 +60,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* _ASM_SOCKET_H */
+diff --git a/arch/ia64/include/asm/socket.h b/arch/ia64/include/asm/socket.h
+index 0b0d5ff..df4279b 100644
+--- a/arch/ia64/include/asm/socket.h
++++ b/arch/ia64/include/asm/socket.h
+@@ -69,4 +69,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* _ASM_IA64_SOCKET_H */
+diff --git a/arch/m32r/include/asm/socket.h b/arch/m32r/include/asm/socket.h
+index 3390a86..22e7465 100644
+--- a/arch/m32r/include/asm/socket.h
++++ b/arch/m32r/include/asm/socket.h
+@@ -60,4 +60,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* _ASM_M32R_SOCKET_H */
+diff --git a/arch/m68k/include/asm/socket.h b/arch/m68k/include/asm/socket.h
+index eee01cc..ee77858 100644
+--- a/arch/m68k/include/asm/socket.h
++++ b/arch/m68k/include/asm/socket.h
+@@ -60,4 +60,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* _ASM_SOCKET_H */
+diff --git a/arch/mips/include/asm/socket.h b/arch/mips/include/asm/socket.h
+index ae05acc..9de5190 100644
+--- a/arch/mips/include/asm/socket.h
++++ b/arch/mips/include/asm/socket.h
+@@ -80,6 +80,8 @@ To add: #define SO_REUSEPORT 0x0200	/* Allow local address and port reuse.  */
+ #define SO_TIMESTAMPING		37
+ #define SCM_TIMESTAMPING	SO_TIMESTAMPING
+ 
++#define SO_RXQ_OVFL             40
++
+ #ifdef __KERNEL__
+ 
+ /** sock_type - Socket types
+diff --git a/arch/mn10300/include/asm/socket.h b/arch/mn10300/include/asm/socket.h
+index 4df75af..308ab57 100644
+--- a/arch/mn10300/include/asm/socket.h
++++ b/arch/mn10300/include/asm/socket.h
+@@ -60,4 +60,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* _ASM_SOCKET_H */
+diff --git a/arch/parisc/include/asm/socket.h b/arch/parisc/include/asm/socket.h
+index 960b1e5..225b7d6 100644
+--- a/arch/parisc/include/asm/socket.h
++++ b/arch/parisc/include/asm/socket.h
+@@ -59,6 +59,8 @@
+ #define SO_TIMESTAMPING		0x4020
+ #define SCM_TIMESTAMPING	SO_TIMESTAMPING
+ 
++#define SO_RXQ_OVFL             0x4021
++
+ /* O_NONBLOCK clashes with the bits used for socket types.  Therefore we
+  * have to define SOCK_NONBLOCK to a different value here.
+  */
+diff --git a/arch/powerpc/include/asm/socket.h b/arch/powerpc/include/asm/socket.h
+index 3ab8b3e..4084a55 100644
+--- a/arch/powerpc/include/asm/socket.h
++++ b/arch/powerpc/include/asm/socket.h
+@@ -67,4 +67,6 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
++
+ #endif	/* _ASM_POWERPC_SOCKET_H */
+diff --git a/arch/s390/include/asm/socket.h b/arch/s390/include/asm/socket.h
+index e42df89..3b3de30 100644
+--- a/arch/s390/include/asm/socket.h
++++ b/arch/s390/include/asm/socket.h
+@@ -68,4 +68,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* _ASM_SOCKET_H */
+diff --git a/arch/sparc/include/asm/socket.h b/arch/sparc/include/asm/socket.h
+index 3a5ae3d..9d3fefc 100644
+--- a/arch/sparc/include/asm/socket.h
++++ b/arch/sparc/include/asm/socket.h
+@@ -56,6 +56,8 @@
+ #define SO_TIMESTAMPING		0x0023
+ #define SCM_TIMESTAMPING	SO_TIMESTAMPING
+ 
++#define SO_RXQ_OVFL             0x0024
++
+ /* Security levels - as per NRL IPv6 - don't actually do anything */
+ #define SO_SECURITY_AUTHENTICATION		0x5001
+ #define SO_SECURITY_ENCRYPTION_TRANSPORT	0x5002
+diff --git a/arch/xtensa/include/asm/socket.h b/arch/xtensa/include/asm/socket.h
+index beb3a6b..4be8afe 100644
+--- a/arch/xtensa/include/asm/socket.h
++++ b/arch/xtensa/include/asm/socket.h
+@@ -71,4 +71,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif	/* _XTENSA_SOCKET_H */
+diff --git a/include/asm-generic/socket.h b/include/asm-generic/socket.h
+index 538991c..7cde78e 100644
+--- a/include/asm-generic/socket.h
++++ b/include/asm-generic/socket.h
+@@ -63,4 +63,5 @@
+ #define SO_PROTOCOL		38
+ #define SO_DOMAIN		39
+ 
++#define SO_RXQ_OVFL		40
+ #endif /* __ASM_GENERIC_SOCKET_H */
+diff --git a/include/linux/skbuff.h b/include/linux/skbuff.h
+index bcdd660..567776e 100644
+--- a/include/linux/skbuff.h
++++ b/include/linux/skbuff.h
+@@ -389,8 +389,10 @@ struct sk_buff {
+ #ifdef CONFIG_NETWORK_SECMARK
+ 	__u32			secmark;
+ #endif
+-
+-	__u32			mark;
++	union {
++		__u32		mark;
++		__u32		dropcount;
++	};
+ 
+ 	__u16			vlan_tci;
+ 
+diff --git a/include/net/sock.h b/include/net/sock.h
+index 9f96394..ecf803d 100644
+--- a/include/net/sock.h
++++ b/include/net/sock.h
+@@ -504,6 +504,7 @@ enum sock_flags {
+ 	SOCK_TIMESTAMPING_SOFTWARE,     /* %SOF_TIMESTAMPING_SOFTWARE */
+ 	SOCK_TIMESTAMPING_RAW_HARDWARE, /* %SOF_TIMESTAMPING_RAW_HARDWARE */
+ 	SOCK_TIMESTAMPING_SYS_HARDWARE, /* %SOF_TIMESTAMPING_SYS_HARDWARE */
++	SOCK_RXQ_OVFL,
+ };
+ 
+ static inline void sock_copy_flags(struct sock *nsk, struct sock *osk)
+@@ -1492,6 +1493,8 @@ sock_recv_timestamp(struct msghdr *msg, struct sock *sk, struct sk_buff *skb)
+ 		sk->sk_stamp = kt;
+ }
+ 
++extern void sock_recv_ts_and_drops(struct msghdr *msg, struct sock *sk, struct sk_buff *skb);
++
+ /**
+  * sock_tx_timestamp - checks whether the outgoing packet is to be time stamped
+  * @msg:	outgoing packet
+diff --git a/net/atm/common.c b/net/atm/common.c
+index 950bd16..d61e051 100644
+--- a/net/atm/common.c
++++ b/net/atm/common.c
+@@ -496,7 +496,7 @@ int vcc_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
+ 	error = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);
+ 	if (error)
+ 		return error;
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 	pr_debug("RcvM %d -= %d\n", atomic_read(&sk->sk_rmem_alloc), skb->truesize);
+ 	atm_return(vcc, skb->truesize);
+ 	skb_free_datagram(sk, skb);
+diff --git a/net/bluetooth/af_bluetooth.c b/net/bluetooth/af_bluetooth.c
+index 8cfb5a8..1ed9926 100644
+--- a/net/bluetooth/af_bluetooth.c
++++ b/net/bluetooth/af_bluetooth.c
+@@ -257,7 +257,7 @@ int bt_sock_recvmsg(struct kiocb *iocb, struct socket *sock,
+ 	skb_reset_transport_header(skb);
+ 	err = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);
+ 	if (err == 0)
+-		sock_recv_timestamp(msg, sk, skb);
++		sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	skb_free_datagram(sk, skb);
+ 
+diff --git a/net/bluetooth/rfcomm/sock.c b/net/bluetooth/rfcomm/sock.c
+index 8a20aaf..637b2ef 100644
+--- a/net/bluetooth/rfcomm/sock.c
++++ b/net/bluetooth/rfcomm/sock.c
+@@ -703,7 +703,7 @@ static int rfcomm_sock_recvmsg(struct kiocb *iocb, struct socket *sock,
+ 		copied += chunk;
+ 		size   -= chunk;
+ 
+-		sock_recv_timestamp(msg, sk, skb);
++		sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 		if (!(flags & MSG_PEEK)) {
+ 			atomic_sub(chunk, &sk->sk_rmem_alloc);
+diff --git a/net/can/bcm.c b/net/can/bcm.c
+index e8d58f3..69def95 100644
+--- a/net/can/bcm.c
++++ b/net/can/bcm.c
+@@ -1539,7 +1539,7 @@ static int bcm_recvmsg(struct kiocb *iocb, struct socket *sock,
+ 		return err;
+ 	}
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	if (msg->msg_name) {
+ 		msg->msg_namelen = sizeof(struct sockaddr_can);
+diff --git a/net/can/raw.c b/net/can/raw.c
+index b5e8979..962fc9f 100644
+--- a/net/can/raw.c
++++ b/net/can/raw.c
+@@ -702,7 +702,7 @@ static int raw_recvmsg(struct kiocb *iocb, struct socket *sock,
+ 		return err;
+ 	}
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	if (msg->msg_name) {
+ 		msg->msg_namelen = sizeof(struct sockaddr_can);
+diff --git a/net/core/sock.c b/net/core/sock.c
+index 7626b6a..43ca2c9 100644
+--- a/net/core/sock.c
++++ b/net/core/sock.c
+@@ -276,6 +276,8 @@ int sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
+ {
+ 	int err = 0;
+ 	int skb_len;
++	unsigned long flags;
++	struct sk_buff_head *list = &sk->sk_receive_queue;
+ 
+ 	/* Cast sk->rcvbuf to unsigned... It's pointless, but reduces
+ 	   number of warnings when compiling with -W --ANK
+@@ -305,7 +307,10 @@ int sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
+ 	 */
+ 	skb_len = skb->len;
+ 
+-	skb_queue_tail(&sk->sk_receive_queue, skb);
++	spin_lock_irqsave(&list->lock, flags);
++	skb->dropcount = atomic_read(&sk->sk_drops);
++	__skb_queue_tail(list, skb);
++	spin_unlock_irqrestore(&list->lock, flags);
+ 
+ 	if (!sock_flag(sk, SOCK_DEAD))
+ 		sk->sk_data_ready(sk, skb_len);
+@@ -702,6 +707,12 @@ set_rcvbuf:
+ 
+ 		/* We implement the SO_SNDLOWAT etc to
+ 		   not be settable (1003.1g 5.3) */
++	case SO_RXQ_OVFL:
++		if (valbool)
++			sock_set_flag(sk, SOCK_RXQ_OVFL);
++		else
++			sock_reset_flag(sk, SOCK_RXQ_OVFL);
++		break;
+ 	default:
+ 		ret = -ENOPROTOOPT;
+ 		break;
+@@ -901,6 +912,10 @@ int sock_getsockopt(struct socket *sock, int level, int optname,
+ 		v.val = sk->sk_mark;
+ 		break;
+ 
++	case SO_RXQ_OVFL:
++		v.val = !!sock_flag(sk, SOCK_RXQ_OVFL);
++		break;
++
+ 	default:
+ 		return -ENOPROTOOPT;
+ 	}
+diff --git a/net/ieee802154/dgram.c b/net/ieee802154/dgram.c
+index a413b1b..25ad956 100644
+--- a/net/ieee802154/dgram.c
++++ b/net/ieee802154/dgram.c
+@@ -303,7 +303,7 @@ static int dgram_recvmsg(struct kiocb *iocb, struct sock *sk,
+ 	if (err)
+ 		goto done;
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	if (flags & MSG_TRUNC)
+ 		copied = skb->len;
+diff --git a/net/ieee802154/raw.c b/net/ieee802154/raw.c
+index 30e74ee..769c8d1 100644
+--- a/net/ieee802154/raw.c
++++ b/net/ieee802154/raw.c
+@@ -191,7 +191,7 @@ static int raw_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
+ 	if (err)
+ 		goto done;
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	if (flags & MSG_TRUNC)
+ 		copied = skb->len;
+diff --git a/net/ipv4/raw.c b/net/ipv4/raw.c
+index ab996f9..f2502bf 100644
+--- a/net/ipv4/raw.c
++++ b/net/ipv4/raw.c
+@@ -692,7 +692,7 @@ static int raw_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
+ 	if (err)
+ 		goto done;
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	/* Copy the address. */
+ 	if (sin) {
+diff --git a/net/ipv4/udp.c b/net/ipv4/udp.c
+index 0fa9f70..eb783fc 100644
+--- a/net/ipv4/udp.c
++++ b/net/ipv4/udp.c
+@@ -982,7 +982,7 @@ try_again:
+ 		UDP_INC_STATS_USER(sock_net(sk),
+ 				UDP_MIB_INDATAGRAMS, is_udplite);
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	/* Copy the address. */
+ 	if (sin) {
+diff --git a/net/ipv6/raw.c b/net/ipv6/raw.c
+index 4f24570..d8375bc 100644
+--- a/net/ipv6/raw.c
++++ b/net/ipv6/raw.c
+@@ -497,7 +497,7 @@ static int rawv6_recvmsg(struct kiocb *iocb, struct sock *sk,
+ 			sin6->sin6_scope_id = IP6CB(skb)->iif;
+ 	}
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	if (np->rxopt.all)
+ 		datagram_recv_ctl(sk, msg, skb);
+diff --git a/net/ipv6/udp.c b/net/ipv6/udp.c
+index cf538ed..51e7909 100644
+--- a/net/ipv6/udp.c
++++ b/net/ipv6/udp.c
+@@ -252,7 +252,7 @@ try_again:
+ 					UDP_MIB_INDATAGRAMS, is_udplite);
+ 	}
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	/* Copy the address. */
+ 	if (msg->msg_name) {
+diff --git a/net/key/af_key.c b/net/key/af_key.c
+index 4e98193..fcb36ba 100644
+--- a/net/key/af_key.c
++++ b/net/key/af_key.c
+@@ -3606,7 +3606,7 @@ static int pfkey_recvmsg(struct kiocb *kiocb,
+ 	if (err)
+ 		goto out_free;
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	err = (flags & MSG_TRUNC) ? skb->len : copied;
+ 
+diff --git a/net/packet/af_packet.c b/net/packet/af_packet.c
+index f2d116a..27c4225 100644
+--- a/net/packet/af_packet.c
++++ b/net/packet/af_packet.c
+@@ -626,15 +626,14 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
+ 
+ 	spin_lock(&sk->sk_receive_queue.lock);
+ 	po->stats.tp_packets++;
++	skb->dropcount = atomic_read(&sk->sk_drops);
+ 	__skb_queue_tail(&sk->sk_receive_queue, skb);
+ 	spin_unlock(&sk->sk_receive_queue.lock);
+ 	sk->sk_data_ready(sk, skb->len);
+ 	return 0;
+ 
+ drop_n_acct:
+-	spin_lock(&sk->sk_receive_queue.lock);
+-	po->stats.tp_drops++;
+-	spin_unlock(&sk->sk_receive_queue.lock);
++	po->stats.tp_drops = atomic_inc_return(&sk->sk_drops);
+ 
+ drop_n_restore:
+ 	if (skb_head != skb->data && skb_shared(skb)) {
+@@ -1472,7 +1471,7 @@ static int packet_recvmsg(struct kiocb *iocb, struct socket *sock,
+ 	if (err)
+ 		goto out_free;
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 
+ 	if (msg->msg_name)
+ 		memcpy(msg->msg_name, &PACKET_SKB_CB(skb)->sa,
+diff --git a/net/rxrpc/ar-recvmsg.c b/net/rxrpc/ar-recvmsg.c
+index a39bf97..60c2b94 100644
+--- a/net/rxrpc/ar-recvmsg.c
++++ b/net/rxrpc/ar-recvmsg.c
+@@ -146,7 +146,7 @@ int rxrpc_recvmsg(struct kiocb *iocb, struct socket *sock,
+ 				memcpy(msg->msg_name,
+ 				       &call->conn->trans->peer->srx,
+ 				       sizeof(call->conn->trans->peer->srx));
+-			sock_recv_timestamp(msg, &rx->sk, skb);
++			sock_recv_ts_and_drops(msg, &rx->sk, skb);
+ 		}
+ 
+ 		/* receive the message */
+diff --git a/net/sctp/socket.c b/net/sctp/socket.c
+index 3a95fcb..fc96c78 100644
+--- a/net/sctp/socket.c
++++ b/net/sctp/socket.c
+@@ -1968,7 +1968,7 @@ SCTP_STATIC int sctp_recvmsg(struct kiocb *iocb, struct sock *sk,
+ 	if (err)
+ 		goto out_free;
+ 
+-	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_ts_and_drops(msg, sk, skb);
+ 	if (sctp_ulpevent_is_notification(event)) {
+ 		msg->msg_flags |= MSG_NOTIFICATION;
+ 		sp->pf->event_msgname(event, msg->msg_name, addr_len);
+diff --git a/net/socket.c b/net/socket.c
+index 7565536..8fd0d5c 100644
+--- a/net/socket.c
++++ b/net/socket.c
+@@ -668,6 +668,21 @@ void __sock_recv_timestamp(struct msghdr *msg, struct sock *sk,
+ 
+ EXPORT_SYMBOL_GPL(__sock_recv_timestamp);
+ 
++inline void sock_recv_drops(struct msghdr *msg, struct sock *sk, struct sk_buff *skb)
++{
++	if (sock_flag(sk, SOCK_RXQ_OVFL) && skb && skb->dropcount)
++		put_cmsg(msg, SOL_SOCKET, SO_RXQ_OVFL,
++			sizeof(__u32), &skb->dropcount);
++}
++
++void sock_recv_ts_and_drops(struct msghdr *msg, struct sock *sk,
++	struct sk_buff *skb)
++{
++	sock_recv_timestamp(msg, sk, skb);
++	sock_recv_drops(msg, sk, skb);
++}
++EXPORT_SYMBOL_GPL(sock_recv_ts_and_drops);
++
+ static inline int __sock_recvmsg(struct kiocb *iocb, struct socket *sock,
+ 				 struct msghdr *msg, size_t size, int flags)
+ {

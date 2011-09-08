@@ -1,0 +1,157 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:11:58 -0500
+Subject: [kvm] Drop kvm->irq_lock lock from irq injection path
+Message-id: <20100114171427.050409193@amt.cnet>
+Patchwork-id: 22543
+O-Subject: [RHEL 6 KVM 10/27] KVM: Drop kvm->irq_lock lock from irq injection
+	path
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 680b3648ba89c44ac8d0316f78a0d6e147b88809
+Author: Gleb Natapov <gleb@redhat.com>
+Date:   Mon Aug 24 11:54:26 2009 +0300
+
+KVM: Drop kvm->irq_lock lock from irq injection path
+
+The only thing it protects now is interrupt injection into lapic and
+this can work lockless. Even now with kvm->irq_lock in place access
+to lapic is not entirely serialized since vcpu access doesn't take
+kvm->irq_lock.
+
+Signed-off-by: Gleb Natapov <gleb@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/ia64/kvm/kvm-ia64.c b/arch/ia64/kvm/kvm-ia64.c
+index 4a98314..f534e0f 100644
+--- a/arch/ia64/kvm/kvm-ia64.c
++++ b/arch/ia64/kvm/kvm-ia64.c
+@@ -982,10 +982,8 @@ long kvm_arch_vm_ioctl(struct file *filp,
+ 			goto out;
+ 		if (irqchip_in_kernel(kvm)) {
+ 			__s32 status;
+-			mutex_lock(&kvm->irq_lock);
+ 			status = kvm_set_irq(kvm, KVM_USERSPACE_IRQ_SOURCE_ID,
+ 				    irq_event.irq, irq_event.level);
+-			mutex_unlock(&kvm->irq_lock);
+ 			if (ioctl == KVM_IRQ_LINE_STATUS) {
+ 				irq_event.status = status;
+ 				if (copy_to_user(argp, &irq_event,
+diff --git a/arch/x86/kvm/i8254.c b/arch/x86/kvm/i8254.c
+index 144e7f6..fab7440 100644
+--- a/arch/x86/kvm/i8254.c
++++ b/arch/x86/kvm/i8254.c
+@@ -688,10 +688,8 @@ static void __inject_pit_timer_intr(struct kvm *kvm)
+ 	struct kvm_vcpu *vcpu;
+ 	int i;
+ 
+-	mutex_lock(&kvm->irq_lock);
+ 	kvm_set_irq(kvm, kvm->arch.vpit->irq_source_id, 0, 1);
+ 	kvm_set_irq(kvm, kvm->arch.vpit->irq_source_id, 0, 0);
+-	mutex_unlock(&kvm->irq_lock);
+ 
+ 	/*
+ 	 * Provides NMI watchdog support via Virtual Wire mode.
+diff --git a/arch/x86/kvm/lapic.c b/arch/x86/kvm/lapic.c
+index 4b728e8..da8c0e5 100644
+--- a/arch/x86/kvm/lapic.c
++++ b/arch/x86/kvm/lapic.c
+@@ -501,9 +501,7 @@ static void apic_send_ipi(struct kvm_lapic *apic)
+ 		   irq.trig_mode, irq.level, irq.dest_mode, irq.delivery_mode,
+ 		   irq.vector);
+ 
+-	mutex_lock(&apic->vcpu->kvm->irq_lock);
+ 	kvm_irq_delivery_to_apic(apic->vcpu->kvm, apic, &irq);
+-	mutex_unlock(&apic->vcpu->kvm->irq_lock);
+ }
+ 
+ static u32 apic_get_tmcct(struct kvm_lapic *apic)
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index bafb1bf..ea2ea1b 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -2377,10 +2377,8 @@ long kvm_arch_vm_ioctl(struct file *filp,
+ 			goto out;
+ 		if (irqchip_in_kernel(kvm)) {
+ 			__s32 status;
+-			mutex_lock(&kvm->irq_lock);
+ 			status = kvm_set_irq(kvm, KVM_USERSPACE_IRQ_SOURCE_ID,
+ 					irq_event.irq, irq_event.level);
+-			mutex_unlock(&kvm->irq_lock);
+ 			if (ioctl == KVM_IRQ_LINE_STATUS) {
+ 				irq_event.status = status;
+ 				if (copy_to_user(argp, &irq_event,
+diff --git a/virt/kvm/eventfd.c b/virt/kvm/eventfd.c
+index bb4ebd8..30f70fd 100644
+--- a/virt/kvm/eventfd.c
++++ b/virt/kvm/eventfd.c
+@@ -61,10 +61,8 @@ irqfd_inject(struct work_struct *work)
+ 	struct _irqfd *irqfd = container_of(work, struct _irqfd, inject);
+ 	struct kvm *kvm = irqfd->kvm;
+ 
+-	mutex_lock(&kvm->irq_lock);
+ 	kvm_set_irq(kvm, KVM_USERSPACE_IRQ_SOURCE_ID, irqfd->gsi, 1);
+ 	kvm_set_irq(kvm, KVM_USERSPACE_IRQ_SOURCE_ID, irqfd->gsi, 0);
+-	mutex_unlock(&kvm->irq_lock);
+ }
+ 
+ /*
+diff --git a/virt/kvm/irq_comm.c b/virt/kvm/irq_comm.c
+index 034f7cb..2a0b2cf 100644
+--- a/virt/kvm/irq_comm.c
++++ b/virt/kvm/irq_comm.c
+@@ -82,8 +82,6 @@ int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
+ 	int i, r = -1;
+ 	struct kvm_vcpu *vcpu, *lowest = NULL;
+ 
+-	WARN_ON(!mutex_is_locked(&kvm->irq_lock));
+-
+ 	if (irq->dest_mode == 0 && irq->dest_id == 0xff &&
+ 			kvm_is_dm_lowest_prio(irq))
+ 		printk(KERN_INFO "kvm: apic: phys broadcast and lowest prio\n");
+@@ -138,7 +136,7 @@ static int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
+ 	return kvm_irq_delivery_to_apic(kvm, NULL, &irq);
+ }
+ 
+-/* This should be called with the kvm->irq_lock mutex held
++/*
+  * Return value:
+  *  < 0   Interrupt was ignored (masked or not delivered for other reasons)
+  *  = 0   Interrupt was coalesced (previous irq is still pending)
+@@ -153,8 +151,6 @@ int kvm_set_irq(struct kvm *kvm, int irq_source_id, u32 irq, int level)
+ 
+ 	trace_kvm_set_irq(irq, level, irq_source_id);
+ 
+-	WARN_ON(!mutex_is_locked(&kvm->irq_lock));
+-
+ 	/* Not possible to detect if the guest uses the PIC or the
+ 	 * IOAPIC.  So set the bit in both. The guest will ignore
+ 	 * writes to the unused one.
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index fa3da64..6fe3256 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -137,7 +137,6 @@ static void kvm_assigned_dev_interrupt_work_handler(struct work_struct *work)
+ 				    interrupt_work);
+ 	kvm = assigned_dev->kvm;
+ 
+-	mutex_lock(&kvm->irq_lock);
+ 	spin_lock_irq(&assigned_dev->assigned_dev_lock);
+ 	if (assigned_dev->irq_requested_type & KVM_DEV_IRQ_HOST_MSIX) {
+ 		struct kvm_guest_msix_entry *guest_entries =
+@@ -156,7 +155,6 @@ static void kvm_assigned_dev_interrupt_work_handler(struct work_struct *work)
+ 			    assigned_dev->guest_irq, 1);
+ 
+ 	spin_unlock_irq(&assigned_dev->assigned_dev_lock);
+-	mutex_unlock(&assigned_dev->kvm->irq_lock);
+ }
+ 
+ static irqreturn_t kvm_assigned_dev_intr(int irq, void *dev_id)

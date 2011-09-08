@@ -1,0 +1,52 @@
+From: Roland McGrath <roland@redhat.com>
+Date: Fri, 18 Dec 2009 10:23:47 -0500
+Subject: [tracehooks] kill some PT_PTRACED checks
+Message-id: <1d4506a8dc61c210329b18911c27185f730e2da4.1261131466.git.roland@redhat.com>
+Patchwork-id: 22115
+O-Subject: [RHEL6.0 PATCH 10/16] tracehooks: kill some PT_PTRACED checks
+Bugzilla: 549491
+RH-Acked-by: Oleg Nesterov <oleg@redhat.com>
+
+From: Oleg Nesterov <oleg@redhat.com>
+
+No functional changes, preparation for utrace-ptrace.
+
+task_ptrace() != 0 if and only if PT_PTRACED bit is set, kill
+some PT_PTRACED checks in tracehook.h to ensure the result is
+the same with or without utrace which doesn't set PT_PTRACED.
+
+Signed-off-by: Oleg Nesterov <oleg@redhat.com>
+Signed-off-by: Roland McGrath <roland@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/tracehook.h b/include/linux/tracehook.h
+index 10db010..6f3c61c 100644
+--- a/include/linux/tracehook.h
++++ b/include/linux/tracehook.h
+@@ -156,7 +156,7 @@ static inline int tracehook_unsafe_exec(struct task_struct *task)
+ {
+ 	int unsafe = 0;
+ 	int ptrace = task_ptrace(task);
+-	if (ptrace & PT_PTRACED) {
++	if (ptrace) {
+ 		if (ptrace & PT_PTRACE_CAP)
+ 			unsafe |= LSM_UNSAFE_PTRACE_CAP;
+ 		else
+@@ -178,7 +178,7 @@ static inline int tracehook_unsafe_exec(struct task_struct *task)
+  */
+ static inline struct task_struct *tracehook_tracer_task(struct task_struct *tsk)
+ {
+-	if (task_ptrace(tsk) & PT_PTRACED)
++	if (task_ptrace(tsk))
+ 		return rcu_dereference(tsk->parent);
+ 	return NULL;
+ }
+@@ -492,7 +492,7 @@ static inline int tracehook_get_signal(struct task_struct *task,
+  */
+ static inline int tracehook_notify_jctl(int notify, int why)
+ {
+-	return notify ?: (current->ptrace & PT_PTRACED) ? why : 0;
++	return notify ?: task_ptrace(current) ? why : 0;
+ }
+ 
+ /**

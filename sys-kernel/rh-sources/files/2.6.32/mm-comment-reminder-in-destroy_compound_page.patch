@@ -1,0 +1,32 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:07 -0500
+Subject: [mm] comment reminder in destroy_compound_page
+Message-id: <20100201152037.524564616@redhat.com>
+Patchwork-id: 23042
+O-Subject: [RHEL6 10/37] comment reminder in destroy_compound_page
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+Warn destroy_compound_page that __split_huge_page_refcount is heavily dependent
+on its internal behavior.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+Acked-by: Mel Gorman <mel@csn.ul.ie>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index 137e042..947da14 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -311,6 +311,7 @@ void prep_compound_page(struct page *page, unsigned long order)
+ 	}
+ }
+ 
++/* update __split_huge_page_refcount if you change this function */
+ static int destroy_compound_page(struct page *page, unsigned long order)
+ {
+ 	int i;

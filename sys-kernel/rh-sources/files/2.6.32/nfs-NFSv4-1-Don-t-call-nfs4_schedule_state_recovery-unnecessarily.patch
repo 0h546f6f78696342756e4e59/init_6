@@ -1,0 +1,53 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 20:51:04 -0500
+Subject: [nfs] NFSv4.1: Don't call nfs4_schedule_state_recovery() unnecessarily
+Message-id: <4B673EB8.1080709@RedHat.com>
+Patchwork-id: 23067
+O-Subject: [RHEL6] [PATCH 7/8] NFSv4.1: Don't call nfs4_schedule_state_recovery()
+	unnecessarily
+Bugzilla: 560784
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 03391693a95900875b0973569d2d73ff3aa8972e
+Author: Trond Myklebust <Trond.Myklebust@netapp.com>
+Date:   Tue Jan 26 15:42:38 2010 -0500
+
+    NFSv4.1: Don't call nfs4_schedule_state_recovery() unnecessarily
+
+    Currently, nfs4_handle_exception() will call it twice if called with an
+    error of -NFS4ERR_STALE_CLIENTID, -NFS4ERR_STALE_STATEID or
+    -NFS4ERR_EXPIRED.
+
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+    Reviewed-by: Chuck Lever <chuck.lever@oracle.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/nfs4proc.c b/fs/nfs/nfs4proc.c
+index 55a563f..f53ff90 100644
+--- a/fs/nfs/nfs4proc.c
++++ b/fs/nfs/nfs4proc.c
+@@ -256,12 +256,8 @@ static int nfs4_handle_exception(const struct nfs_server *server, int errorcode,
+ 			ret = nfs4_wait_clnt_recover(clp);
+ 			if (ret == 0)
+ 				exception->retry = 1;
+-#if !defined(CONFIG_NFS_V4_1)
+ 			break;
+-#else /* !defined(CONFIG_NFS_V4_1) */
+-			if (!nfs4_has_session(server->nfs_client))
+-				break;
+-			/* FALLTHROUGH */
++#if defined(CONFIG_NFS_V4_1)
+ 		case -NFS4ERR_BADSESSION:
+ 		case -NFS4ERR_BADSLOT:
+ 		case -NFS4ERR_BAD_HIGH_SLOT:
+@@ -274,7 +270,7 @@ static int nfs4_handle_exception(const struct nfs_server *server, int errorcode,
+ 			nfs4_schedule_state_recovery(clp);
+ 			exception->retry = 1;
+ 			break;
+-#endif /* !defined(CONFIG_NFS_V4_1) */
++#endif /* defined(CONFIG_NFS_V4_1) */
+ 		case -NFS4ERR_FILE_OPEN:
+ 			if (exception->timeout > HZ) {
+ 				/* We have retried a decent amount, time to

@@ -1,0 +1,35 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Wed, 3 Feb 2010 11:35:00 -0500
+Subject: [gfs] GFS2: Use MAX_LFS_FILESIZE for meta inode size
+Message-id: <1265196900.2370.15.camel@localhost>
+Patchwork-id: 23115
+O-Subject: [RHEL6] GFS2: Three one liners from upstream (bz #561307) [3/3]
+Bugzilla: 561307
+RH-Acked-by: Abhijith Das <adas@redhat.com>
+RH-Acked-by: Benjamin Marzinski <bmarzins@redhat.com>
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+>From ba198098a21a5dc8885fddfb308135bc2f138003 Mon Sep 17 00:00:00 2001
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Fri, 8 Jan 2010 13:44:49 +0000
+Subject: [PATCH] GFS2: Use MAX_LFS_FILESIZE for meta inode size
+
+Using ~0ULL was cauing sign issues in filemap_fdatawrite_range, so
+use MAX_LFS_FILESIZE instead.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/meta_io.c b/fs/gfs2/meta_io.c
+index cb8d7a9..6f68a5f 100644
+--- a/fs/gfs2/meta_io.c
++++ b/fs/gfs2/meta_io.c
+@@ -121,7 +121,7 @@ struct inode *gfs2_aspace_get(struct gfs2_sbd *sdp)
+ 	if (aspace) {
+ 		mapping_set_gfp_mask(aspace->i_mapping, GFP_NOFS);
+ 		aspace->i_mapping->a_ops = &aspace_aops;
+-		aspace->i_size = ~0ULL;
++		aspace->i_size = MAX_LFS_FILESIZE;
+ 		ip = GFS2_I(aspace);
+ 		clear_bit(GIF_USER, &ip->i_flags);
+ 		insert_inode_hash(aspace);

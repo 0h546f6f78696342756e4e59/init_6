@@ -1,0 +1,148 @@
+From: Don Dutile <ddutile@redhat.com>
+Date: Wed, 10 Feb 2010 16:39:59 -0500
+Subject: [pci] Enablement of PCI ACS control when IOMMU enabled on system
+Message-id: <4B72E15F.9000904@redhat.com>
+Patchwork-id: 23222
+O-Subject: [RHEL6 PATCH 3/3] Enablement of PCI ACS control when IOMMU enabled
+	on system
+Bugzilla: 523278
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+BZ 523278
+
+Backport of upstream:
+ae21ee65e8bc228416bbcc8a1da01c56a847a60c
+
+This patch performs the actual enablement
+of PCI ACS for Intel & AMD IOMMU-enabled systems,
+and final patches for xen dom0 support as well.
+
+Please review & ack.
+
+- Don
+>From 72be4d3f29af1cce20e63d0d2564653f4dc3fb3f Mon Sep 17 00:00:00 2001
+From: Donald Dutile <ddutile@redhat.com>
+Date: Thu, 28 Jan 2010 17:32:16 -0500
+Subject: [PATCH 3/3]   Enable ACS for SRIOV support
+
+  Backport of 5d990b627537e59a3a2f039ff588a4750e9c1a6a
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/amd_iommu_init.c b/arch/x86/kernel/amd_iommu_init.c
+index c8243f0..8b7c39d 100644
+--- a/arch/x86/kernel/amd_iommu_init.c
++++ b/arch/x86/kernel/amd_iommu_init.c
+@@ -1362,6 +1362,8 @@ void __init amd_iommu_detect(void)
+ 		gart_iommu_aperture_disabled = 1;
+ 		gart_iommu_aperture = 0;
+ #endif
++		/* Make sure ACS will be enabled */
++		pci_request_acs();
+ 	}
+ }
+ 
+diff --git a/arch/x86/xen/enlighten.c b/arch/x86/xen/enlighten.c
+index 4ffcbf0..df8b8b1 100644
+--- a/arch/x86/xen/enlighten.c
++++ b/arch/x86/xen/enlighten.c
+@@ -27,6 +27,7 @@
+ #include <linux/page-flags.h>
+ #include <linux/highmem.h>
+ #include <linux/console.h>
++#include <linux/pci.h>
+ 
+ #include <xen/interface/xen.h>
+ #include <xen/interface/version.h>
+@@ -1198,6 +1199,9 @@ asmlinkage void __init xen_start_kernel(void)
+ 		add_preferred_console("xenboot", 0, NULL);
+ 		add_preferred_console("tty", 0, NULL);
+ 		add_preferred_console("hvc", 0, NULL);
++	} else {
++		/* Make sure ACS will be enabled */
++		pci_request_acs();
+ 	}
+ 
+ 	xen_raw_console_write("about to get started...\n");
+diff --git a/drivers/pci/dmar.c b/drivers/pci/dmar.c
+index 5753036..d420a1f 100644
+--- a/drivers/pci/dmar.c
++++ b/drivers/pci/dmar.c
+@@ -674,8 +674,11 @@ void __init detect_intel_iommu(void)
+ #endif
+ #ifdef CONFIG_DMAR
+ 		if (ret && !no_iommu && !iommu_detected && !swiotlb &&
+-		    !dmar_disabled)
++		    !dmar_disabled) {
+ 			iommu_detected = 1;
++			/* Make sure ACS will be enabled */
++			pci_request_acs();
++		}
+ #endif
+ 	}
+ 	early_acpi_os_unmap_memory(dmar_tbl, dmar_tbl_size);
+diff --git a/drivers/pci/pci.c b/drivers/pci/pci.c
+index 1dc8b89..83f262b 100644
+--- a/drivers/pci/pci.c
++++ b/drivers/pci/pci.c
+@@ -1536,6 +1536,16 @@ void pci_enable_ari(struct pci_dev *dev)
+ 	bridge->ari_enabled = 1;
+ }
+ 
++static int pci_acs_enable;
++
++/**
++ * pci_request_acs - ask for ACS to be enabled if supported
++ */
++void pci_request_acs(void)
++{
++	pci_acs_enable = 1;
++}
++
+ /**
+  * pci_enable_acs - enable ACS if hardware support it
+  * @dev: the PCI device
+@@ -1546,6 +1556,9 @@ void pci_enable_acs(struct pci_dev *dev)
+ 	u16 cap;
+ 	u16 ctrl;
+ 
++	if (!pci_acs_enable)
++		return;
++
+ 	if (!dev->is_pcie)
+ 		return;
+ 
+diff --git a/drivers/pci/probe.c b/drivers/pci/probe.c
+index b58d217..bff3346 100644
+--- a/drivers/pci/probe.c
++++ b/drivers/pci/probe.c
+@@ -11,7 +11,6 @@
+ #include <linux/cpumask.h>
+ #include <acpi/acpi_hest.h>
+ #include <linux/pci-aspm.h>
+-#include <linux/iommu.h>
+ #include "pci.h"
+ 
+ #define CARDBUS_LATENCY_TIMER	176	/* secondary latency timer */
+@@ -1025,8 +1024,7 @@ static void pci_init_capabilities(struct pci_dev *dev)
+ 	pci_iov_init(dev);
+ 
+ 	/* Enable ACS P2P upstream forwarding */
+-	if (iommu_found())
+-		pci_enable_acs(dev);
++	pci_enable_acs(dev);
+ }
+ 
+ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
+diff --git a/include/linux/pci.h b/include/linux/pci.h
+index a2859af..c527a5e 100644
+--- a/include/linux/pci.h
++++ b/include/linux/pci.h
+@@ -1296,5 +1296,7 @@ extern void pci_hp_create_module_link(struct pci_slot *pci_slot);
+ extern void pci_hp_remove_module_link(struct pci_slot *pci_slot);
+ #endif
+ 
++void pci_request_acs(void);
++
+ #endif /* __KERNEL__ */
+ #endif /* LINUX_PCI_H */

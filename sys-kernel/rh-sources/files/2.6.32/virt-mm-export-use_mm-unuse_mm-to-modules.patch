@@ -1,0 +1,64 @@
+From: Michael S. Tsirkin <mst@redhat.com>
+Date: Tue, 15 Dec 2009 17:38:49 -0500
+Subject: [virt] mm: export use_mm/unuse_mm to modules
+Message-id: <20091215173849.GD25437@redhat.com>
+Patchwork-id: 21972
+O-Subject: [RHEL6 PATCH 3/5] mm: export use_mm/unuse_mm to modules
+Bugzilla: 540389
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Mark McLoughlin <markmc@redhat.com>
+
+BZ#540389
+https://bugzilla.redhat.com/show_bug.cgi?id=540389
+
+Description
+vhost net module wants to do copy to/from user from a kernel thread,
+which needs use_mm. Export it to modules.
+
+Acked-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+Upstream Status of the patch
+The patch below is in Rusty's virtio tree, pull request has been sent by him
+to Linus for inclusion in 2.6.33, and has been backported to RHEL6.
+commit 9046a85f09a5b09c34bac4fd41d6b805e98ee7a1
+
+Brew build#: 2151565
+
+Test Status:
+it has been tested by customers (IBM), and in house on x86 and x86-64
+platforms.
+
+Notes:
+This is part of patchset adding vhost net support to RHEL kernel.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/mmu_context.c b/mm/mmu_context.c
+index ded9081..0777654 100644
+--- a/mm/mmu_context.c
++++ b/mm/mmu_context.c
+@@ -5,6 +5,7 @@
+ 
+ #include <linux/mm.h>
+ #include <linux/mmu_context.h>
++#include <linux/module.h>
+ #include <linux/sched.h>
+ 
+ #include <asm/mmu_context.h>
+@@ -37,6 +38,7 @@ void use_mm(struct mm_struct *mm)
+ 	if (active_mm != mm)
+ 		mmdrop(active_mm);
+ }
++EXPORT_SYMBOL_GPL(use_mm);
+ 
+ /*
+  * unuse_mm
+@@ -56,3 +58,4 @@ void unuse_mm(struct mm_struct *mm)
+ 	enter_lazy_tlb(mm, tsk);
+ 	task_unlock(tsk);
+ }
++EXPORT_SYMBOL_GPL(unuse_mm);

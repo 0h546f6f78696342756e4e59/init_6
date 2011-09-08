@@ -1,0 +1,31 @@
+From: Aristeu Rozanski <aris@redhat.com>
+Date: Wed, 18 Nov 2009 22:02:43 -0500
+Subject: [Fedora] [drm] intel big hammer
+Message-id:
+Patchwork-id:
+O-Subject:
+Bugzilla:
+
+Original Fedora patch: drm-intel-big-hammer.patch
+
+We don't get the flushing right for these chipsets, use the
+big hamer for now to avoid random crashiness.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/i915/i915_gem.c b/drivers/gpu/drm/i915/i915_gem.c
+index abfc27b..514ff07 100644
+--- a/drivers/gpu/drm/i915/i915_gem.c
++++ b/drivers/gpu/drm/i915/i915_gem.c
+@@ -3595,6 +3595,11 @@ i915_gem_execbuffer(struct drm_device *dev, void *data,
+ 
+ 	mutex_lock(&dev->struct_mutex);
+ 
++	/* We don't get the flushing right for these chipsets, use the
++	 * big hamer for now to avoid random crashiness. */
++	if (IS_I855(dev) || IS_I865G(dev))
++		wbinvd();
++
+ 	i915_verify_inactive(dev, __FILE__, __LINE__);
+ 
+ 	if (atomic_read(&dev_priv->mm.wedged)) {

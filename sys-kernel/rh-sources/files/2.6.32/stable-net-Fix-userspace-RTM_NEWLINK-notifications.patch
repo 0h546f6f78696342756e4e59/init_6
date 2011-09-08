@@ -1,0 +1,71 @@
+From: Eric W. Biederman <ebiederm@xmission.com>
+Date: Sun, 13 Dec 2009 22:39:28 -0800
+Subject: [stable] net: Fix userspace RTM_NEWLINK notifications.
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit d90a909e1f3e006a1d57fe11fd417173b6494701 upstream.
+
+I received some bug reports about userspace programs having problems
+because after RTM_NEWLINK was received they could not immeidate
+access files under /proc/sys/net/ because they had not been
+registered yet.
+
+The problem was trivailly fixed by moving the userspace
+notification from rtnetlink_event to the end of register_netdevice.
+
+Signed-off-by: Eric W. Biederman <ebiederm@aristanetworks.com>
+Cc: David Miller <davem@davemloft.net>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/net/core/dev.c b/net/core/dev.c
+index fe10551..584046e 100644
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -4860,6 +4860,11 @@ int register_netdevice(struct net_device *dev)
+ 		rollback_registered(dev);
+ 		dev->reg_state = NETREG_UNREGISTERED;
+ 	}
++	/*
++	 *	Prevent userspace races by waiting until the network
++	 *	device is fully setup before sending notifications.
++	 */
++	rtmsg_ifinfo(RTM_NEWLINK, dev, ~0U);
+ 
+ out:
+ 	return ret;
+@@ -5398,6 +5403,12 @@ int dev_change_net_namespace(struct net_device *dev, struct net *net, const char
+ 	/* Notify protocols, that a new device appeared. */
+ 	call_netdevice_notifiers(NETDEV_REGISTER, dev);
+ 
++	/*
++	 *	Prevent userspace races by waiting until the network
++	 *	device is fully setup before sending notifications.
++	 */
++	rtmsg_ifinfo(RTM_NEWLINK, dev, ~0U);
++
+ 	synchronize_net();
+ 	err = 0;
+ out:
+diff --git a/net/core/rtnetlink.c b/net/core/rtnetlink.c
+index eb42873..d4fd895 100644
+--- a/net/core/rtnetlink.c
++++ b/net/core/rtnetlink.c
+@@ -1334,13 +1334,11 @@ static int rtnetlink_event(struct notifier_block *this, unsigned long event, voi
+ 	case NETDEV_UNREGISTER:
+ 		rtmsg_ifinfo(RTM_DELLINK, dev, ~0U);
+ 		break;
+-	case NETDEV_REGISTER:
+-		rtmsg_ifinfo(RTM_NEWLINK, dev, ~0U);
+-		break;
+ 	case NETDEV_UP:
+ 	case NETDEV_DOWN:
+ 		rtmsg_ifinfo(RTM_NEWLINK, dev, IFF_UP|IFF_RUNNING);
+ 		break;
++	case NETDEV_REGISTER:
+ 	case NETDEV_CHANGE:
+ 	case NETDEV_GOING_DOWN:
+ 		break;

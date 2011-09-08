@@ -1,0 +1,55 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Mon, 14 Dec 2009 17:53:42 -0500
+Subject: [s390x] tape: incomplete device removal
+Message-id: <20091214175342.GA23746@redhat.com>
+Patchwork-id: 21926
+O-Subject: [RHEL6 PATCH 1/1] [s390] tape: incomplete device removal
+Bugzilla: 547415
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+-----------
+After the removal of a tape device its sysfs attributes medium_state,
+first_minor, state, operation, and blocksize are left behind and some
+memory is leaked.
+The check for the driver data pointer in tape_generic_remove is
+incorrect, it checks for a NULL pointer instead of a non-NULL pointer.
+
+The solution is to fix the check for drvdata in tape_generic_remove.
+
+Bugzilla
+--------
+BZ 547415
+https://bugzilla.redhat.com/show_bug.cgi?id=547415
+
+Upstream status of the patch
+----------------------------
+The patch will be upstream as of kernel version 2.6.33
+http://git.kernel.org/?p=linux/kernel/git/torvalds/linux-2.6.git;a=commitdiff;h=1b52fff059d660d4bf83d97c389dd80f1e6aad9a
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/char/tape_core.c b/drivers/s390/char/tape_core.c
+index 27503a7..6311018 100644
+--- a/drivers/s390/char/tape_core.c
++++ b/drivers/s390/char/tape_core.c
+@@ -665,7 +665,7 @@ tape_generic_remove(struct ccw_device *cdev)
+ 			tape_cleanup_device(device);
+ 	}
+ 
+-	if (!dev_get_drvdata(&cdev->dev)) {
++	if (dev_get_drvdata(&cdev->dev)) {
+ 		sysfs_remove_group(&cdev->dev.kobj, &tape_attr_group);
+ 		dev_set_drvdata(&cdev->dev, tape_put_device(dev_get_drvdata(&cdev->dev)));
+ 	}

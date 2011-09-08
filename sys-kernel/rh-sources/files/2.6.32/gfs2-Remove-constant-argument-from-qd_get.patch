@@ -1,0 +1,55 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Thu, 10 Dec 2009 17:31:41 -0500
+Subject: [gfs2] Remove constant argument from qd_get()
+Message-id: <1260466307-12654-8-git-send-email-swhiteho@redhat.com>
+Patchwork-id: 21861
+O-Subject: [RHEL6] [07/13] GFS2: Remove constant argument from qd_get()
+Bugzilla: 298561
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+This function was only ever called with the "create"
+argument set to true, so we can remove it.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/quota.c b/fs/gfs2/quota.c
+index f790f5a..db124af 100644
+--- a/fs/gfs2/quota.c
++++ b/fs/gfs2/quota.c
+@@ -165,7 +165,7 @@ fail:
+ 	return error;
+ }
+ 
+-static int qd_get(struct gfs2_sbd *sdp, int user, u32 id, int create,
++static int qd_get(struct gfs2_sbd *sdp, int user, u32 id,
+ 		  struct gfs2_quota_data **qdp)
+ {
+ 	struct gfs2_quota_data *qd = NULL, *new_qd = NULL;
+@@ -203,7 +203,7 @@ static int qd_get(struct gfs2_sbd *sdp, int user, u32 id, int create,
+ 
+ 		spin_unlock(&qd_lru_lock);
+ 
+-		if (qd || !create) {
++		if (qd) {
+ 			if (new_qd) {
+ 				gfs2_glock_put(new_qd->qd_gl);
+ 				kmem_cache_free(gfs2_quotad_cachep, new_qd);
+@@ -467,7 +467,7 @@ static int qdsb_get(struct gfs2_sbd *sdp, int user, u32 id,
+ {
+ 	int error;
+ 
+-	error = qd_get(sdp, user, id, CREATE, qdp);
++	error = qd_get(sdp, user, id, qdp);
+ 	if (error)
+ 		return error;
+ 
+@@ -1117,7 +1117,7 @@ int gfs2_quota_refresh(struct gfs2_sbd *sdp, int user, u32 id)
+ 	struct gfs2_holder q_gh;
+ 	int error;
+ 
+-	error = qd_get(sdp, user, id, CREATE, &qd);
++	error = qd_get(sdp, user, id, &qd);
+ 	if (error)
+ 		return error;
+ 

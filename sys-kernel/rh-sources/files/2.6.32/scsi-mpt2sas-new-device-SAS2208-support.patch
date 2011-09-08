@@ -1,0 +1,65 @@
+From: Tomas Henzl <thenzl@redhat.com>
+Date: Sat, 19 Dec 2009 23:43:33 -0500
+Subject: [scsi] mpt2sas: new device SAS2208 support
+Message-id: <20091219194312.5875.23913.sendpatchset@localhost.localdomain>
+Patchwork-id: 22225
+O-Subject: [RHEL6 4/20] bz478848 mpt2sas: new device SAS2208 support
+Bugzilla: 470848
+RH-Acked-by: Rob Evers <revers@redhat.com>
+
+mpt2sas: new device SAS2208 support
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/scsi/mpt2sas/mpi/mpi2_cnfg.h b/drivers/scsi/mpt2sas/mpi/mpi2_cnfg.h
+index ab47c46..5af66db 100644
+--- a/drivers/scsi/mpt2sas/mpi/mpi2_cnfg.h
++++ b/drivers/scsi/mpt2sas/mpi/mpi2_cnfg.h
+@@ -348,6 +348,14 @@ typedef struct _MPI2_CONFIG_REPLY
+ #define MPI2_MFGPAGE_DEVID_SAS2108_3                (0x0077)
+ #define MPI2_MFGPAGE_DEVID_SAS2116_1                (0x0064)
+ #define MPI2_MFGPAGE_DEVID_SAS2116_2                (0x0065)
++#define MPI2_MFGPAGE_DEVID_SAS2208_1                (0x0080)
++#define MPI2_MFGPAGE_DEVID_SAS2208_2                (0x0081)
++#define MPI2_MFGPAGE_DEVID_SAS2208_3                (0x0082)
++#define MPI2_MFGPAGE_DEVID_SAS2208_4                (0x0083)
++#define MPI2_MFGPAGE_DEVID_SAS2208_5                (0x0084)
++#define MPI2_MFGPAGE_DEVID_SAS2208_6                (0x0085)
++#define MPI2_MFGPAGE_DEVID_SAS2208_7                (0x0086)
++#define MPI2_MFGPAGE_DEVID_SAS2208_8                (0x0087)
+ 
+ 
+ /* Manufacturing Page 0 */
+diff --git a/drivers/scsi/mpt2sas/mpt2sas_scsih.c b/drivers/scsi/mpt2sas/mpt2sas_scsih.c
+index 18fc5e1..b1ef6ad 100644
+--- a/drivers/scsi/mpt2sas/mpt2sas_scsih.c
++++ b/drivers/scsi/mpt2sas/mpt2sas_scsih.c
+@@ -196,10 +196,28 @@ static struct pci_device_id scsih_pci_table[] = {
+ 		PCI_ANY_ID, PCI_ANY_ID },
+ 	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2108_3,
+ 		PCI_ANY_ID, PCI_ANY_ID },
++	/* Meteor ~ 2116 */
+ 	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2116_1,
+ 		PCI_ANY_ID, PCI_ANY_ID },
+ 	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2116_2,
+ 		PCI_ANY_ID, PCI_ANY_ID },
++	/* Thunderbolt ~ 2208 */
++	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2208_1,
++		PCI_ANY_ID, PCI_ANY_ID },
++	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2208_2,
++		PCI_ANY_ID, PCI_ANY_ID },
++	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2208_3,
++		PCI_ANY_ID, PCI_ANY_ID },
++	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2208_4,
++		PCI_ANY_ID, PCI_ANY_ID },
++	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2208_5,
++		PCI_ANY_ID, PCI_ANY_ID },
++	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2208_6,
++		PCI_ANY_ID, PCI_ANY_ID },
++	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2208_7,
++		PCI_ANY_ID, PCI_ANY_ID },
++	{ MPI2_MFGPAGE_VENDORID_LSI, MPI2_MFGPAGE_DEVID_SAS2208_8,
++		PCI_ANY_ID, PCI_ANY_ID },
+ 	{0}	/* Terminating entry */
+ };
+ MODULE_DEVICE_TABLE(pci, scsih_pci_table);

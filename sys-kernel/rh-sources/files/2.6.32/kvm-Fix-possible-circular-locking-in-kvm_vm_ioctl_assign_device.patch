@@ -1,0 +1,53 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Tue, 12 Jan 2010 21:34:09 -0500
+Subject: [kvm] Fix possible circular locking in kvm_vm_ioctl_assign_device()
+Message-id: <20100112214157.286731610@amt.cnet>
+Patchwork-id: 22460
+O-Subject: [RHEL 6 KVM 20/20] KVM: Fix possible circular locking in
+	kvm_vm_ioctl_assign_device()
+Bugzilla: 554762
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+note to reviewers: the order was fixed in the rcu patchset, so the only
+thing left from this patch is the doc update.
+
+commit fae3a3536a6fecedebd49fa847f810e599bfb132
+Author: Sheng Yang <sheng@linux.intel.com>
+Date:   Tue Dec 15 10:28:07 2009 +0800
+
+KVM: Fix possible circular locking in kvm_vm_ioctl_assign_device()
+
+One possible order is:
+
+KVM_CREATE_IRQCHIP ioctl(took kvm->lock) -> kvm_iobus_register_dev() ->
+down_write(kvm->slots_lock).
+
+The other one is in kvm_vm_ioctl_assign_device(), which take kvm->slots_lock
+first, then kvm->lock.
+
+Update the comment of lock order as well.
+
+Observe it due to kernel locking debug warnings.
+
+Cc: stable@kernel.org
+Signed-off-by: Sheng Yang <sheng@linux.intel.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 554762
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index 02d0b19..61c09fe 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -69,7 +69,7 @@ MODULE_LICENSE("GPL");
+ /*
+  * Ordering of locks:
+  *
+- * 		kvm->slots_lock --> kvm->lock --> kvm->irq_lock
++ * 		kvm->lock --> kvm->slots_lock --> kvm->irq_lock
+  */
+ 
+ DEFINE_SPINLOCK(kvm_lock);

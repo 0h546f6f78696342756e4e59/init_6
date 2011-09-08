@@ -1,0 +1,740 @@
+From: Dave Airlie <airlied@redhat.com>
+Date: Tue, 12 Jan 2010 05:35:40 -0500
+Subject: [drm] radeon/intel: realign displayport helper code with upstream.
+Message-id: <1263274540-13581-9-git-send-email-airlied@redhat.com>
+Patchwork-id: 22421
+O-Subject: [PATCH 8/8] drm/radeon/intel: realign displayport helper code with
+	upstream.
+Bugzilla: 554601
+
+This got implemented different upstream so realign it.
+
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/Makefile b/drivers/gpu/drm/Makefile
+index f8b0210..470ef67 100644
+--- a/drivers/gpu/drm/Makefile
++++ b/drivers/gpu/drm/Makefile
+@@ -15,7 +15,7 @@ drm-y       :=	drm_auth.o drm_bufs.o drm_cache.o \
+ 
+ drm-$(CONFIG_COMPAT) += drm_ioc32.o
+ 
+-drm_kms_helper-y := drm_fb_helper.o drm_crtc_helper.o drm_dp_helper.o
++drm_kms_helper-y := drm_fb_helper.o drm_crtc_helper.o drm_dp_i2c_helper.o
+ 
+ obj-$(CONFIG_DRM_KMS_HELPER) += drm_kms_helper.o
+ 
+diff --git a/drivers/gpu/drm/drm_dp_helper.c b/drivers/gpu/drm/drm_dp_helper.c
+deleted file mode 100644
+index 70399b2..0000000
+--- a/drivers/gpu/drm/drm_dp_helper.c
++++ /dev/null
+@@ -1,274 +0,0 @@
+-/*
+- * Copyright © 2009 Keith Packard
+- *
+- * Permission to use, copy, modify, distribute, and sell this software and its
+- * documentation for any purpose is hereby granted without fee, provided that
+- * the above copyright notice appear in all copies and that both that copyright
+- * notice and this permission notice appear in supporting documentation, and
+- * that the name of the copyright holders not be used in advertising or
+- * publicity pertaining to distribution of the software without specific,
+- * written prior permission.  The copyright holders make no representations
+- * about the suitability of this software for any purpose.  It is provided "as
+- * is" without express or implied warranty.
+- *
+- * THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+- * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+- * EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+- * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+- * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+- * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
+- * OF THIS SOFTWARE.
+- */
+-
+-#include <linux/kernel.h>
+-#include <linux/module.h>
+-#include <linux/delay.h>
+-#include <linux/slab.h>
+-#include <linux/init.h>
+-#include <linux/errno.h>
+-#include <linux/sched.h>
+-#include <linux/i2c.h>
+-#include "drm_dp_helper.h"
+-#include "drmP.h"
+-
+-/* Run a single AUX_CH I2C transaction, writing/reading data as necessary */
+-
+-#define MODE_I2C_START	1
+-#define MODE_I2C_WRITE	2
+-#define MODE_I2C_READ	4
+-#define MODE_I2C_STOP	8
+-
+-static int
+-i2c_algo_dp_aux_transaction(struct i2c_adapter *adapter, int mode,
+-			    uint8_t write_byte, uint8_t *read_byte)
+-{
+-	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
+-	uint16_t address = algo_data->address;
+-	uint8_t msg[5];
+-	uint8_t reply[2];
+-	int msg_bytes;
+-	int reply_bytes;
+-	int ret;
+-
+-	memset(msg, 0, 5);
+-	/* Set up the command byte */
+-	if (mode & MODE_I2C_READ)
+-		msg[0] = AUX_I2C_READ << 4;
+-	else
+-		msg[0] = AUX_I2C_WRITE << 4;
+-
+-	if (!(mode & MODE_I2C_STOP))
+-		msg[0] |= AUX_I2C_MOT << 4;
+-
+-	msg[1] = address >> 8;
+-	msg[2] = address;
+-
+-	switch (mode) {
+-	case MODE_I2C_WRITE:
+-		msg[3] = 0;
+-		msg[4] = write_byte;
+-		msg_bytes = 5;
+-		reply_bytes = 1;
+-		break;
+-	case MODE_I2C_READ:
+-		msg[3] = 0;
+-		msg_bytes = 4;
+-		reply_bytes = 2;
+-		break;
+-	default:
+-		msg_bytes = 3;
+-		reply_bytes = 1;
+-		break;
+-	}
+-
+-	for (;;) {
+-		ret = (*algo_data->aux_ch)(adapter,
+-					   msg, msg_bytes,
+-					   reply, reply_bytes);
+-		if (ret < 0) {
+-			DRM_DEBUG("aux_ch failed %d\n", ret);
+-			return ret;
+-		}
+-		switch (reply[0] & AUX_I2C_REPLY_MASK) {
+-		case AUX_I2C_REPLY_ACK:
+-			if (mode == MODE_I2C_READ) {
+-				*read_byte = reply[1];
+-			}
+-			return reply_bytes - 1;
+-		case AUX_I2C_REPLY_NACK:
+-			DRM_DEBUG("aux_ch nack\n");
+-			return -EREMOTEIO;
+-		case AUX_I2C_REPLY_DEFER:
+-			DRM_DEBUG("aux_ch defer\n");
+-			udelay(100);
+-			break;
+-		default:
+-			DRM_ERROR("aux_ch invalid reply 0x%02x\n", reply[0]);
+-			return -EREMOTEIO;
+-		}
+-	}
+-}
+-
+-/*
+- * I2C over AUX CH
+- */
+-
+-/*
+- * Send the address. If the I2C link is running, this 'restarts'
+- * the connection with the new address, this is used for doing
+- * a write followed by a read (as needed for DDC)
+- */
+-static int
+-i2c_algo_dp_aux_address(struct i2c_adapter *adapter, u16 address, bool reading)
+-{
+-	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
+-	int mode = MODE_I2C_START;
+-	int ret;
+-
+-	if (reading)
+-		mode |= MODE_I2C_READ;
+-	else
+-		mode |= MODE_I2C_WRITE;
+-	algo_data->address = address;
+-	algo_data->running = true;
+-	ret = i2c_algo_dp_aux_transaction(adapter, mode, 0, NULL);
+-	return ret;
+-}
+-
+-/*
+- * Stop the I2C transaction. This closes out the link, sending
+- * a bare address packet with the MOT bit turned off
+- */
+-static void
+-i2c_algo_dp_aux_stop(struct i2c_adapter *adapter, bool reading)
+-{
+-	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
+-	int mode = MODE_I2C_STOP;
+-
+-	if (reading)
+-		mode |= MODE_I2C_READ;
+-	else
+-		mode |= MODE_I2C_WRITE;
+-	if (algo_data->running) {
+-		(void) i2c_algo_dp_aux_transaction(adapter, mode, 0, NULL);
+-		algo_data->running = false;
+-	}
+-}
+-
+-/*
+- * Write a single byte to the current I2C address, the
+- * the I2C link must be running or this returns -EIO
+- */
+-static int
+-i2c_algo_dp_aux_put_byte(struct i2c_adapter *adapter, u8 byte)
+-{
+-	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
+-	int ret;
+-
+-	if (!algo_data->running)
+-		return -EIO;
+-
+-	ret = i2c_algo_dp_aux_transaction(adapter, MODE_I2C_WRITE, byte, NULL);
+-	return ret;
+-}
+-
+-/*
+- * Read a single byte from the current I2C address, the
+- * I2C link must be running or this returns -EIO
+- */
+-static int
+-i2c_algo_dp_aux_get_byte(struct i2c_adapter *adapter, u8 *byte_ret)
+-{
+-	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
+-	int ret;
+-
+-	if (!algo_data->running)
+-		return -EIO;
+-
+-	ret = i2c_algo_dp_aux_transaction(adapter, MODE_I2C_READ, 0, byte_ret);
+-	return ret;
+-}
+-
+-static int
+-i2c_algo_dp_aux_xfer(struct i2c_adapter *adapter,
+-		     struct i2c_msg *msgs,
+-		     int num)
+-{
+-	int ret = 0;
+-	bool reading = false;
+-	int m;
+-	int b;
+-
+-	for (m = 0; m < num; m++) {
+-		u16 len = msgs[m].len;
+-		u8 *buf = msgs[m].buf;
+-		reading = (msgs[m].flags & I2C_M_RD) != 0;
+-		ret = i2c_algo_dp_aux_address(adapter, msgs[m].addr, reading);
+-		if (ret < 0)
+-			break;
+-		if (reading) {
+-			for (b = 0; b < len; b++) {
+-				ret = i2c_algo_dp_aux_get_byte(adapter, &buf[b]);
+-				if (ret < 0)
+-					break;
+-			}
+-		} else {
+-			for (b = 0; b < len; b++) {
+-				ret = i2c_algo_dp_aux_put_byte(adapter, buf[b]);
+-				if (ret < 0)
+-					break;
+-			}
+-		}
+-		if (ret < 0)
+-			break;
+-	}
+-	if (ret >= 0)
+-		ret = num;
+-	i2c_algo_dp_aux_stop(adapter, reading);
+-	DRM_DEBUG("dp_aux_xfer return %d\n", ret);
+-	return ret;
+-}
+-
+-static u32
+-i2c_algo_dp_aux_functionality(struct i2c_adapter *adapter)
+-{
+-	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL |
+-	       I2C_FUNC_SMBUS_READ_BLOCK_DATA |
+-	       I2C_FUNC_SMBUS_BLOCK_PROC_CALL |
+-	       I2C_FUNC_10BIT_ADDR;
+-}
+-
+-static const struct i2c_algorithm i2c_dp_aux_algo = {
+-	.master_xfer	= i2c_algo_dp_aux_xfer,
+-	.functionality	= i2c_algo_dp_aux_functionality,
+-};
+-
+-static void
+-i2c_dp_aux_reset_bus(struct i2c_adapter *adapter)
+-{
+-	(void) i2c_algo_dp_aux_address(adapter, 0, false);
+-	(void) i2c_algo_dp_aux_stop(adapter, false);
+-					   
+-}
+-
+-static int
+-i2c_dp_aux_prepare_bus(struct i2c_adapter *adapter)
+-{
+-	adapter->algo = &i2c_dp_aux_algo;
+-	adapter->retries = 3;
+-	i2c_dp_aux_reset_bus(adapter);
+-	return 0;
+-}
+-
+-int
+-i2c_dp_aux_add_bus(struct i2c_adapter *adapter)
+-{
+-	int error;
+-	
+-	error = i2c_dp_aux_prepare_bus(adapter);
+-	if (error)
+-		return error;
+-	error = i2c_add_adapter(adapter);
+-	return error;
+-}
+-EXPORT_SYMBOL(i2c_dp_aux_add_bus);
+diff --git a/drivers/gpu/drm/drm_dp_i2c_helper.c b/drivers/gpu/drm/drm_dp_i2c_helper.c
+new file mode 100644
+index 0000000..f1c7c85
+--- /dev/null
++++ b/drivers/gpu/drm/drm_dp_i2c_helper.c
+@@ -0,0 +1,209 @@
++/*
++ * Copyright © 2009 Keith Packard
++ *
++ * Permission to use, copy, modify, distribute, and sell this software and its
++ * documentation for any purpose is hereby granted without fee, provided that
++ * the above copyright notice appear in all copies and that both that copyright
++ * notice and this permission notice appear in supporting documentation, and
++ * that the name of the copyright holders not be used in advertising or
++ * publicity pertaining to distribution of the software without specific,
++ * written prior permission.  The copyright holders make no representations
++ * about the suitability of this software for any purpose.  It is provided "as
++ * is" without express or implied warranty.
++ *
++ * THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
++ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
++ * EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY SPECIAL, INDIRECT OR
++ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
++ * DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
++ * TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
++ * OF THIS SOFTWARE.
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/delay.h>
++#include <linux/slab.h>
++#include <linux/init.h>
++#include <linux/errno.h>
++#include <linux/sched.h>
++#include <linux/i2c.h>
++#include "drm_dp_helper.h"
++#include "drmP.h"
++
++/* Run a single AUX_CH I2C transaction, writing/reading data as necessary */
++static int
++i2c_algo_dp_aux_transaction(struct i2c_adapter *adapter, int mode,
++			    uint8_t write_byte, uint8_t *read_byte)
++{
++	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
++	int ret;
++	
++	ret = (*algo_data->aux_ch)(adapter, mode,
++				   write_byte, read_byte);
++	return ret;
++}
++
++/*
++ * I2C over AUX CH
++ */
++
++/*
++ * Send the address. If the I2C link is running, this 'restarts'
++ * the connection with the new address, this is used for doing
++ * a write followed by a read (as needed for DDC)
++ */
++static int
++i2c_algo_dp_aux_address(struct i2c_adapter *adapter, u16 address, bool reading)
++{
++	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
++	int mode = MODE_I2C_START;
++	int ret;
++
++	if (reading)
++		mode |= MODE_I2C_READ;
++	else
++		mode |= MODE_I2C_WRITE;
++	algo_data->address = address;
++	algo_data->running = true;
++	ret = i2c_algo_dp_aux_transaction(adapter, mode, 0, NULL);
++	return ret;
++}
++
++/*
++ * Stop the I2C transaction. This closes out the link, sending
++ * a bare address packet with the MOT bit turned off
++ */
++static void
++i2c_algo_dp_aux_stop(struct i2c_adapter *adapter, bool reading)
++{
++	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
++	int mode = MODE_I2C_STOP;
++
++	if (reading)
++		mode |= MODE_I2C_READ;
++	else
++		mode |= MODE_I2C_WRITE;
++	if (algo_data->running) {
++		(void) i2c_algo_dp_aux_transaction(adapter, mode, 0, NULL);
++		algo_data->running = false;
++	}
++}
++
++/*
++ * Write a single byte to the current I2C address, the
++ * the I2C link must be running or this returns -EIO
++ */
++static int
++i2c_algo_dp_aux_put_byte(struct i2c_adapter *adapter, u8 byte)
++{
++	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
++	int ret;
++
++	if (!algo_data->running)
++		return -EIO;
++
++	ret = i2c_algo_dp_aux_transaction(adapter, MODE_I2C_WRITE, byte, NULL);
++	return ret;
++}
++
++/*
++ * Read a single byte from the current I2C address, the
++ * I2C link must be running or this returns -EIO
++ */
++static int
++i2c_algo_dp_aux_get_byte(struct i2c_adapter *adapter, u8 *byte_ret)
++{
++	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
++	int ret;
++
++	if (!algo_data->running)
++		return -EIO;
++
++	ret = i2c_algo_dp_aux_transaction(adapter, MODE_I2C_READ, 0, byte_ret);
++	return ret;
++}
++
++static int
++i2c_algo_dp_aux_xfer(struct i2c_adapter *adapter,
++		     struct i2c_msg *msgs,
++		     int num)
++{
++	int ret = 0;
++	bool reading = false;
++	int m;
++	int b;
++
++	for (m = 0; m < num; m++) {
++		u16 len = msgs[m].len;
++		u8 *buf = msgs[m].buf;
++		reading = (msgs[m].flags & I2C_M_RD) != 0;
++		ret = i2c_algo_dp_aux_address(adapter, msgs[m].addr, reading);
++		if (ret < 0)
++			break;
++		if (reading) {
++			for (b = 0; b < len; b++) {
++				ret = i2c_algo_dp_aux_get_byte(adapter, &buf[b]);
++				if (ret < 0)
++					break;
++			}
++		} else {
++			for (b = 0; b < len; b++) {
++				ret = i2c_algo_dp_aux_put_byte(adapter, buf[b]);
++				if (ret < 0)
++					break;
++			}
++		}
++		if (ret < 0)
++			break;
++	}
++	if (ret >= 0)
++		ret = num;
++	i2c_algo_dp_aux_stop(adapter, reading);
++	DRM_DEBUG("dp_aux_xfer return %d\n", ret);
++	return ret;
++}
++
++static u32
++i2c_algo_dp_aux_functionality(struct i2c_adapter *adapter)
++{
++	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL |
++	       I2C_FUNC_SMBUS_READ_BLOCK_DATA |
++	       I2C_FUNC_SMBUS_BLOCK_PROC_CALL |
++	       I2C_FUNC_10BIT_ADDR;
++}
++
++static const struct i2c_algorithm i2c_dp_aux_algo = {
++	.master_xfer	= i2c_algo_dp_aux_xfer,
++	.functionality	= i2c_algo_dp_aux_functionality,
++};
++
++static void
++i2c_dp_aux_reset_bus(struct i2c_adapter *adapter)
++{
++	(void) i2c_algo_dp_aux_address(adapter, 0, false);
++	(void) i2c_algo_dp_aux_stop(adapter, false);
++					   
++}
++
++static int
++i2c_dp_aux_prepare_bus(struct i2c_adapter *adapter)
++{
++	adapter->algo = &i2c_dp_aux_algo;
++	adapter->retries = 3;
++	i2c_dp_aux_reset_bus(adapter);
++	return 0;
++}
++
++int
++i2c_dp_aux_add_bus(struct i2c_adapter *adapter)
++{
++	int error;
++	
++	error = i2c_dp_aux_prepare_bus(adapter);
++	if (error)
++		return error;
++	error = i2c_add_adapter(adapter);
++	return error;
++}
++EXPORT_SYMBOL(i2c_dp_aux_add_bus);
+diff --git a/drivers/gpu/drm/i915/intel_dp.c b/drivers/gpu/drm/i915/intel_dp.c
+index e99dab5..ac20a74 100644
+--- a/drivers/gpu/drm/i915/intel_dp.c
++++ b/drivers/gpu/drm/i915/intel_dp.c
+@@ -382,17 +382,77 @@ intel_dp_aux_native_read(struct intel_output *intel_output,
+ }
+ 
+ static int
+-intel_dp_i2c_aux_ch(struct i2c_adapter *adapter,
+-		    uint8_t *send, int send_bytes,
+-		    uint8_t *recv, int recv_bytes)
++intel_dp_i2c_aux_ch(struct i2c_adapter *adapter, int mode,
++		    uint8_t write_byte, uint8_t *read_byte)
+ {
++	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
+ 	struct intel_dp_priv *dp_priv = container_of(adapter,
+ 						     struct intel_dp_priv,
+ 						     adapter);
+ 	struct intel_output *intel_output = dp_priv->intel_output;
++	uint16_t address = algo_data->address;
++	uint8_t msg[5];
++	uint8_t reply[2];
++	int msg_bytes;
++	int reply_bytes;
++	int ret;
++
++	/* Set up the command byte */
++	if (mode & MODE_I2C_READ)
++		msg[0] = AUX_I2C_READ << 4;
++	else
++		msg[0] = AUX_I2C_WRITE << 4;
++
++	if (!(mode & MODE_I2C_STOP))
++		msg[0] |= AUX_I2C_MOT << 4;
++
++	msg[1] = address >> 8;
++	msg[2] = address;
++
++	switch (mode) {
++	case MODE_I2C_WRITE:
++		msg[3] = 0;
++		msg[4] = write_byte;
++		msg_bytes = 5;
++		reply_bytes = 1;
++		break;
++	case MODE_I2C_READ:
++		msg[3] = 0;
++		msg_bytes = 4;
++		reply_bytes = 2;
++		break;
++	default:
++		msg_bytes = 3;
++		reply_bytes = 1;
++		break;
++	}
+ 
+-	return intel_dp_aux_ch(intel_output,
+-			       send, send_bytes, recv, recv_bytes);
++	for (;;) {
++	  ret = intel_dp_aux_ch(intel_output,
++				msg, msg_bytes,
++				reply, reply_bytes);
++		if (ret < 0) {
++			DRM_DEBUG_KMS("aux_ch failed %d\n", ret);
++			return ret;
++		}
++		switch (reply[0] & AUX_I2C_REPLY_MASK) {
++		case AUX_I2C_REPLY_ACK:
++			if (mode == MODE_I2C_READ) {
++				*read_byte = reply[1];
++			}
++			return reply_bytes - 1;
++		case AUX_I2C_REPLY_NACK:
++			DRM_DEBUG_KMS("aux_ch nack\n");
++			return -EREMOTEIO;
++		case AUX_I2C_REPLY_DEFER:
++			DRM_DEBUG_KMS("aux_ch defer\n");
++			udelay(100);
++			break;
++		default:
++			DRM_ERROR("aux_ch invalid reply 0x%02x\n", reply[0]);
++			return -EREMOTEIO;
++		}
++	}
+ }
+ 
+ static int
+diff --git a/drivers/gpu/drm/radeon/atombios_dp.c b/drivers/gpu/drm/radeon/atombios_dp.c
+index eaaf399..784ba80 100644
+--- a/drivers/gpu/drm/radeon/atombios_dp.c
++++ b/drivers/gpu/drm/radeon/atombios_dp.c
+@@ -412,30 +412,6 @@ bool radeon_dp_aux_native_read(struct radeon_connector *radeon_connector, uint16
+ 	return ret;
+ }
+ 
+-int radeon_dp_i2c_aux_ch(struct i2c_adapter *adapter,
+-			 u8 *send, int send_bytes,
+-			 u8 *recv, int recv_bytes)
+-{
+-	struct radeon_i2c_chan *auxch = (struct radeon_i2c_chan *)adapter;
+-	int ret = 0;
+-	u8 tmp1;
+-
+-	/* swap some of the bytes around */
+-	tmp1 = send[0];
+-	send[0] = send[2];
+-	send[2] = tmp1;
+-
+-	send[3] = (send_bytes) << 4;
+-	if (send_bytes == 3)
+-		send_bytes++;
+-	ret = radeon_process_aux_ch(auxch, send, send_bytes, recv + 1, recv_bytes - 1, 0);
+-	if (ret == true)
+-		recv[0] = AUX_I2C_REPLY_ACK;
+-	else
+-		recv[0] = AUX_I2C_REPLY_NACK;
+-	return 0;
+-}
+-
+ /* radeon dp functions */
+ static u8 radeon_dp_encoder_service(struct radeon_device *rdev, int action, int dp_clock,
+ 				    uint8_t ucconfig, uint8_t lane_num)
+@@ -748,3 +724,55 @@ void dp_link_train(struct drm_encoder *encoder,
+ 				  dig_connector->dp_clock, enc_id, 0);
+ }
+ 
++int radeon_dp_i2c_aux_ch(struct i2c_adapter *adapter, int mode,
++			 uint8_t write_byte, uint8_t *read_byte)
++{
++	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
++	struct radeon_i2c_chan *auxch = (struct radeon_i2c_chan *)adapter;
++	int ret = 0;
++	uint16_t address = algo_data->address;
++	uint8_t msg[5];
++	uint8_t reply[2];
++	int msg_len, dp_msg_len;
++	int reply_bytes;
++
++	/* Set up the command byte */
++	if (mode & MODE_I2C_READ)
++		msg[2] = AUX_I2C_READ << 4;
++	else
++		msg[2] = AUX_I2C_WRITE << 4;
++
++	if (!(mode & MODE_I2C_STOP))
++		msg[2] |= AUX_I2C_MOT << 4;
++
++	msg[0] = address;
++	msg[1] = address >> 8;
++
++	reply_bytes = 1;
++
++	msg_len = 4;
++	dp_msg_len = 3;
++	switch (mode) {
++	case MODE_I2C_WRITE:
++		msg[4] = write_byte;
++		msg_len++;
++		dp_msg_len += 2;
++		break;
++	case MODE_I2C_READ:
++		dp_msg_len += 1;
++		break;
++	default:
++		break;
++	}
++
++	msg[3] = (dp_msg_len) << 4;
++	ret = radeon_process_aux_ch(auxch, msg, msg_len, reply, reply_bytes, 0);
++
++	if (ret) {
++		if (read_byte)
++			*read_byte = reply[0];
++		return reply_bytes;
++	}
++	return -EREMOTEIO;
++}
++
+diff --git a/drivers/gpu/drm/radeon/radeon_mode.h b/drivers/gpu/drm/radeon/radeon_mode.h
+index 8043aec..a263362 100644
+--- a/drivers/gpu/drm/radeon/radeon_mode.h
++++ b/drivers/gpu/drm/radeon/radeon_mode.h
+@@ -379,9 +379,8 @@ extern bool radeon_dp_getdpcd(struct radeon_connector *radeon_connector);
+ extern void atombios_dig_transmitter_setup(struct drm_encoder *encoder,
+ 					   int action, uint8_t lane_num,
+ 					   uint8_t lane_set);
+-extern int radeon_dp_i2c_aux_ch(struct i2c_adapter *adapter,
+-				u8 *send, int send_bytes,
+-				u8 *recv, int recv_bytes);
++extern int radeon_dp_i2c_aux_ch(struct i2c_adapter *adapter, int mode,
++				uint8_t write_byte, uint8_t *read_byte);
+ 
+ extern struct radeon_i2c_chan *radeon_i2c_create_dp(struct drm_device *dev,
+ 						    struct radeon_i2c_bus_rec *rec,
+diff --git a/include/drm/drm_dp_helper.h b/include/drm/drm_dp_helper.h
+index dc56b2c..9fd0bb7 100644
+--- a/include/drm/drm_dp_helper.h
++++ b/include/drm/drm_dp_helper.h
+@@ -160,12 +160,17 @@
+ # define DP_SET_POWER_D0                    0x1
+ # define DP_SET_POWER_D3                    0x2
+ 
++#define MODE_I2C_START	1
++#define MODE_I2C_WRITE	2
++#define MODE_I2C_READ	4
++#define MODE_I2C_STOP	8
++
+ struct i2c_algo_dp_aux_data {
+ 	bool running;
+ 	u16 address;
+ 	int (*aux_ch) (struct i2c_adapter *adapter,
+-		       uint8_t *send, int send_bytes,
+-		       uint8_t *recv, int recv_bytes);
++		       int mode, uint8_t write_byte,
++		       uint8_t *read_byte);
+ };
+ 
+ int

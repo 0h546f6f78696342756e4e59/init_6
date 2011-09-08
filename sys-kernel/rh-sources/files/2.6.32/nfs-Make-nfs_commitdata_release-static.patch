@@ -1,0 +1,41 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 20:46:59 -0500
+Subject: [nfs] Make nfs_commitdata_release static
+Message-id: <4B673DC3.8090605@RedHat.com>
+Patchwork-id: 23063
+O-Subject: [RHEL6] [PATCH 3/8] NFS: Make nfs_commitdata_release static
+Bugzilla: 560784
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 0aa05887af728b058af91197f0ae9b3ae63dd74a
+Author: H Hartley Sweeten <hartleys@visionengravers.com>
+Date:   Tue Jan 26 15:42:03 2010 -0500
+
+    NFS: Make nfs_commitdata_release static
+
+    The symbol nfs_commitdata_release is only used locally
+    in this file. Make it static to prevent the following sparse warning:
+
+    warning: symbol 'nfs_commitdata_release' was not declared. Should it be static?
+
+    Signed-off-by: H Hartley Sweeten <hsweeten@visionengravers.com>
+    Cc: Trond Myklebust <Trond.Myklebust@netapp.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+    Reviewed-by: Chuck Lever <chuck.lever@oracle.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/write.c b/fs/nfs/write.c
+index 80722f4..f8aea47 100644
+--- a/fs/nfs/write.c
++++ b/fs/nfs/write.c
+@@ -1233,7 +1233,7 @@ int nfs_writeback_done(struct rpc_task *task, struct nfs_write_data *data)
+ 
+ 
+ #if defined(CONFIG_NFS_V3) || defined(CONFIG_NFS_V4)
+-void nfs_commitdata_release(void *data)
++static void nfs_commitdata_release(void *data)
+ {
+ 	struct nfs_write_data *wdata = data;
+ 

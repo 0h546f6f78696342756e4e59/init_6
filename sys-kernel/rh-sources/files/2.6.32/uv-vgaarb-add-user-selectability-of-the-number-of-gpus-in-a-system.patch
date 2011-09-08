@@ -1,0 +1,58 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Fri, 5 Feb 2010 16:02:09 -0500
+Subject: [uv] vgaarb: add user selectability of the number of gpus in a system
+Message-id: <20100205104625.30315.23071.sendpatchset@sgi-xe250-01.lab.bos.redhat.com>
+Patchwork-id: 23146
+O-Subject: [RHEL6 PATCH 5/5]
+	vgaarb-add-user-selectability-of-the-number-of-gpus-in-a-system.patch
+Bugzilla: 555879
+
+From: Mike Travis <travis@sgi.com>
+
+Update the VGA Arbiter to allow the user to select the number of GPU's
+supported in a system.
+
+Signed-off-by: Mike Travis <travis@sgi.com>
+Cc: Thomas Gleixner <tglx@linutronix.de>
+Cc: Robin Holt <holt@sgi.com>
+Cc: H. Peter Anvin <hpa@zytor.com>
+Cc: Jack Steiner <steiner@sgi.com>
+Cc: Ingo Molnar <mingo@elte.hu>
+Cc: Jesse Barnes <jbarnes@virtuousgeek.org>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/vga/Kconfig b/drivers/gpu/vga/Kconfig
+index 790e675..cb1dcfe 100644
+--- a/drivers/gpu/vga/Kconfig
++++ b/drivers/gpu/vga/Kconfig
+@@ -8,3 +8,11 @@ config VGA_ARB
+ 	  are accessed at same time they need some kind of coordination. Please
+ 	  see Documentation/vgaarbiter.txt for more details. Select this to
+ 	  enable VGA arbiter.
++
++config VGA_ARB_MAX_GPUS
++	int "Maximum number of GPUs"
++	default 64
++	depends on VGA_ARB
++	help
++	  Reserves space in the kernel to maintain resource locking for
++	  multiple GPUS.  The overhead for each GPU is very small.
+diff --git a/drivers/gpu/vga/vgaarb.c b/drivers/gpu/vga/vgaarb.c
+index ba7fa9e..541fdfd 100644
+--- a/drivers/gpu/vga/vgaarb.c
++++ b/drivers/gpu/vga/vgaarb.c
+@@ -688,7 +688,11 @@ EXPORT_SYMBOL(vga_client_register);
+  * the arbiter.
+  */
+ 
++#ifdef CONFIG_VGA_ARB_MAX_GPUS
++#define MAX_USER_CARDS         CONFIG_VGA_ARB_MAX_GPUS
++#else
+ #define MAX_USER_CARDS         16
++#endif
+ #define PCI_INVALID_CARD       ((struct pci_dev *)-1UL)
+ 
+ /*
+diff --git a/redhat/configs/config-generic-rhel b/redhat/configs/config-generic-rhel
+index 12720b0..975f542 100644

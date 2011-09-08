@@ -1,0 +1,89 @@
+From: Amerigo Wang <amwang@redhat.com>
+Date: Fri, 20 Nov 2009 18:25:23 -0500
+Subject: [kdump] ia64: implement crashkernel=auto
+Message-id: <20090914071755.4415.68309.sendpatchset@localhost.localdomain>
+Patchwork-id: 20855
+O-Subject: [RHEL6 Patch 4/8] ia64: implement crashkernel=auto
+Bugzilla: 523091
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+Since in patch 2/8 we already implement the generic part, this will
+add the rest part for ia64.
+
+Signed-off-by: WANG Cong <amwang@redhat.com>
+
+
+diff --git a/arch/ia64/include/asm/kexec.h b/arch/ia64/include/asm/kexec.h
+index e1d58f8..ccec55a 100644
+--- a/arch/ia64/include/asm/kexec.h
++++ b/arch/ia64/include/asm/kexec.h
+@@ -1,6 +1,7 @@
+ #ifndef _ASM_IA64_KEXEC_H
+ #define _ASM_IA64_KEXEC_H
+ 
++#include <asm-generic/kexec.h>
+ 
+ /* Maximum physical address we can use pages from */
+ #define KEXEC_SOURCE_MEMORY_LIMIT (-1UL)
+@@ -19,6 +20,12 @@
+                 flush_icache_range(page_addr, page_addr + PAGE_SIZE); \
+         } while(0)
+ 
++#ifdef CONFIG_KEXEC_AUTO_RESERVE
++extern
++unsigned long long __init arch_default_crash_size(unsigned long long);
++#define arch_default_crash_size arch_default_crash_size
++#endif
++
+ extern struct kimage *ia64_kimage;
+ extern const unsigned int relocate_new_kernel_size;
+ extern void relocate_new_kernel(unsigned long, unsigned long,
+diff --git a/arch/ia64/kernel/machine_kexec.c b/arch/ia64/kernel/machine_kexec.c
+index 3d3aeef..eb8567e 100644
+--- a/arch/ia64/kernel/machine_kexec.c
++++ b/arch/ia64/kernel/machine_kexec.c
+@@ -162,6 +162,44 @@ void arch_crash_save_vmcoreinfo(void)
+ #endif
+ }
+ 
++#ifdef CONFIG_KEXEC_AUTO_RESERVE
++#define MBYTES(n) ((n)*1024*1024ULL)
++#define GBYTES(n) ((n)*1024*1024*1024ULL)
++/*
++       Memory size     Reserved memory
++       ===========     ===============
++       [4G, 12G)       256M
++       [12G, 128G)     512M
++       [128G, 256G)    768M
++       [256G, 378G)    1024M
++       [378G, 512G)    1536M
++       [512G, 768G)    2048M
++       [768G, )        3072M
++ */
++unsigned long long __init arch_default_crash_size(unsigned long long total_size)
++{
++	unsigned long long ret;
++
++	if (total_size >= GBYTES(4) && total_size < GBYTES(12))
++		ret = MBYTES(256);
++	else if (total_size >= GBYTES(12) && total_size < GBYTES(128))
++		ret = MBYTES(512);
++	else if (total_size >= GBYTES(128) && total_size < GBYTES(256))
++		ret = MBYTES(768);
++	else if (total_size >= GBYTES(256) && total_size < GBYTES(378))
++		ret = MBYTES(1024);
++	else if (total_size >= GBYTES(318) && total_size < GBYTES(512))
++		ret = MBYTES(1536);
++	else if (total_size >= GBYTES(512) && total_size < GBYTES(768))
++		ret = MBYTES(2048);
++	else
++		ret = MBYTES(3072);
++	return ret;
++}
++#undef GBYTES
++#undef MBYTES
++#endif
++
+ unsigned long paddr_vmcoreinfo_note(void)
+ {
+ 	return ia64_tpa((unsigned long)(char *)&vmcoreinfo_note);

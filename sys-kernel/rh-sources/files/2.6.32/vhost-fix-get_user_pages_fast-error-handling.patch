@@ -1,0 +1,47 @@
+From: Michael S. Tsirkin <mst@redhat.com>
+Date: Thu, 4 Mar 2010 10:34:10 -0500
+Subject: [vhost] fix get_user_pages_fast error handling
+Message-id: <e56cc2947093af5513a85dfaa3c69a69ddc4f1a3.1267698800.git.mst@redhat.com>
+Patchwork-id: 23483
+O-Subject: [RHEL6.0 PATCH 4/5] vhost: fix get_user_pages_fast error handling
+Bugzilla: 562837
+RH-Acked-by: David S. Miller <davem@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+
+BZ#562837
+https://bugzilla.redhat.com/show_bug.cgi?id=562837
+
+Description
+get_user_pages_fast returns number of pages on success, negative value
+on failure, but never 0. Fix vhost code to match this logic.
+
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+Upstream status
+This patch has been merged for 2.6.34, commit
+d6db3f5c11dc7ed5712d5d5682aa34025ee5248e
+
+Brew build#: 2297441
+
+The change itself is trivial
+It has been tested in house on x86_64 platform
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/vhost/vhost.c b/drivers/vhost/vhost.c
+index 6c31c0c..7cd55e0 100644
+--- a/drivers/vhost/vhost.c
++++ b/drivers/vhost/vhost.c
+@@ -646,8 +646,9 @@ static int set_bit_to_user(int nr, void __user *addr)
+ 	int bit = nr + (log % PAGE_SIZE) * 8;
+ 	int r;
+ 	r = get_user_pages_fast(log, 1, 1, &page);
+-	if (r)
++	if (r < 0)
+ 		return r;
++	BUG_ON(r != 1);
+ 	base = kmap_atomic(page, KM_USER0);
+ 	set_bit(bit, base);
+ 	kunmap_atomic(base, KM_USER0);

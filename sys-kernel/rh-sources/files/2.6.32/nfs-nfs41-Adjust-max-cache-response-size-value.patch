@@ -1,0 +1,76 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Mon, 1 Feb 2010 20:57:22 -0500
+Subject: [nfs] nfs41: Adjust max cache response size value
+Message-id: <4B674032.4080006@RedHat.com>
+Patchwork-id: 23070
+O-Subject: [RHEL6] [PATCH 1/13] nfs41: Adjust max cache response size value
+Bugzilla: 560785
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+RH-Acked-by: Jeff Layton <jlayton@redhat.com>
+
+commit 686a61f0dab17c0b6643e92f37361e2b24a1ecae
+Author: Mike Sager <sager@netapp.com>
+Date:   Thu Dec 17 12:06:26 2009 -0500
+
+    nfs41: Adjust max cache response size value
+
+    For the CREATE_SESSION attribute ca_maxresponsesize_cached, calculate
+    the value based on the rpc reply header size plus the maximum nfs compound
+    reply size.
+
+    Signed-off-by: Mike Sager <sager@netapp.com>
+    Signed-off-by: Trond Myklebust <Trond.Myklebust@netapp.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfs/nfs4proc.c b/fs/nfs/nfs4proc.c
+index 198d51d..03c7021 100644
+--- a/fs/nfs/nfs4proc.c
++++ b/fs/nfs/nfs4proc.c
+@@ -4760,16 +4760,14 @@ static void nfs4_init_channel_attrs(struct nfs41_create_session_args *args)
+ 	args->fc_attrs.headerpadsz = 0;
+ 	args->fc_attrs.max_rqst_sz = mxrqst_sz;
+ 	args->fc_attrs.max_resp_sz = mxresp_sz;
+-	args->fc_attrs.max_resp_sz_cached = mxresp_sz;
+ 	args->fc_attrs.max_ops = NFS4_MAX_OPS;
+ 	args->fc_attrs.max_reqs = session->clp->cl_rpcclient->cl_xprt->max_reqs;
+ 
+ 	dprintk("%s: Fore Channel : max_rqst_sz=%u max_resp_sz=%u "
+-		"max_resp_sz_cached=%u max_ops=%u max_reqs=%u\n",
++		"max_ops=%u max_reqs=%u\n",
+ 		__func__,
+ 		args->fc_attrs.max_rqst_sz, args->fc_attrs.max_resp_sz,
+-		args->fc_attrs.max_resp_sz_cached, args->fc_attrs.max_ops,
+-		args->fc_attrs.max_reqs);
++		args->fc_attrs.max_ops, args->fc_attrs.max_reqs);
+ 
+ 	/* Back channel attributes */
+ 	args->bc_attrs.headerpadsz = 0;
+diff --git a/fs/nfs/nfs4xdr.c b/fs/nfs/nfs4xdr.c
+index e437fd6..020ebf1 100644
+--- a/fs/nfs/nfs4xdr.c
++++ b/fs/nfs/nfs4xdr.c
+@@ -1578,6 +1578,14 @@ static void encode_create_session(struct xdr_stream *xdr,
+ 	char machine_name[NFS4_MAX_MACHINE_NAME_LEN];
+ 	uint32_t len;
+ 	struct nfs_client *clp = args->client;
++	u32 max_resp_sz_cached;
++
++	/*
++	 * Assumes OPEN is the biggest non-idempotent compound.
++	 * 2 is the verifier.
++	 */
++	max_resp_sz_cached = (NFS4_dec_open_sz + RPC_REPHDRSIZE +
++			      RPC_MAX_AUTH_SIZE + 2) * XDR_UNIT;
+ 
+ 	len = scnprintf(machine_name, sizeof(machine_name), "%s",
+ 			clp->cl_ipaddr);
+@@ -1592,7 +1600,7 @@ static void encode_create_session(struct xdr_stream *xdr,
+ 	*p++ = cpu_to_be32(args->fc_attrs.headerpadsz);	/* header padding size */
+ 	*p++ = cpu_to_be32(args->fc_attrs.max_rqst_sz);	/* max req size */
+ 	*p++ = cpu_to_be32(args->fc_attrs.max_resp_sz);	/* max resp size */
+-	*p++ = cpu_to_be32(args->fc_attrs.max_resp_sz_cached);	/* Max resp sz cached */
++	*p++ = cpu_to_be32(max_resp_sz_cached);		/* Max resp sz cached */
+ 	*p++ = cpu_to_be32(args->fc_attrs.max_ops);	/* max operations */
+ 	*p++ = cpu_to_be32(args->fc_attrs.max_reqs);	/* max requests */
+ 	*p++ = cpu_to_be32(0);				/* rdmachannel_attrs */

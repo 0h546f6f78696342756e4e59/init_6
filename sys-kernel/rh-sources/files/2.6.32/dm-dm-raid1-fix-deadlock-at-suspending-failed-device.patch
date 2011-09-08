@@ -1,0 +1,121 @@
+From: Takahiro Yasui <tyasui@redhat.com>
+Date: Thu, 4 Feb 2010 21:34:43 -0500
+Subject: [dm] dm-raid1: fix deadlock at suspending failed device
+Message-id: <4B6B3D73.8050508@redhat.com>
+Patchwork-id: 23133
+O-Subject: [RHEL6 PATCH] dm-raid1: fix deadlock at suspending failed device
+Bugzilla: 557932
+RH-Acked-by: Mikulas Patocka <mpatocka@redhat.com>
+
+BZ#:
+----
+  https://bugzilla.redhat.com/show_bug.cgi?id=557932
+
+Description:
+-----------
+  The recovery can't start because there are pending bios and therefore
+  dm_rh_stop_recovery deadlocks.
+
+  When there are pending bios in the hold list, the recovery waits for
+  the completion of the bios after recovery_count is acquired.
+  The recovery_count is released when the recovery finished, however,
+  the bios in the hold list are processed after dm_rh_stop_recovery() in
+  mirror_presuspend(). dm_rh_stop_recovery() also acquires recovery_count,
+  then deadlock occurs.
+
+  To prevent deadlock, bios in the hold list should be flushed before
+  dm_rh_stop_recovery() is called in mirror_suspend().
+
+Upstream status:
+----------------
+  Posted on dm-devel
+  https://www.redhat.com/archives/dm-devel/2010-January/msg00035.html
+
+Test status:
+------------
+  Patch was tested with kernel-2.6.33-rc1, and confirmed that no
+  deadlock happens when dmsetup suspend is executed.
+
+Appreciate your review.
+
+Thanks,
+Takahiro Yasui
+
+Signed-off-by: Takahiro Yasui <tyasui@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/md/dm-raid1.c b/drivers/md/dm-raid1.c
+index ad779bd..8aac410 100644
+--- a/drivers/md/dm-raid1.c
++++ b/drivers/md/dm-raid1.c
+@@ -465,9 +465,17 @@ static void map_region(struct dm_io_region *io, struct mirror *m,
+ static void hold_bio(struct mirror_set *ms, struct bio *bio)
+ {
+ 	/*
+-	 * If device is suspended, complete the bio.
++	 * Lock is required to avoid race condition during suspend
++	 * process.
+ 	 */
++	spin_lock_irq(&ms->lock);
++
+ 	if (atomic_read(&ms->suspend)) {
++		spin_unlock_irq(&ms->lock);
++
++		/*
++		 * If device is suspended, complete the bio.
++		 */
+ 		if (dm_noflush_suspending(ms->ti))
+ 			bio_endio(bio, DM_ENDIO_REQUEUE);
+ 		else
+@@ -478,7 +486,6 @@ static void hold_bio(struct mirror_set *ms, struct bio *bio)
+ 	/*
+ 	 * Hold bio until the suspend is complete.
+ 	 */
+-	spin_lock_irq(&ms->lock);
+ 	bio_list_add(&ms->holds, bio);
+ 	spin_unlock_irq(&ms->lock);
+ }
+@@ -1259,6 +1266,20 @@ static void mirror_presuspend(struct dm_target *ti)
+ 	atomic_set(&ms->suspend, 1);
+ 
+ 	/*
++	 * Process bios in the hold list to start recovery waiting
++	 * for bios in the hold list. After the process, no bio has
++	 * a chance to be added in the hold list because ms->suspend
++	 * is set.
++	 */
++	spin_lock_irq(&ms->lock);
++	holds = ms->holds;
++	bio_list_init(&ms->holds);
++	spin_unlock_irq(&ms->lock);
++
++	while ((bio = bio_list_pop(&holds)))
++		hold_bio(ms, bio);
++
++	/*
+ 	 * We must finish up all the work that we've
+ 	 * generated (i.e. recovery work).
+ 	 */
+@@ -1278,22 +1299,6 @@ static void mirror_presuspend(struct dm_target *ti)
+ 	 * we know that all of our I/O has been pushed.
+ 	 */
+ 	flush_workqueue(ms->kmirrord_wq);
+-
+-	/*
+-	 * Now set ms->suspend is set and the workqueue flushed, no more
+-	 * entries can be added to ms->hold list, so process it.
+-	 *
+-	 * Bios can still arrive concurrently with or after this
+-	 * presuspend function, but they cannot join the hold list
+-	 * because ms->suspend is set.
+-	 */
+-	spin_lock_irq(&ms->lock);
+-	holds = ms->holds;
+-	bio_list_init(&ms->holds);
+-	spin_unlock_irq(&ms->lock);
+-
+-	while ((bio = bio_list_pop(&holds)))
+-		hold_bio(ms, bio);
+ }
+ 
+ static void mirror_postsuspend(struct dm_target *ti)

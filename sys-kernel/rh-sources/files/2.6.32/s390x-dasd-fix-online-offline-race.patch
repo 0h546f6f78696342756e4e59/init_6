@@ -1,0 +1,153 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Tue, 2 Feb 2010 14:04:26 -0500
+Subject: [s390x] dasd: fix online/offline race
+Message-id: <20100202140426.GA9164@redhat.com>
+Patchwork-id: 23098
+O-Subject: [RHEL6 PATCH 1/1] [s390] dasd: fix online/offline race
+Bugzilla: 552840
+
+Description
+-----------
+Setting a DASD online and offline in quick succession might cause
+a kernel panic or let the chhccwdev command wait forever.
+
+The Online process is split into two parts.  After the first part is
+finished the offline process may be called.  This might result in a
+situation where the second online processing part tries to set the
+DASD offline as well.  These two parallel offline processing might
+cause a kernel panic in various parts of the offline process.
+
+The solution is to introduce a mutex to protect and serialize
+the online/offline processing.
+
+Bugzilla
+--------
+BZ 552840
+https://bugzilla.redhat.com/show_bug.cgi?id=552840
+
+Upstream status of the patch
+----------------------------
+The patch is not yet upstream but will be send as soon as possible.
+
+Brew
+----
+http://brewweb.devel.redhat.com/brew/taskinfo?taskID=2238964
+
+Test status
+-----------
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+
+diff --git a/drivers/s390/block/dasd.c b/drivers/s390/block/dasd.c
+index 95f5526..5684ce0 100644
+--- a/drivers/s390/block/dasd.c
++++ b/drivers/s390/block/dasd.c
+@@ -20,6 +20,7 @@
+ #include <linux/buffer_head.h>
+ #include <linux/hdreg.h>
+ #include <linux/async.h>
++#include <linux/mutex.h>
+ 
+ #include <asm/ccwdev.h>
+ #include <asm/ebcdic.h>
+@@ -112,6 +113,7 @@ struct dasd_device *dasd_alloc_device(void)
+ 	INIT_WORK(&device->restore_device, do_restore_device);
+ 	device->state = DASD_STATE_NEW;
+ 	device->target = DASD_STATE_NEW;
++	mutex_init(&device->state_mutex);
+ 
+ 	return device;
+ }
+@@ -484,10 +486,8 @@ static void dasd_change_state(struct dasd_device *device)
+ 	if (rc)
+ 		device->target = device->state;
+ 
+-	if (device->state == device->target) {
++	if (device->state == device->target)
+ 		wake_up(&dasd_init_waitq);
+-		dasd_put_device(device);
+-	}
+ 
+ 	/* let user-space know that the device status changed */
+ 	kobject_uevent(&device->cdev->dev.kobj, KOBJ_CHANGE);
+@@ -502,7 +502,9 @@ static void dasd_change_state(struct dasd_device *device)
+ static void do_kick_device(struct work_struct *work)
+ {
+ 	struct dasd_device *device = container_of(work, struct dasd_device, kick_work);
++	mutex_lock(&device->state_mutex);
+ 	dasd_change_state(device);
++	mutex_unlock(&device->state_mutex);
+ 	dasd_schedule_device_bh(device);
+ 	dasd_put_device(device);
+ }
+@@ -539,18 +541,19 @@ void dasd_restore_device(struct dasd_device *device)
+ void dasd_set_target_state(struct dasd_device *device, int target)
+ {
+ 	dasd_get_device(device);
++	mutex_lock(&device->state_mutex);
+ 	/* If we are in probeonly mode stop at DASD_STATE_READY. */
+ 	if (dasd_probeonly && target > DASD_STATE_READY)
+ 		target = DASD_STATE_READY;
+ 	if (device->target != target) {
+-		if (device->state == target) {
++		if (device->state == target)
+ 			wake_up(&dasd_init_waitq);
+-			dasd_put_device(device);
+-		}
+ 		device->target = target;
+ 	}
+ 	if (device->state != device->target)
+ 		dasd_change_state(device);
++	mutex_unlock(&device->state_mutex);
++	dasd_put_device(device);
+ }
+ 
+ /*
+@@ -1601,7 +1604,6 @@ int dasd_cancel_req(struct dasd_ccw_req *cqr)
+ 				cqr, rc);
+ 		} else {
+ 			cqr->stopclk = get_clock();
+-			rc = 1;
+ 		}
+ 		break;
+ 	default: /* already finished or clear pending - do nothing */
+@@ -2077,9 +2079,13 @@ static void dasd_flush_request_queue(struct dasd_block *block)
+ static int dasd_open(struct block_device *bdev, fmode_t mode)
+ {
+ 	struct dasd_block *block = bdev->bd_disk->private_data;
+-	struct dasd_device *base = block->base;
++	struct dasd_device *base;
+ 	int rc;
+ 
++	if (!block)
++		return -ENODEV;
++
++	base = block->base;
+ 	atomic_inc(&block->open_count);
+ 	if (test_bit(DASD_FLAG_OFFLINE, &base->flags)) {
+ 		rc = -ENODEV;
+diff --git a/drivers/s390/block/dasd_genhd.c b/drivers/s390/block/dasd_genhd.c
+index d319830..94f92a1 100644
+--- a/drivers/s390/block/dasd_genhd.c
++++ b/drivers/s390/block/dasd_genhd.c
+@@ -88,6 +88,7 @@ void dasd_gendisk_free(struct dasd_block *block)
+ 	if (block->gdp) {
+ 		del_gendisk(block->gdp);
+ 		block->gdp->queue = NULL;
++		block->gdp->private_data = NULL;
+ 		put_disk(block->gdp);
+ 		block->gdp = NULL;
+ 	}
+diff --git a/drivers/s390/block/dasd_int.h b/drivers/s390/block/dasd_int.h
+index b19f309..3f5d568 100644
+--- a/drivers/s390/block/dasd_int.h
++++ b/drivers/s390/block/dasd_int.h
+@@ -368,6 +368,7 @@ struct dasd_device {
+ 
+ 	/* Device state and target state. */
+ 	int state, target;
++	struct mutex state_mutex;
+ 	int stopped;		/* device (ccw_device_start) was stopped */
+ 
+ 	/* reference count. */

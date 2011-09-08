@@ -1,0 +1,39 @@
+From: Amerigo Wang <amwang@redhat.com>
+Date: Fri, 20 Nov 2009 18:25:21 -0500
+Subject: [kdump] x86: add CONFIG_KEXEC_AUTO_RESERVE
+Message-id: <20090914071729.4415.7127.sendpatchset@localhost.localdomain>
+Patchwork-id: 20852
+O-Subject: [RHEL6 Patch 1/8] x86: add CONFIG_KEXEC_AUTO_RESERVE
+Bugzilla: 523091
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+Introduce a new config option KEXEC_AUTO_RESERVE for x86.
+
+Signed-off-by: WANG Cong <amwang@redhat.com>
+Acked-by: Neil Horman <nhorman@tuxdriver.com>
+
+
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index 72ace95..b22271f 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -1477,6 +1477,19 @@ config KEXEC
+ 	  support.  As of this writing the exact hardware interface is
+ 	  strongly in flux, so no good recommendation can be made.
+ 
++config KEXEC_AUTO_RESERVE
++	bool "automatically reserve memory for kexec kernel"
++	depends on KEXEC
++	default y
++	---help---
++	  Automatically reserve memory for a kexec kernel, so that you don't
++	  need to specify numbers for the "crashkernel=X@Y" boot option,
++	  instead you can use "crashkernel=auto". To make this work, you need
++	  to have more than 4G memory.
++
++	  On x86_32, 128M is reserved, on x86_64 1/32 of your memory is
++	  reserved, but it will not exceed 4G.
++
+ config CRASH_DUMP
+ 	bool "kernel crash dumps"
+ 	depends on X86_64 || (X86_32 && HIGHMEM)

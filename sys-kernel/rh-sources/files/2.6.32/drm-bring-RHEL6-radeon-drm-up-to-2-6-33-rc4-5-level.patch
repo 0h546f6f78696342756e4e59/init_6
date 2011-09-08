@@ -1,0 +1,1060 @@
+From: Jerome Glisse <jglisse@redhat.com>
+Date: Thu, 21 Jan 2010 18:58:47 -0500
+Subject: [drm] bring RHEL6 radeon drm up to 2.6.33-rc4/5 level
+Message-id: <20100121185847.GD3837@localhost.localdomain>
+Patchwork-id: 22695
+O-Subject: [RHEL6 PATCH] [drm] bring RHEL6 radeon drm up to 2.6.33-rc4/5 level
+Bugzilla: 557539
+RH-Acked-by: Dave Airlie <airlied@redhat.com>
+
+https://bugzilla.redhat.com/show_bug.cgi?id=557539
+
+Description
+This patch bring drm/radeon to the lastest fixes we have scheduled
+for 2.6.33. I list each of the subpatch this patch contains along
+with the commit id from
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=shortlog;h=refs/heads/drm-radeon-testing
+
+Upstream status
+Patch are in testing before being send to Linus for 2.6.33
+inclusion, patches here already had enought testing or we
+are confident that they fixe issue to be worth integrating
+in RHEL6) Along with a the one line description i give a link
+to bug each patch fixes (when there is such bug associated)
+
+Notes:
+db96380ea26fcc31ab37189aedeabd12894b1431
+drm/radeon/kms: r600/r700 don't test ib if ib initialization fails
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=db96380ea26fcc31ab37189aedeabd12894b1431
+
+7e71c9e2e7704ebf044d4a964e02fbd2098a173f
+drm/radeon/kms: Forbid creation of framebuffer with no valid GEM object
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=7e71c9e2e7704ebf044d4a964e02fbd2098a173f
+
+7924e5eb8fe422d6b1ce3b3e2be749a480dfcdd9
+drm/radeon/kms: r600 handle irq vector ring overflow
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=7924e5eb8fe422d6b1ce3b3e2be749a480dfcdd9
+
+79c2bbc505751bb5130ac753251fc9a0eb37bb12
+drm/radeon/kms: r600/r700 don't process IRQ if not initialized
+http://bugzilla.kernel.org/show_bug.cgi?id=15017
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=79c2bbc505751bb5130ac753251fc9a0eb37bb12
+
+0c45249f419d8b86abe0e51c6627ca4b085e8c23
+drm/radeon/kms: r600/r700 disable irq at suspend
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=0c45249f419d8b86abe0e51c6627ca4b085e8c23
+
+615e0cb67968c94fd9e53797985843a5b816dec4
+drm/radeon/kms/r4xx: cleanup atom path
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=615e0cb67968c94fd9e53797985843a5b816dec4
+
+54f088a9603dbee88809cb2ddfd8dc1ef8a74be5
+drm/radeon/kms: fix atombios_crtc_set_base
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=54f088a9603dbee88809cb2ddfd8dc1ef8a74be5
+
+e2f8e87089427d3a203538dc73058b90e82b11f6
+drm/radeon/kms/atom: upstream parser updates
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=e2f8e87089427d3a203538dc73058b90e82b11f6
+
+9f53e7931610cbd1715fd2d2c0f9a853e17f02d8
+drm/radeon/kms/atom: fix some parser bugs
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=9f53e7931610cbd1715fd2d2c0f9a853e17f02d8
+
+07bec2df01cde5590a1700b992d12de3f46b12bc
+drm/radeon/kms: fix hardcoded mmio size in register functions
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=07bec2df01cde5590a1700b992d12de3f46b12bc
+
+cf57fc7aa2ac61d02a29550b99db6a01ccd7917c
+drm/radeon/kms/r100: fix bug in CS parser
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=cf57fc7aa2ac61d02a29550b99db6a01ccd7917c
+
+828153e29206196552c2cc34461ad7e5b93e3f22
+drm/radeon/kms/r200: fix bug in CS parser
+http://bugs.freedesktop.org/show_bug.cgi?id=26061
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=828153e29206196552c2cc34461ad7e5b93e3f22
+
+f3d1ccc14f37a07614c67a270f05a8d94ec3667c
+drm/radeon/kms/r200: fix bug in CS parser
+http://bugs.freedesktop.org/show_bug.cgi?id=24159
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=f3d1ccc14f37a07614c67a270f05a8d94ec3667c
+
+700a0cc088a42a2ed92c6f961534fdb38588af87
+drm/radeon/kms: Use radeon_agp_disable when disabling AGP
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=700a0cc088a42a2ed92c6f961534fdb38588af87
+
+0a3f316370da07fcdb11fde4f5a683d60713b7fd
+drm/radeon/kms: Disable AGP is aperture size < 32M
+https://bugzilla.redhat.com/show_bug.cgi?id=539624
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=0a3f316370da07fcdb11fde4f5a683d60713b7fd
+
+30d2d9a54d48e4fefede0389ded1b6fc2d44a522
+drm/radeon/kms: Fix r600 blit cleanup path
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=30d2d9a54d48e4fefede0389ded1b6fc2d44a522
+
+6398d42454ce1671b3422c34fd0f600c9c76c8b1
+drm/radeon/kms: Do not unpin buffer in fb destruction
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=6398d42454ce1671b3422c34fd0f600c9c76c8b1
+
+7a15cbd40108a670baae71cbd3cec62b65891fa6
+drm/radeon/kms: fix displayport->dvi connector DDC.
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=7a15cbd40108a670baae71cbd3cec62b65891fa6
+
+9270eb1b496cb002d75f49ef82c9ef4cbd22a5a0
+drm/radeon/kms: only evict to GTT if CP is ready
+http://bugs.freedesktop.org/show_bug.cgi?id=25733
+http://bugzilla.kernel.org/show_bug.cgi?id=15035
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=9270eb1b496cb002d75f49ef82c9ef4cbd22a5a0
+
+11f3b59e3654c66c4e8ef2c48f8138b78bf440da
+drm/radeon/kms: Fix crash getting TV info with no BIOS.
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=11f3b59e3654c66c4e8ef2c48f8138b78bf440da
+
+1b24203e51072b6e76aff8c74bdd67eb3b34a724
+drm/radeon/kms/rv100: reject modes > 135 Mhz on DVI (v2)
+http://bugs.freedesktop.org/show_bug.cgi?id=25992
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=1b24203e51072b6e76aff8c74bdd67eb3b34a724
+
+b042589ca038e647fa1e2bb4e7ac3963688479b8
+drm/radeon/kms/r6xx+: make irq handler less verbose
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=b042589ca038e647fa1e2bb4e7ac3963688479b8
+
+3890ddf56dbc0f804953198e65a7e406ed654576
+drm/radeon/kms: fix up LVDS handling on macs (v2)
+http://git.kernel.org/?p=linux/kernel/git/airlied/drm-2.6.git;a=commit;h=3890ddf56dbc0f804953198e65a7e406ed654576
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/gpu/drm/radeon/atom.c b/drivers/gpu/drm/radeon/atom.c
+index 388140a..cf31261 100644
+--- a/drivers/gpu/drm/radeon/atom.c
++++ b/drivers/gpu/drm/radeon/atom.c
+@@ -246,6 +246,9 @@ static uint32_t atom_get_src_int(atom_exec_context *ctx, uint8_t attr,
+ 		case ATOM_WS_ATTRIBUTES:
+ 			val = gctx->io_attr;
+ 			break;
++		case ATOM_WS_REGPTR:
++			val = gctx->reg_block;
++			break;
+ 		default:
+ 			val = ctx->ws[idx];
+ 		}
+@@ -385,6 +388,32 @@ static uint32_t atom_get_src(atom_exec_context *ctx, uint8_t attr, int *ptr)
+ 	return atom_get_src_int(ctx, attr, ptr, NULL, 1);
+ }
+ 
++static uint32_t atom_get_src_direct(atom_exec_context *ctx, uint8_t align, int *ptr)
++{
++	uint32_t val = 0xCDCDCDCD;
++
++	switch (align) {
++	case ATOM_SRC_DWORD:
++		val = U32(*ptr);
++		(*ptr) += 4;
++		break;
++	case ATOM_SRC_WORD0:
++	case ATOM_SRC_WORD8:
++	case ATOM_SRC_WORD16:
++		val = U16(*ptr);
++		(*ptr) += 2;
++		break;
++	case ATOM_SRC_BYTE0:
++	case ATOM_SRC_BYTE8:
++	case ATOM_SRC_BYTE16:
++	case ATOM_SRC_BYTE24:
++		val = U8(*ptr);
++		(*ptr)++;
++		break;
++	}
++	return val;
++}
++
+ static uint32_t atom_get_dst(atom_exec_context *ctx, int arg, uint8_t attr,
+ 			     int *ptr, uint32_t *saved, int print)
+ {
+@@ -482,6 +511,9 @@ static void atom_put_dst(atom_exec_context *ctx, int arg, uint8_t attr,
+ 		case ATOM_WS_ATTRIBUTES:
+ 			gctx->io_attr = val;
+ 			break;
++		case ATOM_WS_REGPTR:
++			gctx->reg_block = val;
++			break;
+ 		default:
+ 			ctx->ws[idx] = val;
+ 		}
+@@ -677,7 +709,7 @@ static void atom_op_mask(atom_exec_context *ctx, int *ptr, int arg)
+ 	SDEBUG("   dst: ");
+ 	dst = atom_get_dst(ctx, arg, attr, ptr, &saved, 1);
+ 	SDEBUG("   src1: ");
+-	src1 = atom_get_src(ctx, attr, ptr);
++	src1 = atom_get_src_direct(ctx, ((attr >> 3) & 7), ptr);
+ 	SDEBUG("   src2: ");
+ 	src2 = atom_get_src(ctx, attr, ptr);
+ 	dst &= src1;
+@@ -809,6 +841,38 @@ static void atom_op_setregblock(atom_exec_context *ctx, int *ptr, int arg)
+ 	SDEBUG("   base: 0x%04X\n", ctx->ctx->reg_block);
+ }
+ 
++static void atom_op_shift_left(atom_exec_context *ctx, int *ptr, int arg)
++{
++	uint8_t attr = U8((*ptr)++), shift;
++	uint32_t saved, dst;
++	int dptr = *ptr;
++	attr &= 0x38;
++	attr |= atom_def_dst[attr >> 3] << 6;
++	SDEBUG("   dst: ");
++	dst = atom_get_dst(ctx, arg, attr, ptr, &saved, 1);
++	shift = atom_get_src_direct(ctx, ATOM_SRC_BYTE0, ptr);
++	SDEBUG("   shift: %d\n", shift);
++	dst <<= shift;
++	SDEBUG("   dst: ");
++	atom_put_dst(ctx, arg, attr, &dptr, dst, saved);
++}
++
++static void atom_op_shift_right(atom_exec_context *ctx, int *ptr, int arg)
++{
++	uint8_t attr = U8((*ptr)++), shift;
++	uint32_t saved, dst;
++	int dptr = *ptr;
++	attr &= 0x38;
++	attr |= atom_def_dst[attr >> 3] << 6;
++	SDEBUG("   dst: ");
++	dst = atom_get_dst(ctx, arg, attr, ptr, &saved, 1);
++	shift = atom_get_src_direct(ctx, ATOM_SRC_BYTE0, ptr);
++	SDEBUG("   shift: %d\n", shift);
++	dst >>= shift;
++	SDEBUG("   dst: ");
++	atom_put_dst(ctx, arg, attr, &dptr, dst, saved);
++}
++
+ static void atom_op_shl(atom_exec_context *ctx, int *ptr, int arg)
+ {
+ 	uint8_t attr = U8((*ptr)++), shift;
+@@ -818,7 +882,7 @@ static void atom_op_shl(atom_exec_context *ctx, int *ptr, int arg)
+ 	attr |= atom_def_dst[attr >> 3] << 6;
+ 	SDEBUG("   dst: ");
+ 	dst = atom_get_dst(ctx, arg, attr, ptr, &saved, 1);
+-	shift = U8((*ptr)++);
++	shift = atom_get_src(ctx, attr, ptr);
+ 	SDEBUG("   shift: %d\n", shift);
+ 	dst <<= shift;
+ 	SDEBUG("   dst: ");
+@@ -834,7 +898,7 @@ static void atom_op_shr(atom_exec_context *ctx, int *ptr, int arg)
+ 	attr |= atom_def_dst[attr >> 3] << 6;
+ 	SDEBUG("   dst: ");
+ 	dst = atom_get_dst(ctx, arg, attr, ptr, &saved, 1);
+-	shift = U8((*ptr)++);
++	shift = atom_get_src(ctx, attr, ptr);
+ 	SDEBUG("   shift: %d\n", shift);
+ 	dst >>= shift;
+ 	SDEBUG("   dst: ");
+@@ -937,18 +1001,18 @@ static struct {
+ 	atom_op_or, ATOM_ARG_FB}, {
+ 	atom_op_or, ATOM_ARG_PLL}, {
+ 	atom_op_or, ATOM_ARG_MC}, {
+-	atom_op_shl, ATOM_ARG_REG}, {
+-	atom_op_shl, ATOM_ARG_PS}, {
+-	atom_op_shl, ATOM_ARG_WS}, {
+-	atom_op_shl, ATOM_ARG_FB}, {
+-	atom_op_shl, ATOM_ARG_PLL}, {
+-	atom_op_shl, ATOM_ARG_MC}, {
+-	atom_op_shr, ATOM_ARG_REG}, {
+-	atom_op_shr, ATOM_ARG_PS}, {
+-	atom_op_shr, ATOM_ARG_WS}, {
+-	atom_op_shr, ATOM_ARG_FB}, {
+-	atom_op_shr, ATOM_ARG_PLL}, {
+-	atom_op_shr, ATOM_ARG_MC}, {
++	atom_op_shift_left, ATOM_ARG_REG}, {
++	atom_op_shift_left, ATOM_ARG_PS}, {
++	atom_op_shift_left, ATOM_ARG_WS}, {
++	atom_op_shift_left, ATOM_ARG_FB}, {
++	atom_op_shift_left, ATOM_ARG_PLL}, {
++	atom_op_shift_left, ATOM_ARG_MC}, {
++	atom_op_shift_right, ATOM_ARG_REG}, {
++	atom_op_shift_right, ATOM_ARG_PS}, {
++	atom_op_shift_right, ATOM_ARG_WS}, {
++	atom_op_shift_right, ATOM_ARG_FB}, {
++	atom_op_shift_right, ATOM_ARG_PLL}, {
++	atom_op_shift_right, ATOM_ARG_MC}, {
+ 	atom_op_mul, ATOM_ARG_REG}, {
+ 	atom_op_mul, ATOM_ARG_PS}, {
+ 	atom_op_mul, ATOM_ARG_WS}, {
+diff --git a/drivers/gpu/drm/radeon/atom.h b/drivers/gpu/drm/radeon/atom.h
+index 47fd943..bc73781 100644
+--- a/drivers/gpu/drm/radeon/atom.h
++++ b/drivers/gpu/drm/radeon/atom.h
+@@ -91,6 +91,7 @@
+ #define ATOM_WS_AND_MASK	0x45
+ #define ATOM_WS_FB_WINDOW	0x46
+ #define ATOM_WS_ATTRIBUTES	0x47
++#define ATOM_WS_REGPTR  	0x48
+ 
+ #define ATOM_IIO_NOP		0
+ #define ATOM_IIO_START		1
+diff --git a/drivers/gpu/drm/radeon/atombios_crtc.c b/drivers/gpu/drm/radeon/atombios_crtc.c
+index 85fdb9e..a6dc613 100644
+--- a/drivers/gpu/drm/radeon/atombios_crtc.c
++++ b/drivers/gpu/drm/radeon/atombios_crtc.c
+@@ -577,8 +577,8 @@ void atombios_crtc_set_pll(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 	atom_execute_table(rdev->mode_info.atom_context, index, (uint32_t *)&args);
+ }
+ 
+-int atombios_crtc_set_base(struct drm_crtc *crtc, int x, int y,
+-			   struct drm_framebuffer *old_fb)
++static int avivo_crtc_set_base(struct drm_crtc *crtc, int x, int y,
++			       struct drm_framebuffer *old_fb)
+ {
+ 	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
+ 	struct drm_device *dev = crtc->dev;
+@@ -708,6 +708,42 @@ int atombios_crtc_set_base(struct drm_crtc *crtc, int x, int y,
+ 	return 0;
+ }
+ 
++int atombios_crtc_set_base(struct drm_crtc *crtc, int x, int y,
++			   struct drm_framebuffer *old_fb)
++{
++	struct drm_device *dev = crtc->dev;
++	struct radeon_device *rdev = dev->dev_private;
++
++	if (ASIC_IS_AVIVO(rdev))
++		return avivo_crtc_set_base(crtc, x, y, old_fb);
++	else
++		return radeon_crtc_set_base(crtc, x, y, old_fb);
++}
++
++/* properly set additional regs when using atombios */
++static void radeon_legacy_atom_fixup(struct drm_crtc *crtc)
++{
++	struct drm_device *dev = crtc->dev;
++	struct radeon_device *rdev = dev->dev_private;
++	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
++	u32 disp_merge_cntl;
++
++	switch (radeon_crtc->crtc_id) {
++	case 0:
++		disp_merge_cntl = RREG32(RADEON_DISP_MERGE_CNTL);
++		disp_merge_cntl &= ~RADEON_DISP_RGB_OFFSET_EN;
++		WREG32(RADEON_DISP_MERGE_CNTL, disp_merge_cntl);
++		break;
++	case 1:
++		disp_merge_cntl = RREG32(RADEON_DISP2_MERGE_CNTL);
++		disp_merge_cntl &= ~RADEON_DISP2_RGB_OFFSET_EN;
++		WREG32(RADEON_DISP2_MERGE_CNTL, disp_merge_cntl);
++		WREG32(RADEON_FP_H2_SYNC_STRT_WID,   RREG32(RADEON_CRTC2_H_SYNC_STRT_WID));
++		WREG32(RADEON_FP_V2_SYNC_STRT_WID,   RREG32(RADEON_CRTC2_V_SYNC_STRT_WID));
++		break;
++	}
++}
++
+ int atombios_crtc_mode_set(struct drm_crtc *crtc,
+ 			   struct drm_display_mode *mode,
+ 			   struct drm_display_mode *adjusted_mode,
+@@ -729,8 +765,8 @@ int atombios_crtc_mode_set(struct drm_crtc *crtc,
+ 	else {
+ 		if (radeon_crtc->crtc_id == 0)
+ 			atombios_set_crtc_dtd_timing(crtc, adjusted_mode);
+-		radeon_crtc_set_base(crtc, x, y, old_fb);
+-		radeon_legacy_atom_set_surface(crtc);
++		atombios_crtc_set_base(crtc, x, y, old_fb);
++		radeon_legacy_atom_fixup(crtc);
+ 	}
+ 	atombios_overscan_setup(crtc, mode, adjusted_mode);
+ 	atombios_scaler_setup(crtc);
+diff --git a/drivers/gpu/drm/radeon/r100.c b/drivers/gpu/drm/radeon/r100.c
+index 8760d66..11c9a3f 100644
+--- a/drivers/gpu/drm/radeon/r100.c
++++ b/drivers/gpu/drm/radeon/r100.c
+@@ -1504,6 +1504,7 @@ static int r100_packet3_check(struct radeon_cs_parser *p,
+ 			DRM_ERROR("PRIM_WALK must be 3 for IMMD draw\n");
+ 			return -EINVAL;
+ 		}
++		track->vtx_size = r100_get_vtx_size(radeon_get_ib_value(p, idx + 0));
+ 		track->vap_vf_cntl = radeon_get_ib_value(p, idx + 1);
+ 		track->immd_dwords = pkt->count - 1;
+ 		r = r100_cs_track_check(p->rdev, track);
+@@ -3399,9 +3400,7 @@ int r100_mc_init(struct radeon_device *rdev)
+ 	if (rdev->flags & RADEON_IS_AGP) {
+ 		r = radeon_agp_init(rdev);
+ 		if (r) {
+-			printk(KERN_WARNING "[drm] Disabling AGP\n");
+-			rdev->flags &= ~RADEON_IS_AGP;
+-			rdev->mc.gtt_size = radeon_gart_size * 1024 * 1024;
++			radeon_agp_disable(rdev);
+ 		} else {
+ 			rdev->mc.gtt_location = rdev->mc.agp_base;
+ 		}
+diff --git a/drivers/gpu/drm/radeon/r200.c b/drivers/gpu/drm/radeon/r200.c
+index 2094212..ff1e0cd 100644
+--- a/drivers/gpu/drm/radeon/r200.c
++++ b/drivers/gpu/drm/radeon/r200.c
+@@ -371,13 +371,16 @@ int r200_packet0_check(struct radeon_cs_parser *p,
+ 		case 5:
+ 		case 6:
+ 		case 7:
++			/* 1D/2D */
+ 			track->textures[i].tex_coord_type = 0;
+ 			break;
+ 		case 1:
+-			track->textures[i].tex_coord_type = 1;
++			/* CUBE */
++			track->textures[i].tex_coord_type = 2;
+ 			break;
+ 		case 2:
+-			track->textures[i].tex_coord_type = 2;
++			/* 3D */
++			track->textures[i].tex_coord_type = 1;
+ 			break;
+ 		}
+ 		break;
+diff --git a/drivers/gpu/drm/radeon/r420.c b/drivers/gpu/drm/radeon/r420.c
+index 053404e..4526faa 100644
+--- a/drivers/gpu/drm/radeon/r420.c
++++ b/drivers/gpu/drm/radeon/r420.c
+@@ -50,9 +50,7 @@ int r420_mc_init(struct radeon_device *rdev)
+ 	if (rdev->flags & RADEON_IS_AGP) {
+ 		r = radeon_agp_init(rdev);
+ 		if (r) {
+-			printk(KERN_WARNING "[drm] Disabling AGP\n");
+-			rdev->flags &= ~RADEON_IS_AGP;
+-			rdev->mc.gtt_size = radeon_gart_size * 1024 * 1024;
++			radeon_agp_disable(rdev);
+ 		} else {
+ 			rdev->mc.gtt_location = rdev->mc.agp_base;
+ 		}
+diff --git a/drivers/gpu/drm/radeon/r600.c b/drivers/gpu/drm/radeon/r600.c
+index 1f4f83d..d0bd117 100644
+--- a/drivers/gpu/drm/radeon/r600.c
++++ b/drivers/gpu/drm/radeon/r600.c
+@@ -624,7 +624,6 @@ int r600_mc_init(struct radeon_device *rdev)
+ 	fixed20_12 a;
+ 	u32 tmp;
+ 	int chansize, numchan;
+-	int r;
+ 
+ 	/* Get VRAM informations */
+ 	rdev->mc.vram_is_ddr = true;
+@@ -667,9 +666,6 @@ int r600_mc_init(struct radeon_device *rdev)
+ 		rdev->mc.real_vram_size = rdev->mc.aper_size;
+ 
+ 	if (rdev->flags & RADEON_IS_AGP) {
+-		r = radeon_agp_init(rdev);
+-		if (r)
+-			return r;
+ 		/* gtt_size is setup by radeon_agp_init */
+ 		rdev->mc.gtt_location = rdev->mc.agp_base;
+ 		tmp = 0xFFFFFFFFUL - rdev->mc.agp_base - rdev->mc.gtt_size;
+@@ -1958,14 +1954,17 @@ int r600_suspend(struct radeon_device *rdev)
+ 	/* FIXME: we should wait for ring to be empty */
+ 	r600_cp_stop(rdev);
+ 	rdev->cp.ready = false;
++	r600_irq_suspend(rdev);
+ 	r600_wb_disable(rdev);
+ 	r600_pcie_gart_disable(rdev);
+ 	/* unpin shaders bo */
+-	r = radeon_bo_reserve(rdev->r600_blit.shader_obj, false);
+-	if (unlikely(r != 0))
+-		return r;
+-	radeon_bo_unpin(rdev->r600_blit.shader_obj);
+-	radeon_bo_unreserve(rdev->r600_blit.shader_obj);
++	if (rdev->r600_blit.shader_obj) {
++		r = radeon_bo_reserve(rdev->r600_blit.shader_obj, false);
++		if (!r) {
++			radeon_bo_unpin(rdev->r600_blit.shader_obj);
++			radeon_bo_unreserve(rdev->r600_blit.shader_obj);
++		}
++	}
+ 	return 0;
+ }
+ 
+@@ -2026,6 +2025,11 @@ int r600_init(struct radeon_device *rdev)
+ 	r = radeon_fence_driver_init(rdev);
+ 	if (r)
+ 		return r;
++	if (rdev->flags & RADEON_IS_AGP) {
++		r = radeon_agp_init(rdev);
++		if (r)
++			radeon_agp_disable(rdev);
++	}
+ 	r = r600_mc_init(rdev);
+ 	if (r)
+ 		return r;
+@@ -2060,13 +2064,14 @@ int r600_init(struct radeon_device *rdev)
+ 	if (rdev->accel_working) {
+ 		r = radeon_ib_pool_init(rdev);
+ 		if (r) {
+-			DRM_ERROR("radeon: failed initializing IB pool (%d).\n", r);
+-			rdev->accel_working = false;
+-		}
+-		r = r600_ib_test(rdev);
+-		if (r) {
+-			DRM_ERROR("radeon: failed testing IB (%d).\n", r);
++			dev_err(rdev->dev, "IB initialization failed (%d).\n", r);
+ 			rdev->accel_working = false;
++		} else {
++			r = r600_ib_test(rdev);
++			if (r) {
++				dev_err(rdev->dev, "IB test failed (%d).\n", r);
++				rdev->accel_working = false;
++			}
+ 		}
+ 	}
+ 
+@@ -2197,14 +2202,14 @@ void r600_ih_ring_init(struct radeon_device *rdev, unsigned ring_size)
+ 	rb_bufsz = drm_order(ring_size / 4);
+ 	ring_size = (1 << rb_bufsz) * 4;
+ 	rdev->ih.ring_size = ring_size;
+-	rdev->ih.align_mask = 4 - 1;
++	rdev->ih.ptr_mask = rdev->ih.ring_size - 1;
++	rdev->ih.rptr = 0;
+ }
+ 
+-static int r600_ih_ring_alloc(struct radeon_device *rdev, unsigned ring_size)
++static int r600_ih_ring_alloc(struct radeon_device *rdev)
+ {
+ 	int r;
+ 
+-	rdev->ih.ring_size = ring_size;
+ 	/* Allocate ring buffer */
+ 	if (rdev->ih.ring_obj == NULL) {
+ 		r = radeon_bo_create(rdev, NULL, rdev->ih.ring_size,
+@@ -2234,9 +2239,6 @@ static int r600_ih_ring_alloc(struct radeon_device *rdev, unsigned ring_size)
+ 			return r;
+ 		}
+ 	}
+-	rdev->ih.ptr_mask = (rdev->cp.ring_size / 4) - 1;
+-	rdev->ih.rptr = 0;
+-
+ 	return 0;
+ }
+ 
+@@ -2386,7 +2388,7 @@ int r600_irq_init(struct radeon_device *rdev)
+ 	u32 interrupt_cntl, ih_cntl, ih_rb_cntl;
+ 
+ 	/* allocate ring */
+-	ret = r600_ih_ring_alloc(rdev, rdev->ih.ring_size);
++	ret = r600_ih_ring_alloc(rdev);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -2449,10 +2451,15 @@ int r600_irq_init(struct radeon_device *rdev)
+ 	return ret;
+ }
+ 
+-void r600_irq_fini(struct radeon_device *rdev)
++void r600_irq_suspend(struct radeon_device *rdev)
+ {
+ 	r600_disable_interrupts(rdev);
+ 	r600_rlc_stop(rdev);
++}
++
++void r600_irq_fini(struct radeon_device *rdev)
++{
++	r600_irq_suspend(rdev);
+ 	r600_ih_ring_fini(rdev);
+ }
+ 
+@@ -2467,8 +2474,12 @@ int r600_irq_set(struct radeon_device *rdev)
+ 		return -EINVAL;
+ 	}
+ 	/* don't enable anything if the ih is disabled */
+-	if (!rdev->ih.enabled)
++	if (!rdev->ih.enabled) {
++		r600_disable_interrupts(rdev);
++		/* force the active interrupt state to all disabled */
++		r600_disable_interrupt_state(rdev);
+ 		return 0;
++	}
+ 
+ 	if (ASIC_IS_DCE3(rdev)) {
+ 		hpd1 = RREG32(DC_HPD1_INT_CONTROL) & ~DC_HPDx_INT_EN;
+@@ -2638,16 +2649,18 @@ static inline u32 r600_get_ih_wptr(struct radeon_device *rdev)
+ 	wptr = RREG32(IH_RB_WPTR);
+ 
+ 	if (wptr & RB_OVERFLOW) {
+-		WARN_ON(1);
+-		/* XXX deal with overflow */
+-		DRM_ERROR("IH RB overflow\n");
++		/* When a ring buffer overflow happen start parsing interrupt
++		 * from the last not overwritten vector (wptr + 16). Hopefully
++		 * this should allow us to catchup.
++		 */
++		dev_warn(rdev->dev, "IH ring buffer overflow (0x%08X, %d, %d)\n",
++			wptr, rdev->ih.rptr, (wptr + 16) + rdev->ih.ptr_mask);
++		rdev->ih.rptr = (wptr + 16) & rdev->ih.ptr_mask;
+ 		tmp = RREG32(IH_RB_CNTL);
+ 		tmp |= IH_WPTR_OVERFLOW_CLEAR;
+ 		WREG32(IH_RB_CNTL, tmp);
+ 	}
+-	wptr = wptr & WPTR_OFFSET_MASK;
+-
+-	return wptr;
++	return (wptr & rdev->ih.ptr_mask);
+ }
+ 
+ /*        r600 IV Ring
+@@ -2683,12 +2696,13 @@ int r600_irq_process(struct radeon_device *rdev)
+ 	u32 wptr = r600_get_ih_wptr(rdev);
+ 	u32 rptr = rdev->ih.rptr;
+ 	u32 src_id, src_data;
+-	u32 last_entry = rdev->ih.ring_size - 16;
+ 	u32 ring_index, disp_int, disp_int_cont, disp_int_cont2;
+ 	unsigned long flags;
+ 	bool queue_hotplug = false;
+ 
+ 	DRM_DEBUG("r600_irq_process start: rptr %d, wptr %d\n", rptr, wptr);
++	if (!rdev->ih.enabled)
++		return IRQ_NONE;
+ 
+ 	spin_lock_irqsave(&rdev->ih.lock, flags);
+ 
+@@ -2729,7 +2743,7 @@ restart_ih:
+ 				}
+ 				break;
+ 			default:
+-				DRM_ERROR("Unhandled interrupt: %d %d\n", src_id, src_data);
++				DRM_DEBUG("Unhandled interrupt: %d %d\n", src_id, src_data);
+ 				break;
+ 			}
+ 			break;
+@@ -2749,7 +2763,7 @@ restart_ih:
+ 				}
+ 				break;
+ 			default:
+-				DRM_ERROR("Unhandled interrupt: %d %d\n", src_id, src_data);
++				DRM_DEBUG("Unhandled interrupt: %d %d\n", src_id, src_data);
+ 				break;
+ 			}
+ 			break;
+@@ -2798,7 +2812,7 @@ restart_ih:
+ 				}
+ 				break;
+ 			default:
+-				DRM_ERROR("Unhandled interrupt: %d %d\n", src_id, src_data);
++				DRM_DEBUG("Unhandled interrupt: %d %d\n", src_id, src_data);
+ 				break;
+ 			}
+ 			break;
+@@ -2812,15 +2826,13 @@ restart_ih:
+ 			DRM_DEBUG("IH: CP EOP\n");
+ 			break;
+ 		default:
+-			DRM_ERROR("Unhandled interrupt: %d %d\n", src_id, src_data);
++			DRM_DEBUG("Unhandled interrupt: %d %d\n", src_id, src_data);
+ 			break;
+ 		}
+ 
+ 		/* wptr/rptr are in bytes! */
+-		if (rptr == last_entry)
+-			rptr = 0;
+-		else
+-			rptr += 16;
++		rptr += 16;
++		rptr &= rdev->ih.ptr_mask;
+ 	}
+ 	/* make sure wptr hasn't changed while processing */
+ 	wptr = r600_get_ih_wptr(rdev);
+diff --git a/drivers/gpu/drm/radeon/r600_blit_kms.c b/drivers/gpu/drm/radeon/r600_blit_kms.c
+index 8787ea8..2bedce4 100644
+--- a/drivers/gpu/drm/radeon/r600_blit_kms.c
++++ b/drivers/gpu/drm/radeon/r600_blit_kms.c
+@@ -512,14 +512,16 @@ void r600_blit_fini(struct radeon_device *rdev)
+ {
+ 	int r;
+ 
++	if (rdev->r600_blit.shader_obj == NULL)
++		return;
++	/* If we can't reserve the bo, unref should be enough to destroy
++	 * it when it becomes idle.
++	 */
+ 	r = radeon_bo_reserve(rdev->r600_blit.shader_obj, false);
+-	if (unlikely(r != 0)) {
+-		dev_err(rdev->dev, "(%d) can't finish r600 blit\n", r);
+-		goto out_unref;
++	if (!r) {
++		radeon_bo_unpin(rdev->r600_blit.shader_obj);
++		radeon_bo_unreserve(rdev->r600_blit.shader_obj);
+ 	}
+-	radeon_bo_unpin(rdev->r600_blit.shader_obj);
+-	radeon_bo_unreserve(rdev->r600_blit.shader_obj);
+-out_unref:
+ 	radeon_bo_unref(&rdev->r600_blit.shader_obj);
+ }
+ 
+diff --git a/drivers/gpu/drm/radeon/radeon.h b/drivers/gpu/drm/radeon/radeon.h
+index eb5f99b..09c655f 100644
+--- a/drivers/gpu/drm/radeon/radeon.h
++++ b/drivers/gpu/drm/radeon/radeon.h
+@@ -410,7 +410,6 @@ struct r600_ih {
+ 	unsigned		wptr_old;
+ 	unsigned		ring_size;
+ 	uint64_t		gpu_addr;
+-	uint32_t		align_mask;
+ 	uint32_t		ptr_mask;
+ 	spinlock_t              lock;
+ 	bool                    enabled;
+@@ -847,7 +846,7 @@ void r600_kms_blit_copy(struct radeon_device *rdev,
+ 
+ static inline uint32_t r100_mm_rreg(struct radeon_device *rdev, uint32_t reg)
+ {
+-	if (reg < 0x10000)
++	if (reg < rdev->rmmio_size)
+ 		return readl(((void __iomem *)rdev->rmmio) + reg);
+ 	else {
+ 		writel(reg, ((void __iomem *)rdev->rmmio) + RADEON_MM_INDEX);
+@@ -857,7 +856,7 @@ static inline uint32_t r100_mm_rreg(struct radeon_device *rdev, uint32_t reg)
+ 
+ static inline void r100_mm_wreg(struct radeon_device *rdev, uint32_t reg, uint32_t v)
+ {
+-	if (reg < 0x10000)
++	if (reg < rdev->rmmio_size)
+ 		writel(v, ((void __iomem *)rdev->rmmio) + reg);
+ 	else {
+ 		writel(reg, ((void __iomem *)rdev->rmmio) + RADEON_MM_INDEX);
+@@ -1017,6 +1016,8 @@ static inline void radeon_ring_write(struct radeon_device *rdev, uint32_t v)
+ #define radeon_hpd_set_polarity(rdev, hpd) (rdev)->asic->hpd_set_polarity((rdev), (hpd))
+ 
+ /* Common functions */
++/* AGP */
++extern void radeon_agp_disable(struct radeon_device *rdev);
+ extern int radeon_gart_table_vram_pin(struct radeon_device *rdev);
+ extern int radeon_modeset_init(struct radeon_device *rdev);
+ extern void radeon_modeset_fini(struct radeon_device *rdev);
+@@ -1160,7 +1161,8 @@ extern int r600_irq_init(struct radeon_device *rdev);
+ extern void r600_irq_fini(struct radeon_device *rdev);
+ extern void r600_ih_ring_init(struct radeon_device *rdev, unsigned ring_size);
+ extern int r600_irq_set(struct radeon_device *rdev);
+-
++extern void r600_irq_suspend(struct radeon_device *rdev);
++/* r600 audio */
+ extern int r600_audio_init(struct radeon_device *rdev);
+ extern int r600_audio_tmds_index(struct drm_encoder *encoder);
+ extern void r600_audio_set_clock(struct drm_encoder *encoder, int clock);
+diff --git a/drivers/gpu/drm/radeon/radeon_agp.c b/drivers/gpu/drm/radeon/radeon_agp.c
+index 220f454..c9ad7f5 100644
+--- a/drivers/gpu/drm/radeon/radeon_agp.c
++++ b/drivers/gpu/drm/radeon/radeon_agp.c
+@@ -133,6 +133,13 @@ int radeon_agp_init(struct radeon_device *rdev)
+ 	bool is_v3;
+ 	int ret;
+ 
++	if (rdev->ddev->agp->agp_info.aper_size < 32) {
++		dev_warn(rdev->dev, "AGP aperture to small (%dM) "
++			"need at least 32M, disabling AGP\n",
++			rdev->ddev->agp->agp_info.aper_size);
++		return -EINVAL;
++	}
++
+ 	/* Acquire AGP. */
+ 	if (!rdev->ddev->agp->acquired) {
+ 		ret = drm_agp_acquire(rdev->ddev);
+diff --git a/drivers/gpu/drm/radeon/radeon_combios.c b/drivers/gpu/drm/radeon/radeon_combios.c
+index 7914455..579c892 100644
+--- a/drivers/gpu/drm/radeon/radeon_combios.c
++++ b/drivers/gpu/drm/radeon/radeon_combios.c
+@@ -687,6 +687,9 @@ radeon_combios_get_tv_info(struct radeon_device *rdev)
+ 	uint16_t tv_info;
+ 	enum radeon_tv_std tv_std = TV_STD_NTSC;
+ 
++	if (rdev->bios == NULL)
++		return tv_std;
++
+ 	tv_info = combios_get_table_offset(dev, COMBIOS_TV_INFO_TABLE);
+ 	if (tv_info) {
+ 		if (RBIOS8(tv_info + 6) == 'T') {
+diff --git a/drivers/gpu/drm/radeon/radeon_connectors.c b/drivers/gpu/drm/radeon/radeon_connectors.c
+index 9da10dd..5526641 100644
+--- a/drivers/gpu/drm/radeon/radeon_connectors.c
++++ b/drivers/gpu/drm/radeon/radeon_connectors.c
+@@ -900,10 +900,18 @@ static void radeon_dvi_force(struct drm_connector *connector)
+ static int radeon_dvi_mode_valid(struct drm_connector *connector,
+ 				  struct drm_display_mode *mode)
+ {
++	struct drm_device *dev = connector->dev;
++	struct radeon_device *rdev = dev->dev_private;
+ 	struct radeon_connector *radeon_connector = to_radeon_connector(connector);
+ 
+ 	/* XXX check mode bandwidth */
+ 
++	/* clocks over 135 MHz have heat issues with DVI on RV100 */
++	if (radeon_connector->use_digital &&
++	    (rdev->family == CHIP_RV100) &&
++	    (mode->clock > 135000))
++		return MODE_CLOCK_HIGH;
++
+ 	if (radeon_connector->use_digital && (mode->clock > 165000)) {
+ 		if ((radeon_connector->connector_object_id == CONNECTOR_OBJECT_ID_DUAL_LINK_DVI_I) ||
+ 		    (radeon_connector->connector_object_id == CONNECTOR_OBJECT_ID_DUAL_LINK_DVI_D) ||
+diff --git a/drivers/gpu/drm/radeon/radeon_device.c b/drivers/gpu/drm/radeon/radeon_device.c
+index 0c51f8e..768b150 100644
+--- a/drivers/gpu/drm/radeon/radeon_device.c
++++ b/drivers/gpu/drm/radeon/radeon_device.c
+@@ -544,6 +544,7 @@ void radeon_agp_disable(struct radeon_device *rdev)
+ 		rdev->asic->gart_tlb_flush = &r100_pci_gart_tlb_flush;
+ 		rdev->asic->gart_set_page = &r100_pci_gart_set_page;
+ 	}
++	rdev->mc.gtt_size = radeon_gart_size * 1024 * 1024;
+ }
+ 
+ void radeon_check_arguments(struct radeon_device *rdev)
+diff --git a/drivers/gpu/drm/radeon/radeon_display.c b/drivers/gpu/drm/radeon/radeon_display.c
+index 0ec491e..f899320 100644
+--- a/drivers/gpu/drm/radeon/radeon_display.c
++++ b/drivers/gpu/drm/radeon/radeon_display.c
+@@ -357,7 +357,8 @@ int radeon_ddc_get_modes(struct radeon_connector *radeon_connector)
+ 	if ((radeon_connector->base.connector_type == DRM_MODE_CONNECTOR_DisplayPort) ||
+ 	    (radeon_connector->base.connector_type == DRM_MODE_CONNECTOR_eDP)) {
+ 		struct radeon_connector_atom_dig *dig = radeon_connector->con_priv;
+-		if (dig->dp_i2c_bus)
++		if ((dig->dp_sink_type == CONNECTOR_OBJECT_ID_DISPLAYPORT ||
++		     dig->dp_sink_type == CONNECTOR_OBJECT_ID_eDP) && dig->dp_i2c_bus)
+ 			radeon_connector->edid = drm_get_edid(&radeon_connector->base, &dig->dp_i2c_bus->adapter);
+ 	}
+ 	if (!radeon_connector->ddc_bus)
+@@ -667,7 +668,6 @@ static void radeon_user_framebuffer_destroy(struct drm_framebuffer *fb)
+ 		radeonfb_remove(dev, fb);
+ 
+ 	if (radeon_fb->obj) {
+-		radeon_gem_object_unpin(radeon_fb->obj);
+ 		mutex_lock(&dev->struct_mutex);
+ 		drm_gem_object_unreference(radeon_fb->obj);
+ 		mutex_unlock(&dev->struct_mutex);
+@@ -715,7 +715,11 @@ radeon_user_framebuffer_create(struct drm_device *dev,
+ 	struct drm_gem_object *obj;
+ 
+ 	obj = drm_gem_object_lookup(dev, file_priv, mode_cmd->handle);
+-
++	if (obj ==  NULL) {
++		dev_err(&dev->pdev->dev, "No GEM object associated to handle 0x%08X, "
++			"can't create framebuffer\n", mode_cmd->handle);
++		return NULL;
++	}
+ 	return radeon_framebuffer_create(dev, mode_cmd, obj);
+ }
+ 
+diff --git a/drivers/gpu/drm/radeon/radeon_legacy_crtc.c b/drivers/gpu/drm/radeon/radeon_legacy_crtc.c
+index cc27485..762e07b 100644
+--- a/drivers/gpu/drm/radeon/radeon_legacy_crtc.c
++++ b/drivers/gpu/drm/radeon/radeon_legacy_crtc.c
+@@ -339,69 +339,6 @@ void radeon_crtc_dpms(struct drm_crtc *crtc, int mode)
+ 	}
+ }
+ 
+-/* properly set crtc bpp when using atombios */
+-void radeon_legacy_atom_set_surface(struct drm_crtc *crtc)
+-{
+-	struct drm_device *dev = crtc->dev;
+-	struct radeon_device *rdev = dev->dev_private;
+-	struct radeon_crtc *radeon_crtc = to_radeon_crtc(crtc);
+-	int format;
+-	uint32_t crtc_gen_cntl;
+-	uint32_t disp_merge_cntl;
+-	uint32_t crtc_pitch;
+-
+-	switch (crtc->fb->bits_per_pixel) {
+-	case 8:
+-		format = 2;
+-		break;
+-	case 15:      /*  555 */
+-		format = 3;
+-		break;
+-	case 16:      /*  565 */
+-		format = 4;
+-		break;
+-	case 24:      /*  RGB */
+-		format = 5;
+-		break;
+-	case 32:      /* xRGB */
+-		format = 6;
+-		break;
+-	default:
+-		return;
+-	}
+-
+-	crtc_pitch  = ((((crtc->fb->pitch / (crtc->fb->bits_per_pixel / 8)) * crtc->fb->bits_per_pixel) +
+-			((crtc->fb->bits_per_pixel * 8) - 1)) /
+-		       (crtc->fb->bits_per_pixel * 8));
+-	crtc_pitch |= crtc_pitch << 16;
+-
+-	WREG32(RADEON_CRTC_PITCH + radeon_crtc->crtc_offset, crtc_pitch);
+-
+-	switch (radeon_crtc->crtc_id) {
+-	case 0:
+-		disp_merge_cntl = RREG32(RADEON_DISP_MERGE_CNTL);
+-		disp_merge_cntl &= ~RADEON_DISP_RGB_OFFSET_EN;
+-		WREG32(RADEON_DISP_MERGE_CNTL, disp_merge_cntl);
+-
+-		crtc_gen_cntl = RREG32(RADEON_CRTC_GEN_CNTL) & 0xfffff0ff;
+-		crtc_gen_cntl |= (format << 8);
+-		crtc_gen_cntl |= RADEON_CRTC_EXT_DISP_EN;
+-		WREG32(RADEON_CRTC_GEN_CNTL, crtc_gen_cntl);
+-		break;
+-	case 1:
+-		disp_merge_cntl = RREG32(RADEON_DISP2_MERGE_CNTL);
+-		disp_merge_cntl &= ~RADEON_DISP2_RGB_OFFSET_EN;
+-		WREG32(RADEON_DISP2_MERGE_CNTL, disp_merge_cntl);
+-
+-		crtc_gen_cntl = RREG32(RADEON_CRTC2_GEN_CNTL) & 0xfffff0ff;
+-		crtc_gen_cntl |= (format << 8);
+-		WREG32(RADEON_CRTC2_GEN_CNTL, crtc_gen_cntl);
+-		WREG32(RADEON_FP_H2_SYNC_STRT_WID,   RREG32(RADEON_CRTC2_H_SYNC_STRT_WID));
+-		WREG32(RADEON_FP_V2_SYNC_STRT_WID,   RREG32(RADEON_CRTC2_V_SYNC_STRT_WID));
+-		break;
+-	}
+-}
+-
+ int radeon_crtc_set_base(struct drm_crtc *crtc, int x, int y,
+ 			 struct drm_framebuffer *old_fb)
+ {
+diff --git a/drivers/gpu/drm/radeon/radeon_legacy_encoders.c b/drivers/gpu/drm/radeon/radeon_legacy_encoders.c
+index 981508f..38e45e2 100644
+--- a/drivers/gpu/drm/radeon/radeon_legacy_encoders.c
++++ b/drivers/gpu/drm/radeon/radeon_legacy_encoders.c
+@@ -46,6 +46,7 @@ static void radeon_legacy_lvds_dpms(struct drm_encoder *encoder, int mode)
+ 	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
+ 	uint32_t lvds_gen_cntl, lvds_pll_cntl, pixclks_cntl, disp_pwr_man;
+ 	int panel_pwr_delay = 2000;
++	bool is_mac = false;
+ 	DRM_DEBUG("\n");
+ 
+ 	if (radeon_encoder->enc_priv) {
+@@ -58,6 +59,15 @@ static void radeon_legacy_lvds_dpms(struct drm_encoder *encoder, int mode)
+ 		}
+ 	}
+ 
++	/* macs (and possibly some x86 oem systems?) wire up LVDS strangely
++	 * Taken from radeonfb.
++	 */
++	if ((rdev->mode_info.connector_table == CT_IBOOK) ||
++	    (rdev->mode_info.connector_table == CT_POWERBOOK_EXTERNAL) ||
++	    (rdev->mode_info.connector_table == CT_POWERBOOK_INTERNAL) ||
++	    (rdev->mode_info.connector_table == CT_POWERBOOK_VGA))
++		is_mac = true;
++
+ 	switch (mode) {
+ 	case DRM_MODE_DPMS_ON:
+ 		disp_pwr_man = RREG32(RADEON_DISP_PWR_MAN);
+@@ -74,6 +84,8 @@ static void radeon_legacy_lvds_dpms(struct drm_encoder *encoder, int mode)
+ 
+ 		lvds_gen_cntl = RREG32(RADEON_LVDS_GEN_CNTL);
+ 		lvds_gen_cntl |= (RADEON_LVDS_ON | RADEON_LVDS_EN | RADEON_LVDS_DIGON | RADEON_LVDS_BLON);
++		if (is_mac)
++			lvds_gen_cntl |= RADEON_LVDS_BL_MOD_EN;
+ 		lvds_gen_cntl &= ~(RADEON_LVDS_DISPLAY_DIS);
+ 		udelay(panel_pwr_delay * 1000);
+ 		WREG32(RADEON_LVDS_GEN_CNTL, lvds_gen_cntl);
+@@ -85,7 +97,14 @@ static void radeon_legacy_lvds_dpms(struct drm_encoder *encoder, int mode)
+ 		WREG32_PLL_P(RADEON_PIXCLKS_CNTL, 0, ~RADEON_PIXCLK_LVDS_ALWAYS_ONb);
+ 		lvds_gen_cntl = RREG32(RADEON_LVDS_GEN_CNTL);
+ 		lvds_gen_cntl |= RADEON_LVDS_DISPLAY_DIS;
+-		lvds_gen_cntl &= ~(RADEON_LVDS_ON | RADEON_LVDS_BLON | RADEON_LVDS_EN | RADEON_LVDS_DIGON);
++		if (is_mac) {
++			lvds_gen_cntl &= ~RADEON_LVDS_BL_MOD_EN;
++			WREG32(RADEON_LVDS_GEN_CNTL, lvds_gen_cntl);
++			lvds_gen_cntl &= ~(RADEON_LVDS_ON | RADEON_LVDS_EN);
++		} else {
++			WREG32(RADEON_LVDS_GEN_CNTL, lvds_gen_cntl);
++			lvds_gen_cntl &= ~(RADEON_LVDS_ON | RADEON_LVDS_BLON | RADEON_LVDS_EN | RADEON_LVDS_DIGON);
++		}
+ 		udelay(panel_pwr_delay * 1000);
+ 		WREG32(RADEON_LVDS_GEN_CNTL, lvds_gen_cntl);
+ 		WREG32_PLL(RADEON_PIXCLKS_CNTL, pixclks_cntl);
+diff --git a/drivers/gpu/drm/radeon/radeon_mode.h b/drivers/gpu/drm/radeon/radeon_mode.h
+index 91cb041..eb19b30 100644
+--- a/drivers/gpu/drm/radeon/radeon_mode.h
++++ b/drivers/gpu/drm/radeon/radeon_mode.h
+@@ -453,7 +453,6 @@ extern void atombios_crtc_dpms(struct drm_crtc *crtc, int mode);
+ 
+ extern int radeon_crtc_set_base(struct drm_crtc *crtc, int x, int y,
+ 				 struct drm_framebuffer *old_fb);
+-extern void radeon_legacy_atom_set_surface(struct drm_crtc *crtc);
+ 
+ extern int radeon_crtc_cursor_set(struct drm_crtc *crtc,
+ 				  struct drm_file *file_priv,
+diff --git a/drivers/gpu/drm/radeon/reg_srcs/r200 b/drivers/gpu/drm/radeon/reg_srcs/r200
+index 6021c88..c29ac43 100644
+--- a/drivers/gpu/drm/radeon/reg_srcs/r200
++++ b/drivers/gpu/drm/radeon/reg_srcs/r200
+@@ -91,6 +91,8 @@ r200 0x3294
+ 0x22b8 SE_TCL_TEX_CYL_WRAP_CTL
+ 0x22c0 SE_TCL_UCP_VERT_BLEND_CNTL
+ 0x22c4 SE_TCL_POINT_SPRITE_CNTL
++0x22d0 SE_PVS_CNTL
++0x22d4 SE_PVS_CONST_CNTL
+ 0x2648 RE_POINTSIZE
+ 0x26c0 RE_TOP_LEFT
+ 0x26c4 RE_MISC
+diff --git a/drivers/gpu/drm/radeon/rv770.c b/drivers/gpu/drm/radeon/rv770.c
+index 16f7317..cf8f2b1 100644
+--- a/drivers/gpu/drm/radeon/rv770.c
++++ b/drivers/gpu/drm/radeon/rv770.c
+@@ -779,7 +779,6 @@ int rv770_mc_init(struct radeon_device *rdev)
+ 	fixed20_12 a;
+ 	u32 tmp;
+ 	int chansize, numchan;
+-	int r;
+ 
+ 	/* Get VRAM informations */
+ 	rdev->mc.vram_is_ddr = true;
+@@ -822,9 +821,6 @@ int rv770_mc_init(struct radeon_device *rdev)
+ 		rdev->mc.real_vram_size = rdev->mc.aper_size;
+ 
+ 	if (rdev->flags & RADEON_IS_AGP) {
+-		r = radeon_agp_init(rdev);
+-		if (r)
+-			return r;
+ 		/* gtt_size is setup by radeon_agp_init */
+ 		rdev->mc.gtt_location = rdev->mc.agp_base;
+ 		tmp = 0xFFFFFFFFUL - rdev->mc.agp_base - rdev->mc.gtt_size;
+@@ -972,13 +968,16 @@ int rv770_suspend(struct radeon_device *rdev)
+ 	/* FIXME: we should wait for ring to be empty */
+ 	r700_cp_stop(rdev);
+ 	rdev->cp.ready = false;
++	r600_irq_suspend(rdev);
+ 	r600_wb_disable(rdev);
+ 	rv770_pcie_gart_disable(rdev);
+ 	/* unpin shaders bo */
+-	r = radeon_bo_reserve(rdev->r600_blit.shader_obj, false);
+-	if (likely(r == 0)) {
+-		radeon_bo_unpin(rdev->r600_blit.shader_obj);
+-		radeon_bo_unreserve(rdev->r600_blit.shader_obj);
++	if (rdev->r600_blit.shader_obj) {
++		r = radeon_bo_reserve(rdev->r600_blit.shader_obj, false);
++		if (likely(r == 0)) {
++			radeon_bo_unpin(rdev->r600_blit.shader_obj);
++			radeon_bo_unreserve(rdev->r600_blit.shader_obj);
++		}
+ 	}
+ 	return 0;
+ }
+@@ -1037,6 +1036,11 @@ int rv770_init(struct radeon_device *rdev)
+ 	r = radeon_fence_driver_init(rdev);
+ 	if (r)
+ 		return r;
++	if (rdev->flags & RADEON_IS_AGP) {
++		r = radeon_agp_init(rdev);
++		if (r)
++			radeon_agp_disable(rdev);
++	}
+ 	r = rv770_mc_init(rdev);
+ 	if (r)
+ 		return r;
+@@ -1071,13 +1075,14 @@ int rv770_init(struct radeon_device *rdev)
+ 	if (rdev->accel_working) {
+ 		r = radeon_ib_pool_init(rdev);
+ 		if (r) {
+-			DRM_ERROR("radeon: failed initializing IB pool (%d).\n", r);
+-			rdev->accel_working = false;
+-		}
+-		r = r600_ib_test(rdev);
+-		if (r) {
+-			DRM_ERROR("radeon: failed testing IB (%d).\n", r);
++			dev_err(rdev->dev, "IB initialization failed (%d).\n", r);
+ 			rdev->accel_working = false;
++		} else {
++			r = r600_ib_test(rdev);
++			if (r) {
++				dev_err(rdev->dev, "IB test failed (%d).\n", r);
++				rdev->accel_working = false;
++			}
+ 		}
+ 	}
+ 	return 0;

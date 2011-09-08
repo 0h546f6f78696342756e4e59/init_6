@@ -1,0 +1,1048 @@
+From: Jaroslav Kysela <jkysela@redhat.com>
+Date: Mon, 18 Jan 2010 17:08:05 -0500
+Subject: [sound] ALSA HDA driver update 2009-12-15
+Message-id: <201001181708.o0IH85AE005106@int-mx01.intmail.prod.int.phx2.redhat.com>
+Patchwork-id: 22629
+O-Subject: [PATCH RHEL 6.0] ALSA HDA driver update 2009-12-15 - set of fixes #1
+	(2nd edition)
+Bugzilla: 555812
+
+Bugzilla
+========
+BZ#555812
+https://bugzilla.redhat.com/bugzilla/show_bug.cgi?id=555812
+
+Description
+===========
+Update the ALSA HDA audio driver with upstream code to enable or improve
+support for new chipsets and HDA audio codecs (mostly integrated on current
+motherboards and in notebooks).
+
+This is first set of fixes for the patchset in bug#525391 . It fixes
+possible NULL pointer dereferences in the snd-hda-intel driver and
+includes small code updates.
+
+Changes from upstream:
+
+ ALSA: hda - Fix missing capsrc_nids for ALC88x
+ ALSA: hda - Fix NULL dereference in kctl-NID mapping in patch_realtek.c
+ ALSA: hda - Fix NID association for capture mixers
+ ALSA: hda - Fix missing capture mixer for ALC861/660 codecs
+ ALSA: hda - Improved MacBook (Pro) 5,1 / 5,2 support
+ ALSA: hda - Fix Toshiba NB20x quirk entry
+ ALSA: hda - HDMI sticky stream tag support
+ ALSA: hda - Disable tigger at pin-sensing on AD codecs
+ ALSA: hda - use snd_hda_jack_detect() again in patch_sigmatel.c
+ ALSA: hda - Don't cache beep controls
+ ALSA: hda - Fix Oops at reloading beep devices
+ ALSA: hda - Fix ALC861-VD capture source mixer
+ ALSA: hda - Check class to identify Nvidia controller chips
+ ALSA: hda - Add Bass Speaker switch for HP dv7
+ ALSA: hda - Add more hints for GPIO setup of IDT/STAC codecs
+ ALSA: hda - Add snd_hda_shutup_pins() helper function
+ ALSA: hda - conexant - Fixed microphone mixer for HP Compaq Presario F700
+ ALSA: Add snd_pci_quirk_lookup_id()
+ ALSA: ctxfi - Add subsystem option
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/Documentation/sound/alsa/ALSA-Configuration.txt b/Documentation/sound/alsa/ALSA-Configuration.txt
+index fd9a2f6..e7e202a 100644
+--- a/Documentation/sound/alsa/ALSA-Configuration.txt
++++ b/Documentation/sound/alsa/ALSA-Configuration.txt
+@@ -482,6 +482,9 @@ Prior to version 0.9.0rc4 options had a 'snd_' prefix. This was removed.
+ 
+     reference_rate	- reference sample rate, 44100 or 48000 (default)
+     multiple		- multiple to ref. sample rate, 1 or 2 (default)
++    subsystem		- override the PCI SSID for probing; the value
++			  consists of SSVID << 16 | SSDID.  The default is
++			  zero, which means no override.
+ 
+     This module supports multiple cards.
+ 
+diff --git a/include/sound/core.h b/include/sound/core.h
+index a61499c..89e0ac1 100644
+--- a/include/sound/core.h
++++ b/include/sound/core.h
+@@ -458,5 +458,8 @@ struct snd_pci_quirk {
+ const struct snd_pci_quirk *
+ snd_pci_quirk_lookup(struct pci_dev *pci, const struct snd_pci_quirk *list);
+ 
++const struct snd_pci_quirk *
++snd_pci_quirk_lookup_id(u16 vendor, u16 device,
++			const struct snd_pci_quirk *list);
+ 
+ #endif /* __SOUND_CORE_H */
+diff --git a/sound/core/misc.c b/sound/core/misc.c
+index 23a032c..3da4f92 100644
+--- a/sound/core/misc.c
++++ b/sound/core/misc.c
+@@ -101,8 +101,9 @@ EXPORT_SYMBOL_GPL(__snd_printk);
+ #ifdef CONFIG_PCI
+ #include <linux/pci.h>
+ /**
+- * snd_pci_quirk_lookup - look up a PCI SSID quirk list
+- * @pci: pci_dev handle
++ * snd_pci_quirk_lookup_id - look up a PCI SSID quirk list
++ * @vendor: PCI SSV id
++ * @device: PCI SSD id
+  * @list: quirk list, terminated by a null entry
+  *
+  * Look through the given quirk list and finds a matching entry
+@@ -112,18 +113,39 @@ EXPORT_SYMBOL_GPL(__snd_printk);
+  * Returns the matched entry pointer, or NULL if nothing matched.
+  */
+ const struct snd_pci_quirk *
+-snd_pci_quirk_lookup(struct pci_dev *pci, const struct snd_pci_quirk *list)
++snd_pci_quirk_lookup_id(u16 vendor, u16 device,
++			const struct snd_pci_quirk *list)
+ {
+ 	const struct snd_pci_quirk *q;
+ 
+ 	for (q = list; q->subvendor; q++) {
+-		if (q->subvendor != pci->subsystem_vendor)
++		if (q->subvendor != vendor)
+ 			continue;
+ 		if (!q->subdevice ||
+-		    (pci->subsystem_device & q->subdevice_mask) == q->subdevice)
++		    (device & q->subdevice_mask) == q->subdevice)
+ 			return q;
+ 	}
+ 	return NULL;
+ }
++EXPORT_SYMBOL(snd_pci_quirk_lookup_id);
++
++/**
++ * snd_pci_quirk_lookup - look up a PCI SSID quirk list
++ * @pci: pci_dev handle
++ * @list: quirk list, terminated by a null entry
++ *
++ * Look through the given quirk list and finds a matching entry
++ * with the same PCI SSID.  When subdevice is 0, all subdevice
++ * values may match.
++ *
++ * Returns the matched entry pointer, or NULL if nothing matched.
++ */
++const struct snd_pci_quirk *
++snd_pci_quirk_lookup(struct pci_dev *pci, const struct snd_pci_quirk *list)
++{
++	return snd_pci_quirk_lookup_id(pci->subsystem_vendor,
++				       pci->subsystem_device,
++				       list);
++}
+ EXPORT_SYMBOL(snd_pci_quirk_lookup);
+ #endif
+diff --git a/sound/pci/ctxfi/ctatc.c b/sound/pci/ctxfi/ctatc.c
+index 7545464..7b01129 100644
+--- a/sound/pci/ctxfi/ctatc.c
++++ b/sound/pci/ctxfi/ctatc.c
+@@ -1225,10 +1225,11 @@ static int atc_dev_free(struct snd_device *dev)
+ 	return ct_atc_destroy(atc);
+ }
+ 
+-static int __devinit atc_identify_card(struct ct_atc *atc)
++static int __devinit atc_identify_card(struct ct_atc *atc, unsigned int ssid)
+ {
+ 	const struct snd_pci_quirk *p;
+ 	const struct snd_pci_quirk *list;
++	u16 vendor_id, device_id;
+ 
+ 	switch (atc->chip_type) {
+ 	case ATC20K1:
+@@ -1242,13 +1243,19 @@ static int __devinit atc_identify_card(struct ct_atc *atc)
+ 	default:
+ 		return -ENOENT;
+ 	}
+-	p = snd_pci_quirk_lookup(atc->pci, list);
++	if (ssid) {
++		vendor_id = ssid >> 16;
++		device_id = ssid & 0xffff;
++	} else {
++		vendor_id = atc->pci->subsystem_vendor;
++		device_id = atc->pci->subsystem_device;
++	}
++	p = snd_pci_quirk_lookup_id(vendor_id, device_id, list);
+ 	if (p) {
+ 		if (p->value < 0) {
+ 			printk(KERN_ERR "ctxfi: "
+ 			       "Device %04x:%04x is black-listed\n",
+-			       atc->pci->subsystem_vendor,
+-			       atc->pci->subsystem_device);
++			       vendor_id, device_id);
+ 			return -ENOENT;
+ 		}
+ 		atc->model = p->value;
+@@ -1261,8 +1268,7 @@ static int __devinit atc_identify_card(struct ct_atc *atc)
+ 	atc->model_name = ct_subsys_name[atc->model];
+ 	snd_printd("ctxfi: chip %s model %s (%04x:%04x) is found\n",
+ 		   atc->chip_name, atc->model_name,
+-		   atc->pci->subsystem_vendor,
+-		   atc->pci->subsystem_device);
++		   vendor_id, device_id);
+ 	return 0;
+ }
+ 
+@@ -1636,7 +1642,8 @@ static struct ct_atc atc_preset __devinitdata = {
+ 
+ int __devinit ct_atc_create(struct snd_card *card, struct pci_dev *pci,
+ 			    unsigned int rsr, unsigned int msr,
+-			    int chip_type, struct ct_atc **ratc)
++			    int chip_type, unsigned int ssid,
++			    struct ct_atc **ratc)
+ {
+ 	struct ct_atc *atc;
+ 	static struct snd_device_ops ops = {
+@@ -1662,7 +1669,7 @@ int __devinit ct_atc_create(struct snd_card *card, struct pci_dev *pci,
+ 	mutex_init(&atc->atc_mutex);
+ 
+ 	/* Find card model */
+-	err = atc_identify_card(atc);
++	err = atc_identify_card(atc, ssid);
+ 	if (err < 0) {
+ 		printk(KERN_ERR "ctatc: Card not recognised\n");
+ 		goto error1;
+diff --git a/sound/pci/ctxfi/ctatc.h b/sound/pci/ctxfi/ctatc.h
+index 9fd8a57..7167c01 100644
+--- a/sound/pci/ctxfi/ctatc.h
++++ b/sound/pci/ctxfi/ctatc.h
+@@ -148,7 +148,7 @@ struct ct_atc {
+ 
+ int __devinit ct_atc_create(struct snd_card *card, struct pci_dev *pci,
+ 			    unsigned int rsr, unsigned int msr, int chip_type,
+-			    struct ct_atc **ratc);
++			    unsigned int subsysid, struct ct_atc **ratc);
+ int __devinit ct_atc_create_alsa_devs(struct ct_atc *atc);
+ 
+ #endif /* CTATC_H */
+diff --git a/sound/pci/ctxfi/xfi.c b/sound/pci/ctxfi/xfi.c
+index 7654174..ed44ed7 100644
+--- a/sound/pci/ctxfi/xfi.c
++++ b/sound/pci/ctxfi/xfi.c
+@@ -32,6 +32,7 @@ module_param(multiple, uint, S_IRUGO);
+ static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
+ static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
+ static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
++static unsigned int subsystem[SNDRV_CARDS];
+ 
+ module_param_array(index, int, NULL, 0444);
+ MODULE_PARM_DESC(index, "Index value for Creative X-Fi driver");
+@@ -39,6 +40,8 @@ module_param_array(id, charp, NULL, 0444);
+ MODULE_PARM_DESC(id, "ID string for Creative X-Fi driver");
+ module_param_array(enable, bool, NULL, 0444);
+ MODULE_PARM_DESC(enable, "Enable Creative X-Fi driver");
++module_param_array(subsystem, int, NULL, 0444);
++MODULE_PARM_DESC(subsystem, "Override subsystem ID for Creative X-Fi driver");
+ 
+ static struct pci_device_id ct_pci_dev_ids[] = {
+ 	/* only X-Fi is supported, so... */
+@@ -85,7 +88,7 @@ ct_card_probe(struct pci_dev *pci, const struct pci_device_id *pci_id)
+ 		multiple = 2;
+ 	}
+ 	err = ct_atc_create(card, pci, reference_rate, multiple,
+-			    pci_id->driver_data, &atc);
++			    pci_id->driver_data, subsystem[dev], &atc);
+ 	if (err < 0)
+ 		goto error;
+ 
+diff --git a/sound/pci/hda/hda_beep.c b/sound/pci/hda/hda_beep.c
+index 5fe34a8..e4581a4 100644
+--- a/sound/pci/hda/hda_beep.c
++++ b/sound/pci/hda/hda_beep.c
+@@ -42,7 +42,7 @@ static void snd_hda_generate_beep(struct work_struct *work)
+ 		return;
+ 
+ 	/* generate tone */
+-	snd_hda_codec_write_cache(codec, beep->nid, 0,
++	snd_hda_codec_write(codec, beep->nid, 0,
+ 			AC_VERB_SET_BEEP_CONTROL, beep->tone);
+ }
+ 
+@@ -119,7 +119,7 @@ static void snd_hda_do_detach(struct hda_beep *beep)
+ 	beep->dev = NULL;
+ 	cancel_work_sync(&beep->beep_work);
+ 	/* turn off beep for sure */
+-	snd_hda_codec_write_cache(beep->codec, beep->nid, 0,
++	snd_hda_codec_write(beep->codec, beep->nid, 0,
+ 				  AC_VERB_SET_BEEP_CONTROL, 0);
+ }
+ 
+@@ -192,7 +192,7 @@ int snd_hda_enable_beep_device(struct hda_codec *codec, int enable)
+ 		beep->enabled = enable;
+ 		if (!enable) {
+ 			/* turn off beep */
+-			snd_hda_codec_write_cache(beep->codec, beep->nid, 0,
++			snd_hda_codec_write(beep->codec, beep->nid, 0,
+ 						  AC_VERB_SET_BEEP_CONTROL, 0);
+ 		}
+ 		if (beep->mode == HDA_BEEP_MODE_SWREG) {
+@@ -239,8 +239,12 @@ int snd_hda_attach_beep_device(struct hda_codec *codec, int nid)
+ 	mutex_init(&beep->mutex);
+ 
+ 	if (beep->mode == HDA_BEEP_MODE_ON) {
+-		beep->enabled = 1;
+-		snd_hda_do_register(&beep->register_work);
++		int err = snd_hda_do_attach(beep);
++		if (err < 0) {
++			kfree(beep);
++			codec->beep = NULL;
++			return err;
++		}
+ 	}
+ 
+ 	return 0;
+@@ -253,7 +257,7 @@ void snd_hda_detach_beep_device(struct hda_codec *codec)
+ 	if (beep) {
+ 		cancel_work_sync(&beep->register_work);
+ 		cancel_delayed_work(&beep->unregister_work);
+-		if (beep->enabled)
++		if (beep->dev)
+ 			snd_hda_do_detach(beep);
+ 		codec->beep = NULL;
+ 		kfree(beep);
+diff --git a/sound/pci/hda/hda_codec.c b/sound/pci/hda/hda_codec.c
+index c848ec0..99d81a0 100644
+--- a/sound/pci/hda/hda_codec.c
++++ b/sound/pci/hda/hda_codec.c
+@@ -899,6 +899,25 @@ static void restore_pincfgs(struct hda_codec *codec)
+ 	}
+ }
+ 
++/**
++ * snd_hda_shutup_pins - Shut up all pins
++ * @codec: the HDA codec
++ *
++ * Clear all pin controls to shup up before suspend for avoiding click noise.
++ * The controls aren't cached so that they can be resumed properly.
++ */
++void snd_hda_shutup_pins(struct hda_codec *codec)
++{
++	int i;
++	for (i = 0; i < codec->init_pins.used; i++) {
++		struct hda_pincfg *pin = snd_array_elem(&codec->init_pins, i);
++		/* use read here for syncing after issuing each verb */
++		snd_hda_codec_read(codec, pin->nid, 0,
++				   AC_VERB_SET_PIN_WIDGET_CONTROL, 0);
++	}
++}
++EXPORT_SYMBOL_HDA(snd_hda_shutup_pins);
++
+ static void init_hda_cache(struct hda_cache_rec *cache,
+ 			   unsigned int record_size);
+ static void free_hda_cache(struct hda_cache_rec *cache);
+@@ -1329,11 +1348,13 @@ EXPORT_SYMBOL_HDA(snd_hda_query_pin_caps);
+  */
+ u32 snd_hda_pin_sense(struct hda_codec *codec, hda_nid_t nid)
+ {
+-	u32 pincap = snd_hda_query_pin_caps(codec, nid);
+-
+-	if (pincap & AC_PINCAP_TRIG_REQ) /* need trigger? */
+-		snd_hda_codec_read(codec, nid, 0, AC_VERB_SET_PIN_SENSE, 0);
++	u32 pincap;
+ 
++	if (!codec->no_trigger_sense) {
++		pincap = snd_hda_query_pin_caps(codec, nid);
++		if (pincap & AC_PINCAP_TRIG_REQ) /* need trigger? */
++			snd_hda_codec_read(codec, nid, 0, AC_VERB_SET_PIN_SENSE, 0);
++	}
+ 	return snd_hda_codec_read(codec, nid, 0,
+ 				  AC_VERB_GET_PIN_SENSE, 0);
+ }
+@@ -3537,32 +3558,6 @@ int snd_hda_add_new_ctls(struct hda_codec *codec, struct snd_kcontrol_new *knew)
+ }
+ EXPORT_SYMBOL_HDA(snd_hda_add_new_ctls);
+ 
+-/**
+- * snd_hda_add_nids - assign nids to controls from the array
+- * @codec: the HDA codec
+- * @kctl: struct snd_kcontrol
+- * @index: index to kctl
+- * @nids: the array of hda_nid_t
+- * @size: count of hda_nid_t items
+- *
+- * This helper function assigns NIDs in the given array to a control element.
+- *
+- * Returns 0 if successful, or a negative error code.
+- */
+-int snd_hda_add_nids(struct hda_codec *codec, struct snd_kcontrol *kctl,
+-		     unsigned int index, hda_nid_t *nids, unsigned int size)
+-{
+-	int err;
+-
+-	for ( ; size > 0; size--, nids++) {
+-		err = snd_hda_add_nid(codec, kctl, index, *nids);
+-		if (err < 0)
+-			return err;
+-	}
+-	return 0;
+-}
+-EXPORT_SYMBOL_HDA(snd_hda_add_nids);
+-
+ #ifdef CONFIG_SND_HDA_POWER_SAVE
+ static void hda_set_power_state(struct hda_codec *codec, hda_nid_t fg,
+ 				unsigned int power_state);
+diff --git a/sound/pci/hda/hda_codec.h b/sound/pci/hda/hda_codec.h
+index 0d08ad5..0c8f05c 100644
+--- a/sound/pci/hda/hda_codec.h
++++ b/sound/pci/hda/hda_codec.h
+@@ -818,6 +818,7 @@ struct hda_codec {
+ 	unsigned int pin_amp_workaround:1; /* pin out-amp takes index
+ 					    * (e.g. Conexant codecs)
+ 					    */
++	unsigned int no_trigger_sense:1; /* don't trigger at pin-sensing */
+ #ifdef CONFIG_SND_HDA_POWER_SAVE
+ 	unsigned int power_on :1;	/* current (global) power-state */
+ 	unsigned int power_transition :1; /* power-state in transition */
+@@ -898,6 +899,7 @@ int snd_hda_codec_set_pincfg(struct hda_codec *codec, hda_nid_t nid,
+ 			     unsigned int cfg);
+ int snd_hda_add_pincfg(struct hda_codec *codec, struct snd_array *list,
+ 		       hda_nid_t nid, unsigned int cfg); /* for hwdep */
++void snd_hda_shutup_pins(struct hda_codec *codec);
+ 
+ /*
+  * Mixer
+diff --git a/sound/pci/hda/hda_intel.c b/sound/pci/hda/hda_intel.c
+index 9b56f93..3408c8a 100644
+--- a/sound/pci/hda/hda_intel.c
++++ b/sound/pci/hda/hda_intel.c
+@@ -356,6 +356,7 @@ struct azx_dev {
+ 					 */
+ 	unsigned char stream_tag;	/* assigned stream */
+ 	unsigned char index;		/* stream index */
++	int device;			/* last device number assigned to */
+ 
+ 	unsigned int opened :1;
+ 	unsigned int running :1;
+@@ -1441,10 +1442,13 @@ static int __devinit azx_codec_configure(struct azx *chip)
+  */
+ 
+ /* assign a stream for the PCM */
+-static inline struct azx_dev *azx_assign_device(struct azx *chip, int stream)
++static inline struct azx_dev *
++azx_assign_device(struct azx *chip, struct snd_pcm_substream *substream)
+ {
+ 	int dev, i, nums;
+-	if (stream == SNDRV_PCM_STREAM_PLAYBACK) {
++	struct azx_dev *res = NULL;
++
++	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+ 		dev = chip->playback_index_offset;
+ 		nums = chip->playback_streams;
+ 	} else {
+@@ -1453,10 +1457,15 @@ static inline struct azx_dev *azx_assign_device(struct azx *chip, int stream)
+ 	}
+ 	for (i = 0; i < nums; i++, dev++)
+ 		if (!chip->azx_dev[dev].opened) {
+-			chip->azx_dev[dev].opened = 1;
+-			return &chip->azx_dev[dev];
++			res = &chip->azx_dev[dev];
++			if (res->device == substream->pcm->device)
++				break;
+ 		}
+-	return NULL;
++	if (res) {
++		res->opened = 1;
++		res->device = substream->pcm->device;
++	}
++	return res;
+ }
+ 
+ /* release the assigned stream */
+@@ -1505,7 +1514,7 @@ static int azx_pcm_open(struct snd_pcm_substream *substream)
+ 	int err;
+ 
+ 	mutex_lock(&chip->open_mutex);
+-	azx_dev = azx_assign_device(chip, substream->stream);
++	azx_dev = azx_assign_device(chip, substream);
+ 	if (azx_dev == NULL) {
+ 		mutex_unlock(&chip->open_mutex);
+ 		return -EBUSY;
+@@ -2694,32 +2703,10 @@ static struct pci_device_id azx_ids[] = {
+ 	/* ULI M5461 */
+ 	{ PCI_DEVICE(0x10b9, 0x5461), .driver_data = AZX_DRIVER_ULI },
+ 	/* NVIDIA MCP */
+-	{ PCI_DEVICE(0x10de, 0x026c), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0371), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x03e4), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x03f0), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x044a), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x044b), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x055c), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x055d), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0590), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0774), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0775), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0776), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0777), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x07fc), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x07fd), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0ac0), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0ac1), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0ac2), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0ac3), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0be2), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0be3), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0be4), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0d94), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0d95), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0d96), .driver_data = AZX_DRIVER_NVIDIA },
+-	{ PCI_DEVICE(0x10de, 0x0d97), .driver_data = AZX_DRIVER_NVIDIA },
++	{ PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, PCI_ANY_ID),
++	  .class = PCI_CLASS_MULTIMEDIA_HD_AUDIO << 8,
++	  .class_mask = 0xffffff,
++	  .driver_data = AZX_DRIVER_NVIDIA },
+ 	/* Teradici */
+ 	{ PCI_DEVICE(0x6549, 0x1200), .driver_data = AZX_DRIVER_TERA },
+ 	/* Creative X-Fi (CA0110-IBG) */
+diff --git a/sound/pci/hda/hda_local.h b/sound/pci/hda/hda_local.h
+index d505d05..7cee364 100644
+--- a/sound/pci/hda/hda_local.h
++++ b/sound/pci/hda/hda_local.h
+@@ -343,8 +343,6 @@ int snd_hda_check_board_codec_sid_config(struct hda_codec *codec,
+                                const struct snd_pci_quirk *tbl);
+ int snd_hda_add_new_ctls(struct hda_codec *codec,
+ 			 struct snd_kcontrol_new *knew);
+-int snd_hda_add_nids(struct hda_codec *codec, struct snd_kcontrol *kctl,
+-		     unsigned int index, hda_nid_t *nids, unsigned int size);
+ 
+ /*
+  * unsolicited event handler
+diff --git a/sound/pci/hda/patch_analog.c b/sound/pci/hda/patch_analog.c
+index 92b72d4..f6e7bdd 100644
+--- a/sound/pci/hda/patch_analog.c
++++ b/sound/pci/hda/patch_analog.c
+@@ -244,8 +244,7 @@ static int ad198x_build_controls(struct hda_codec *codec)
+ 	if (!kctl)
+ 		kctl = snd_hda_find_mixer_ctl(codec, "Input Source");
+ 	for (i = 0; kctl && i < kctl->count; i++) {
+-		err = snd_hda_add_nids(codec, kctl, i, spec->capsrc_nids,
+-				       spec->input_mux->num_items);
++		err = snd_hda_add_nid(codec, kctl, i, spec->capsrc_nids[i]);
+ 		if (err < 0)
+ 			return err;
+ 	}
+@@ -1209,6 +1208,8 @@ static int patch_ad1986a(struct hda_codec *codec)
+ 	 */
+ 	spec->multiout.no_share_stream = 1;
+ 
++	codec->no_trigger_sense = 1;
++
+ 	return 0;
+ }
+ 
+@@ -1394,6 +1395,8 @@ static int patch_ad1983(struct hda_codec *codec)
+ 
+ 	codec->patch_ops = ad198x_patch_ops;
+ 
++	codec->no_trigger_sense = 1;
++
+ 	return 0;
+ }
+ 
+@@ -1837,6 +1840,9 @@ static int patch_ad1981(struct hda_codec *codec)
+ 		codec->patch_ops.unsol_event = ad1981_hp_unsol_event;
+ 		break;
+ 	}
++
++	codec->no_trigger_sense = 1;
++
+ 	return 0;
+ }
+ 
+@@ -3144,6 +3150,8 @@ static int patch_ad1988(struct hda_codec *codec)
+ #endif
+ 	spec->vmaster_nid = 0x04;
+ 
++	codec->no_trigger_sense = 1;
++
+ 	return 0;
+ }
+ 
+@@ -3356,6 +3364,8 @@ static int patch_ad1884(struct hda_codec *codec)
+ 
+ 	codec->patch_ops = ad198x_patch_ops;
+ 
++	codec->no_trigger_sense = 1;
++
+ 	return 0;
+ }
+ 
+@@ -4316,6 +4326,8 @@ static int patch_ad1884a(struct hda_codec *codec)
+ 		break;
+ 	}
+ 
++	codec->no_trigger_sense = 1;
++
+ 	return 0;
+ }
+ 
+@@ -4652,6 +4664,9 @@ static int patch_ad1882(struct hda_codec *codec)
+ 		spec->mixers[2] = ad1882_6stack_mixers;
+ 		break;
+ 	}
++
++	codec->no_trigger_sense = 1;
++
+ 	return 0;
+ }
+ 
+diff --git a/sound/pci/hda/patch_cirrus.c b/sound/pci/hda/patch_cirrus.c
+index eeb91f6..36b2123 100644
+--- a/sound/pci/hda/patch_cirrus.c
++++ b/sound/pci/hda/patch_cirrus.c
+@@ -752,6 +752,7 @@ static int build_input(struct hda_codec *codec)
+ 	spec->capture_bind[1] = make_bind_capture(codec, &snd_hda_bind_vol);
+ 	for (i = 0; i < 2; i++) {
+ 		struct snd_kcontrol *kctl;
++		int n;
+ 		if (!spec->capture_bind[i])
+ 			return -ENOMEM;
+ 		kctl = snd_ctl_new1(&cs_capture_ctls[i], codec);
+@@ -761,10 +762,13 @@ static int build_input(struct hda_codec *codec)
+ 		err = snd_hda_ctl_add(codec, 0, kctl);
+ 		if (err < 0)
+ 			return err;
+-		err = snd_hda_add_nids(codec, kctl, 0, spec->adc_nid,
+-				       spec->num_inputs);
+-		if (err < 0)
+-			return err;
++		for (n = 0; n < AUTO_PIN_LAST; n++) {
++			if (!spec->adc_nid[n])
++				continue;
++			err = snd_hda_add_nid(codec, kctl, 0, spec->adc_nid[i]);
++			if (err < 0)
++				return err;
++		}
+ 	}
+ 	
+ 	if (spec->num_inputs > 1 && !spec->mic_detect) {
+diff --git a/sound/pci/hda/patch_cmedia.c b/sound/pci/hda/patch_cmedia.c
+index cc1c223..ff60908 100644
+--- a/sound/pci/hda/patch_cmedia.c
++++ b/sound/pci/hda/patch_cmedia.c
+@@ -345,8 +345,7 @@ static int cmi9880_build_controls(struct hda_codec *codec)
+ 	/* assign Capture Source enums to NID */
+ 	kctl = snd_hda_find_mixer_ctl(codec, "Capture Source");
+ 	for (i = 0; kctl && i < kctl->count; i++) {
+-		err = snd_hda_add_nids(codec, kctl, i, spec->adc_nids,
+-				       spec->input_mux->num_items);
++		err = snd_hda_add_nid(codec, kctl, i, spec->adc_nids[i]);
+ 		if (err < 0)
+ 			return err;
+ 	}
+diff --git a/sound/pci/hda/patch_conexant.c b/sound/pci/hda/patch_conexant.c
+index 1ab2958..b20c640 100644
+--- a/sound/pci/hda/patch_conexant.c
++++ b/sound/pci/hda/patch_conexant.c
+@@ -1720,6 +1720,22 @@ static struct snd_kcontrol_new cxt5051_hp_dv6736_mixers[] = {
+ 	{}
+ };
+ 
++static struct snd_kcontrol_new cxt5051_f700_mixers[] = {
++	HDA_CODEC_VOLUME("Mic Volume", 0x14, 0x01, HDA_INPUT),
++	HDA_CODEC_MUTE("Mic Switch", 0x14, 0x01, HDA_INPUT),
++	HDA_CODEC_VOLUME("Master Playback Volume", 0x10, 0x00, HDA_OUTPUT),
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name = "Master Playback Switch",
++		.info = cxt_eapd_info,
++		.get = cxt_eapd_get,
++		.put = cxt5051_hp_master_sw_put,
++		.private_value = 0x1a,
++	},
++
++	{}
++};
++
+ static struct hda_verb cxt5051_init_verbs[] = {
+ 	/* Line in, Mic */
+ 	{0x17, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_UNMUTE(0) | 0x03},
+@@ -1810,6 +1826,32 @@ static struct hda_verb cxt5051_lenovo_x200_init_verbs[] = {
+ 	{ } /* end */
+ };
+ 
++static struct hda_verb cxt5051_f700_init_verbs[] = {
++	/* Line in, Mic */
++	{0x17, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_UNMUTE(1) | 0x03},
++	{0x17, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_VREF80},
++	{0x18, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x0},
++	{0x1d, AC_VERB_SET_PIN_WIDGET_CONTROL, 0x0},
++	/* SPK  */
++	{0x1a, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_OUT},
++	{0x1a, AC_VERB_SET_CONNECT_SEL, 0x00},
++	/* HP, Amp  */
++	{0x16, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_HP},
++	{0x16, AC_VERB_SET_CONNECT_SEL, 0x00},
++	/* DAC1 */
++	{0x10, AC_VERB_SET_AMP_GAIN_MUTE, AMP_OUT_UNMUTE},
++	/* Record selector: Int mic */
++	{0x14, AC_VERB_SET_AMP_GAIN_MUTE, AMP_IN_UNMUTE(1) | 0x44},
++	{0x14, AC_VERB_SET_CONNECT_SEL, 0x1},
++	/* SPDIF route: PCM */
++	{0x1c, AC_VERB_SET_CONNECT_SEL, 0x0},
++	/* EAPD */
++	{0x1a, AC_VERB_SET_EAPD_BTLENABLE, 0x2}, /* default on */
++	{0x16, AC_VERB_SET_UNSOLICITED_ENABLE, AC_USRSP_EN|CONEXANT_HP_EVENT},
++	{0x17, AC_VERB_SET_UNSOLICITED_ENABLE, AC_USRSP_EN|CXT5051_PORTB_EVENT},
++	{ } /* end */
++};
++
+ /* initialize jack-sensing, too */
+ static int cxt5051_init(struct hda_codec *codec)
+ {
+@@ -1829,6 +1871,7 @@ enum {
+ 	CXT5051_HP,	/* no docking */
+ 	CXT5051_HP_DV6736,	/* HP without mic switch */
+ 	CXT5051_LENOVO_X200,	/* Lenovo X200 laptop */
++	CXT5051_F700,       /* HP Compaq Presario F700 */
+ 	CXT5051_MODELS
+ };
+ 
+@@ -1837,6 +1880,7 @@ static const char *cxt5051_models[CXT5051_MODELS] = {
+ 	[CXT5051_HP]		= "hp",
+ 	[CXT5051_HP_DV6736]	= "hp-dv6736",
+ 	[CXT5051_LENOVO_X200]	= "lenovo-x200",
++	[CXT5051_F700]          = "hp 700"
+ };
+ 
+ static struct snd_pci_quirk cxt5051_cfg_tbl[] = {
+@@ -1846,6 +1890,7 @@ static struct snd_pci_quirk cxt5051_cfg_tbl[] = {
+ 		      CXT5051_LAPTOP),
+ 	SND_PCI_QUIRK(0x14f1, 0x5051, "HP Spartan 1.1", CXT5051_HP),
+ 	SND_PCI_QUIRK(0x17aa, 0x20f2, "Lenovo X200", CXT5051_LENOVO_X200),
++	SND_PCI_QUIRK(0x103c, 0x30ea, "Compaq Presario F700", CXT5051_F700),
+ 	{}
+ };
+ 
+@@ -1896,6 +1941,11 @@ static int patch_cxt5051(struct hda_codec *codec)
+ 	case CXT5051_LENOVO_X200:
+ 		spec->init_verbs[0] = cxt5051_lenovo_x200_init_verbs;
+ 		break;
++	case CXT5051_F700:
++		spec->init_verbs[0] = cxt5051_f700_init_verbs;
++		spec->mixers[0] = cxt5051_f700_mixers;
++		spec->no_auto_mic = 1;
++		break;
+ 	}
+ 
+ 	return 0;
+diff --git a/sound/pci/hda/patch_realtek.c b/sound/pci/hda/patch_realtek.c
+index e44025c..93b7832 100644
+--- a/sound/pci/hda/patch_realtek.c
++++ b/sound/pci/hda/patch_realtek.c
+@@ -2515,8 +2515,10 @@ static int alc_build_controls(struct hda_codec *codec)
+ 	if (!kctl)
+ 		kctl = snd_hda_find_mixer_ctl(codec, "Input Source");
+ 	for (i = 0; kctl && i < kctl->count; i++) {
+-		err = snd_hda_add_nids(codec, kctl, i, spec->capsrc_nids,
+-				       spec->input_mux->num_items);
++		hda_nid_t *nids = spec->capsrc_nids;
++		if (!nids)
++			nids = spec->adc_nids;
++		err = snd_hda_add_nid(codec, kctl, i, nids[i]);
+ 		if (err < 0)
+ 			return err;
+ 	}
+@@ -7129,8 +7131,8 @@ static struct snd_kcontrol_new alc885_mb5_mixer[] = {
+ 	HDA_BIND_MUTE   ("Surround Playback Switch", 0x0d, 0x02, HDA_INPUT),
+ 	HDA_CODEC_VOLUME("LFE Playback Volume", 0x0e, 0x00, HDA_OUTPUT),
+ 	HDA_BIND_MUTE   ("LFE Playback Switch", 0x0e, 0x02, HDA_INPUT),
+-	HDA_CODEC_VOLUME("HP Playback Volume", 0x0f, 0x00, HDA_OUTPUT),
+-	HDA_BIND_MUTE   ("HP Playback Switch", 0x0f, 0x02, HDA_INPUT),
++	HDA_CODEC_VOLUME("Headphone Playback Volume", 0x0f, 0x00, HDA_OUTPUT),
++	HDA_BIND_MUTE   ("Headphone Playback Switch", 0x0f, 0x02, HDA_INPUT),
+ 	HDA_CODEC_VOLUME("Line Playback Volume", 0x0b, 0x02, HDA_INPUT),
+ 	HDA_CODEC_MUTE  ("Line Playback Switch", 0x0b, 0x02, HDA_INPUT),
+ 	HDA_CODEC_VOLUME("Mic Playback Volume", 0x0b, 0x01, HDA_INPUT),
+@@ -7531,6 +7533,7 @@ static struct hda_verb alc885_mb5_init_verbs[] = {
+ 	{0x14, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_OUT},
+ 	{0x14, AC_VERB_SET_AMP_GAIN_MUTE, AMP_OUT_UNMUTE},
+ 	{0x14, AC_VERB_SET_CONNECT_SEL, 0x03},
++	{0x14, AC_VERB_SET_UNSOLICITED_ENABLE, ALC880_HP_EVENT | AC_USRSP_EN},
+ 	/* Front Mic pin: input vref at 80% */
+ 	{0x19, AC_VERB_SET_PIN_WIDGET_CONTROL, PIN_VREF80},
+ 	{0x19, AC_VERB_SET_AMP_GAIN_MUTE, AMP_OUT_MUTE},
+@@ -7715,6 +7718,27 @@ static void alc885_mbp3_setup(struct hda_codec *codec)
+ 	spec->autocfg.speaker_pins[0] = 0x14;
+ }
+ 
++static void alc885_mb5_automute(struct hda_codec *codec)
++{
++	unsigned int present;
++
++	present = snd_hda_codec_read(codec, 0x14, 0,
++				     AC_VERB_GET_PIN_SENSE, 0) & 0x80000000;
++	snd_hda_codec_amp_stereo(codec, 0x18, HDA_OUTPUT, 0,
++				 HDA_AMP_MUTE, present ? HDA_AMP_MUTE : 0);
++	snd_hda_codec_amp_stereo(codec, 0x1a, HDA_OUTPUT, 0,
++				 HDA_AMP_MUTE, present ? HDA_AMP_MUTE : 0);
++
++}
++
++static void alc885_mb5_unsol_event(struct hda_codec *codec,
++				    unsigned int res)
++{
++	/* Headphone insertion or removal. */
++	if ((res >> 26) == ALC880_HP_EVENT)
++		alc885_mb5_automute(codec);
++}
++
+ static void alc885_imac91_automute(struct hda_codec *codec)
+ {
+  	unsigned int present;
+@@ -9161,6 +9185,8 @@ static struct alc_config_preset alc882_presets[] = {
+ 		.input_mux = &mb5_capture_source,
+ 		.dig_out_nid = ALC882_DIGOUT_NID,
+ 		.dig_in_nid = ALC882_DIGIN_NID,
++		.unsol_event = alc885_mb5_unsol_event,
++		.init_hook = alc885_mb5_automute,
+ 	},
+ 	[ALC885_MACPRO] = {
+ 		.mixers = { alc882_macpro_mixer },
+@@ -14884,6 +14910,8 @@ static int patch_alc861(struct hda_codec *codec)
+ 	spec->stream_digital_playback = &alc861_pcm_digital_playback;
+ 	spec->stream_digital_capture = &alc861_pcm_digital_capture;
+ 
++	if (!spec->cap_mixer)
++		set_capture_mixer(codec);
+ 	set_beep_amp(spec, 0x23, 0, HDA_OUTPUT);
+ 
+ 	spec->vmaster_nid = 0x03;
+@@ -15522,7 +15550,7 @@ static struct alc_config_preset alc861vd_presets[] = {
+ static int alc861vd_auto_create_input_ctls(struct hda_codec *codec,
+ 						const struct auto_pin_cfg *cfg)
+ {
+-	return alc_auto_create_input_ctls(codec, cfg, 0x15, 0x09, 0);
++	return alc_auto_create_input_ctls(codec, cfg, 0x15, 0x22, 0);
+ }
+ 
+ 
+@@ -17081,7 +17109,7 @@ static struct snd_pci_quirk alc662_cfg_tbl[] = {
+ 	SND_PCI_QUIRK(0x105b, 0x0cd6, "Foxconn", ALC662_ECS),
+ 	SND_PCI_QUIRK(0x105b, 0x0d47, "Foxconn 45CMX/45GMX/45CMX-K",
+ 		      ALC662_3ST_6ch_DIG),
+-	SND_PCI_QUIRK(0x1179, 0xff6e, "Toshiba NB200", ALC663_ASUS_MODE4),
++	SND_PCI_QUIRK(0x1179, 0xff6e, "Toshiba NB20x", ALC662_AUTO),
+ 	SND_PCI_QUIRK(0x144d, 0xca00, "Samsung NC10", ALC272_SAMSUNG_NC10),
+ 	SND_PCI_QUIRK(0x1458, 0xa002, "Gigabyte 945GCM-S2L",
+ 		      ALC662_3ST_6ch_DIG),
+diff --git a/sound/pci/hda/patch_sigmatel.c b/sound/pci/hda/patch_sigmatel.c
+index 0bafea9..2bdaa58 100644
+--- a/sound/pci/hda/patch_sigmatel.c
++++ b/sound/pci/hda/patch_sigmatel.c
+@@ -4180,9 +4180,23 @@ static void stac_store_hints(struct hda_codec *codec)
+ 	p = snd_hda_get_hint(codec, "eapd_mask");
+ 	if (p)
+ 		spec->eapd_mask = simple_strtoul(p, NULL, 0) & spec->gpio_mask;
++	p = snd_hda_get_hint(codec, "gpio_mute");
++	if (p)
++		spec->gpio_mute = simple_strtoul(p, NULL, 0) & spec->gpio_mask;
+ 	val = snd_hda_get_bool_hint(codec, "eapd_switch");
+ 	if (val >= 0)
+ 		spec->eapd_switch = val;
++	p = snd_hda_get_hint(codec, "gpio_led_polarity");
++	if (p)
++		spec->gpio_led_polarity = simple_strtoul(p, NULL, 0);
++	p = snd_hda_get_hint(codec, "gpio_led");
++	if (p) {
++		spec->gpio_led = simple_strtoul(p, NULL, 0);
++		spec->gpio_mask |= spec->gpio_led;
++		spec->gpio_dir |= spec->gpio_led;
++		if (spec->gpio_led_polarity)
++			spec->gpio_data |= spec->gpio_led;
++	}
+ }
+ 
+ static int stac92xx_init(struct hda_codec *codec)
+@@ -4367,18 +4381,8 @@ static void stac92xx_free_kctls(struct hda_codec *codec)
+ static void stac92xx_shutup(struct hda_codec *codec)
+ {
+ 	struct sigmatel_spec *spec = codec->spec;
+-	int i;
+-	hda_nid_t nid;
+ 
+-	/* reset each pin before powering down DAC/ADC to avoid click noise */
+-	nid = codec->start_nid;
+-	for (i = 0; i < codec->num_nodes; i++, nid++) {
+-		unsigned int wcaps = get_wcaps(codec, nid);
+-		unsigned int wid_type = get_wcaps_type(wcaps);
+-		if (wid_type == AC_WID_PIN)
+-			snd_hda_codec_read(codec, nid, 0,
+-				AC_VERB_SET_PIN_WIDGET_CONTROL, 0);
+-	}
++	snd_hda_shutup_pins(codec);
+ 
+ 	if (spec->eapd_mask)
+ 		stac_gpio_set(codec, spec->gpio_mask,
+@@ -4448,14 +4452,7 @@ static inline int get_pin_presence(struct hda_codec *codec, hda_nid_t nid)
+ {
+ 	if (!nid)
+ 		return 0;
+-	/* NOTE: we can't use snd_hda_jack_detect() here because STAC/IDT
+-	 * codecs behave wrongly when SET_PIN_SENSE is triggered, although
+-	 * the pincap gives TRIG_REQ bit.
+-	 */
+-	if (snd_hda_codec_read(codec, nid, 0, AC_VERB_GET_PIN_SENSE, 0) &
+-	    AC_PINSENSE_PRESENCE)
+-		return 1;
+-	return 0;
++	return snd_hda_jack_detect(codec, nid);
+ }
+ 
+ static void stac92xx_line_out_detect(struct hda_codec *codec,
+@@ -4957,6 +4954,7 @@ static int patch_stac9200(struct hda_codec *codec)
+ 	if (spec == NULL)
+ 		return -ENOMEM;
+ 
++	codec->no_trigger_sense = 1;
+ 	codec->spec = spec;
+ 	spec->num_pins = ARRAY_SIZE(stac9200_pin_nids);
+ 	spec->pin_nids = stac9200_pin_nids;
+@@ -5019,6 +5017,7 @@ static int patch_stac925x(struct hda_codec *codec)
+ 	if (spec == NULL)
+ 		return -ENOMEM;
+ 
++	codec->no_trigger_sense = 1;
+ 	codec->spec = spec;
+ 	spec->num_pins = ARRAY_SIZE(stac925x_pin_nids);
+ 	spec->pin_nids = stac925x_pin_nids;
+@@ -5103,6 +5102,7 @@ static int patch_stac92hd73xx(struct hda_codec *codec)
+ 	if (spec == NULL)
+ 		return -ENOMEM;
+ 
++	codec->no_trigger_sense = 1;
+ 	codec->spec = spec;
+ 	codec->slave_dig_outs = stac92hd73xx_slave_dig_outs;
+ 	spec->num_pins = ARRAY_SIZE(stac92hd73xx_pin_nids);
+@@ -5250,6 +5250,7 @@ static int patch_stac92hd83xxx(struct hda_codec *codec)
+ 	if (spec == NULL)
+ 		return -ENOMEM;
+ 
++	codec->no_trigger_sense = 1;
+ 	codec->spec = spec;
+ 	codec->slave_dig_outs = stac92hd83xxx_slave_dig_outs;
+ 	spec->digbeep_nid = 0x21;
+@@ -5402,6 +5403,54 @@ static int stac92hd71bxx_connected_smuxes(struct hda_codec *codec,
+ 		return 0;
+ }
+ 
++/* HP dv7 bass switch - GPIO5 */
++#define stac_hp_bass_gpio_info	snd_ctl_boolean_mono_info
++static int stac_hp_bass_gpio_get(struct snd_kcontrol *kcontrol,
++				 struct snd_ctl_elem_value *ucontrol)
++{
++	struct hda_codec *codec = snd_kcontrol_chip(kcontrol);
++	struct sigmatel_spec *spec = codec->spec;
++	ucontrol->value.integer.value[0] = !!(spec->gpio_data & 0x20);
++	return 0;
++}
++
++static int stac_hp_bass_gpio_put(struct snd_kcontrol *kcontrol,
++				 struct snd_ctl_elem_value *ucontrol)
++{
++	struct hda_codec *codec = snd_kcontrol_chip(kcontrol);
++	struct sigmatel_spec *spec = codec->spec;
++	unsigned int gpio_data;
++
++	gpio_data = (spec->gpio_data & ~0x20) |
++		(ucontrol->value.integer.value[0] ? 0x20 : 0);
++	if (gpio_data == spec->gpio_data)
++		return 0;
++	spec->gpio_data = gpio_data;
++	stac_gpio_set(codec, spec->gpio_mask, spec->gpio_dir, spec->gpio_data);
++	return 1;
++}
++
++static struct snd_kcontrol_new stac_hp_bass_sw_ctrl = {
++	.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++	.info = stac_hp_bass_gpio_info,
++	.get = stac_hp_bass_gpio_get,
++	.put = stac_hp_bass_gpio_put,
++};
++
++static int stac_add_hp_bass_switch(struct hda_codec *codec)
++{
++	struct sigmatel_spec *spec = codec->spec;
++
++	if (!stac_control_new(spec, &stac_hp_bass_sw_ctrl,
++			      "Bass Speaker Playback Switch", 0))
++		return -ENOMEM;
++
++	spec->gpio_mask |= 0x20;
++	spec->gpio_dir |= 0x20;
++	spec->gpio_data |= 0x20;
++	return 0;
++}
++
+ static int patch_stac92hd71bxx(struct hda_codec *codec)
+ {
+ 	struct sigmatel_spec *spec;
+@@ -5413,6 +5462,7 @@ static int patch_stac92hd71bxx(struct hda_codec *codec)
+ 	if (spec == NULL)
+ 		return -ENOMEM;
+ 
++	codec->no_trigger_sense = 1;
+ 	codec->spec = spec;
+ 	codec->patch_ops = stac92xx_patch_ops;
+ 	spec->num_pins = STAC92HD71BXX_NUM_PINS;
+@@ -5642,6 +5692,15 @@ again:
+ 		return err;
+ 	}
+ 
++	/* enable bass on HP dv7 */
++	if (spec->board_config == STAC_HP_DV5) {
++		unsigned int cap;
++		cap = snd_hda_param_read(codec, 0x1, AC_PAR_GPIO_CAP);
++		cap &= AC_GPIO_IO_COUNT;
++		if (cap >= 6)
++			stac_add_hp_bass_switch(codec);
++	}
++
+ 	codec->proc_widget_hook = stac92hd7x_proc_hook;
+ 
+ 	return 0;
+@@ -5656,6 +5715,7 @@ static int patch_stac922x(struct hda_codec *codec)
+ 	if (spec == NULL)
+ 		return -ENOMEM;
+ 
++	codec->no_trigger_sense = 1;
+ 	codec->spec = spec;
+ 	spec->num_pins = ARRAY_SIZE(stac922x_pin_nids);
+ 	spec->pin_nids = stac922x_pin_nids;
+@@ -5759,6 +5819,7 @@ static int patch_stac927x(struct hda_codec *codec)
+ 	if (spec == NULL)
+ 		return -ENOMEM;
+ 
++	codec->no_trigger_sense = 1;
+ 	codec->spec = spec;
+ 	codec->slave_dig_outs = stac927x_slave_dig_outs;
+ 	spec->num_pins = ARRAY_SIZE(stac927x_pin_nids);
+@@ -5893,6 +5954,7 @@ static int patch_stac9205(struct hda_codec *codec)
+ 	if (spec == NULL)
+ 		return -ENOMEM;
+ 
++	codec->no_trigger_sense = 1;
+ 	codec->spec = spec;
+ 	spec->num_pins = ARRAY_SIZE(stac9205_pin_nids);
+ 	spec->pin_nids = stac9205_pin_nids;
+@@ -6048,6 +6110,7 @@ static int patch_stac9872(struct hda_codec *codec)
+ 	spec  = kzalloc(sizeof(*spec), GFP_KERNEL);
+ 	if (spec == NULL)
+ 		return -ENOMEM;
++	codec->no_trigger_sense = 1;
+ 	codec->spec = spec;
+ 	spec->num_pins = ARRAY_SIZE(stac9872_pin_nids);
+ 	spec->pin_nids = stac9872_pin_nids;
+diff --git a/sound/pci/hda/patch_via.c b/sound/pci/hda/patch_via.c
+index de4839e..9ddc373 100644
+--- a/sound/pci/hda/patch_via.c
++++ b/sound/pci/hda/patch_via.c
+@@ -1907,8 +1907,7 @@ static int via_build_controls(struct hda_codec *codec)
+ 	/* assign Capture Source enums to NID */
+ 	kctl = snd_hda_find_mixer_ctl(codec, "Input Source");
+ 	for (i = 0; kctl && i < kctl->count; i++) {
+-		err = snd_hda_add_nids(codec, kctl, i, spec->mux_nids,
+-				       spec->input_mux->num_items);
++		err = snd_hda_add_nid(codec, kctl, i, spec->mux_nids[i]);
+ 		if (err < 0)
+ 			return err;
+ 	}

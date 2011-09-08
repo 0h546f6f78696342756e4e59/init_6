@@ -1,0 +1,31 @@
+From: Borislav Petkov <borislav.petkov@amd.com>
+Date: Mon, 21 Dec 2009 18:55:18 +0100
+Subject: [stable] amd64_edac: fix forcing module load/unload
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 43f5e68733cfe8bed3c30b5c14c4993dffb29766 upstream.
+
+Clear the override flag after force-loading the module.
+
+Signed-off-by: Borislav Petkov <borislav.petkov@amd.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/edac/amd64_edac.c b/drivers/edac/amd64_edac.c
+index 22910c6..a0bcfba 100644
+--- a/drivers/edac/amd64_edac.c
++++ b/drivers/edac/amd64_edac.c
+@@ -2836,9 +2836,8 @@ static int amd64_check_ecc_enabled(struct amd64_pvt *pvt)
+ 			amd64_printk(KERN_WARNING, "%s", ecc_warning);
+ 			return -ENODEV;
+ 		}
+-	} else
+-		/* CLEAR the override, since BIOS controlled it */
+ 		ecc_enable_override = 0;
++	}
+ 
+ 	return 0;
+ }

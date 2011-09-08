@@ -1,0 +1,152 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Fri, 18 Dec 2009 20:36:35 -0500
+Subject: [block] cfq-iosched: Remove prio_change logic for workload selection
+Message-id: <1261168595-15386-12-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 22173
+O-Subject: [RHEL6 PATCH 11/11] cfq-iosched: Remove prio_change logic for
+	workload selection
+Bugzilla: 548796
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+The commit id is from the block tree.  fixes bug 548796.
+
+commit 65b32a573eefa1cdd3cbe5ea59326308e6c3b9ad
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Wed Dec 16 17:52:59 2009 -0500
+
+    cfq-iosched: Remove prio_change logic for workload selection
+
+    o CFQ now internally divides cfq queues in therr workload categories. sync-idle,
+      sync-noidle and async. Which workload to run depends primarily on rb_key
+      offset across three service trees. Which is a combination of mulitiple things
+      including what time queue got queued on the service tree.
+
+      There is one exception though. That is if we switched the prio class, say
+      we served some RT tasks and again started serving BE class, then with-in
+      BE class we always started with sync-noidle workload irrespective of rb_key
+      offset in service trees.
+
+      This can provide better latencies for sync-noidle workload in the presence
+      of RT tasks.
+
+    o This patch gets rid of that exception and which workload to run with-in
+      class always depends on lowest rb_key across service trees. The reason
+      being that now we have multiple BE class groups and if we always switch
+      to sync-noidle workload with-in group, we can potentially starve a sync-idle
+      workload with-in group. Same is true for async workload which will be in
+      root group. Also the workload-switching with-in group will become very
+      unpredictable as it now depends whether some RT workload was running in
+      the system or not.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 1a45377..6635317 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -291,8 +291,7 @@ static struct cfq_group *cfq_get_next_cfqg(struct cfq_data *cfqd);
+ 
+ static struct cfq_rb_root *service_tree_for(struct cfq_group *cfqg,
+ 					    enum wl_prio_t prio,
+-					    enum wl_type_t type,
+-					    struct cfq_data *cfqd)
++					    enum wl_type_t type)
+ {
+ 	if (!cfqg)
+ 		return NULL;
+@@ -1145,7 +1144,7 @@ static void cfq_service_tree_add(struct cfq_data *cfqd, struct cfq_queue *cfqq,
+ #endif
+ 
+ 	service_tree = service_tree_for(cfqq->cfqg, cfqq_prio(cfqq),
+-						cfqq_type(cfqq), cfqd);
++						cfqq_type(cfqq));
+ 	if (cfq_class_idle(cfqq)) {
+ 		rb_key = CFQ_IDLE_DELAY;
+ 		parent = rb_last(&service_tree->rb);
+@@ -1608,7 +1607,7 @@ static struct cfq_queue *cfq_get_next_queue(struct cfq_data *cfqd)
+ {
+ 	struct cfq_rb_root *service_tree =
+ 		service_tree_for(cfqd->serving_group, cfqd->serving_prio,
+-					cfqd->serving_type, cfqd);
++					cfqd->serving_type);
+ 
+ 	if (!cfqd->rq_queued)
+ 		return NULL;
+@@ -1955,8 +1954,7 @@ static void cfq_setup_merge(struct cfq_queue *cfqq, struct cfq_queue *new_cfqq)
+ }
+ 
+ static enum wl_type_t cfq_choose_wl(struct cfq_data *cfqd,
+-				struct cfq_group *cfqg, enum wl_prio_t prio,
+-				bool prio_changed)
++				struct cfq_group *cfqg, enum wl_prio_t prio)
+ {
+ 	struct cfq_queue *queue;
+ 	int i;
+@@ -1964,24 +1962,9 @@ static enum wl_type_t cfq_choose_wl(struct cfq_data *cfqd,
+ 	unsigned long lowest_key = 0;
+ 	enum wl_type_t cur_best = SYNC_NOIDLE_WORKLOAD;
+ 
+-	if (prio_changed) {
+-		/*
+-		 * When priorities switched, we prefer starting
+-		 * from SYNC_NOIDLE (first choice), or just SYNC
+-		 * over ASYNC
+-		 */
+-		if (service_tree_for(cfqg, prio, cur_best, cfqd)->count)
+-			return cur_best;
+-		cur_best = SYNC_WORKLOAD;
+-		if (service_tree_for(cfqg, prio, cur_best, cfqd)->count)
+-			return cur_best;
+-
+-		return ASYNC_WORKLOAD;
+-	}
+-
+-	for (i = 0; i < 3; ++i) {
+-		/* otherwise, select the one with lowest rb_key */
+-		queue = cfq_rb_first(service_tree_for(cfqg, prio, i, cfqd));
++	for (i = 0; i <= SYNC_WORKLOAD; ++i) {
++		/* select the one with lowest rb_key */
++		queue = cfq_rb_first(service_tree_for(cfqg, prio, i));
+ 		if (queue &&
+ 		    (!key_valid || time_before(queue->rb_key, lowest_key))) {
+ 			lowest_key = queue->rb_key;
+@@ -1995,8 +1978,6 @@ static enum wl_type_t cfq_choose_wl(struct cfq_data *cfqd,
+ 
+ static void choose_service_tree(struct cfq_data *cfqd, struct cfq_group *cfqg)
+ {
+-	enum wl_prio_t previous_prio = cfqd->serving_prio;
+-	bool prio_changed;
+ 	unsigned slice;
+ 	unsigned count;
+ 	struct cfq_rb_root *st;
+@@ -2024,24 +2005,19 @@ static void choose_service_tree(struct cfq_data *cfqd, struct cfq_group *cfqg)
+ 	 * (SYNC, SYNC_NOIDLE, ASYNC), and to compute a workload
+ 	 * expiration time
+ 	 */
+-	prio_changed = (cfqd->serving_prio != previous_prio);
+-	st = service_tree_for(cfqg, cfqd->serving_prio, cfqd->serving_type,
+-				cfqd);
++	st = service_tree_for(cfqg, cfqd->serving_prio, cfqd->serving_type);
+ 	count = st->count;
+ 
+ 	/*
+-	 * If priority didn't change, check workload expiration,
+-	 * and that we still have other queues ready
++	 * check workload expiration, and that we still have other queues ready
+ 	 */
+-	if (!prio_changed && count &&
+-	    !time_after(jiffies, cfqd->workload_expires))
++	if (count && !time_after(jiffies, cfqd->workload_expires))
+ 		return;
+ 
+ 	/* otherwise select new workload type */
+ 	cfqd->serving_type =
+-		cfq_choose_wl(cfqd, cfqg, cfqd->serving_prio, prio_changed);
+-	st = service_tree_for(cfqg, cfqd->serving_prio, cfqd->serving_type,
+-				cfqd);
++		cfq_choose_wl(cfqd, cfqg, cfqd->serving_prio);
++	st = service_tree_for(cfqg, cfqd->serving_prio, cfqd->serving_type);
+ 	count = st->count;
+ 
+ 	/*

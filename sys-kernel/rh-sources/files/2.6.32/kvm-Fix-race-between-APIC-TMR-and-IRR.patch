@@ -1,0 +1,62 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Wed, 27 Jan 2010 21:13:07 -0500
+Subject: [kvm] Fix race between APIC TMR and IRR
+Message-id: <20100127211710.109172088@amt.cnet>
+Patchwork-id: 22961
+O-Subject: [RHEL 6 KVM 1/9] KVM: Fix race between APIC TMR and IRR
+Bugzilla: 559343
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Michael S. Tsirkin <mst@redhat.com>
+RH-Acked-by: Rik van Riel <riel@redhat.com>
+
+commit f62de5f9712dfe68c2a6804142f9529894a8bc71
+Author: Avi Kivity <avi@redhat.com>
+Date:   Tue Dec 29 12:42:16 2009 +0200
+
+KVM: Fix race between APIC TMR and IRR
+
+When we queue an interrupt to the local apic, we set the IRR before the TMR.
+The vcpu can pick up the IRR and inject the interrupt before setting the TMR,
+and perhaps even EOI it, causing incorrect behaviour.
+
+The race is really insignificant since it can only occur on the first
+interrupt (usually following interrupts will not change TMR), but it's better
+closed than open.
+
+Fixed by reordering setting the TMR vs IRR.
+
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Signed-off-by: Marcelo Tosatti <mtosatti@redhat.com>
+Bugzilla: 559343
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/lapic.c b/arch/x86/kvm/lapic.c
+index da8c0e5..94d559a 100644
+--- a/arch/x86/kvm/lapic.c
++++ b/arch/x86/kvm/lapic.c
+@@ -374,6 +374,12 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
+ 		if (unlikely(!apic_enabled(apic)))
+ 			break;
+ 
++		if (trig_mode) {
++			apic_debug("level trig mode for vector %d", vector);
++			apic_set_vector(vector, apic->regs + APIC_TMR);
++		} else
++			apic_clear_vector(vector, apic->regs + APIC_TMR);
++
+ 		result = !apic_test_and_set_irr(vector, apic);
+ 		trace_kvm_apic_accept_irq(vcpu->vcpu_id, delivery_mode,
+ 					  trig_mode, vector, !result);
+@@ -384,11 +390,6 @@ static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
+ 			break;
+ 		}
+ 
+-		if (trig_mode) {
+-			apic_debug("level trig mode for vector %d", vector);
+-			apic_set_vector(vector, apic->regs + APIC_TMR);
+-		} else
+-			apic_clear_vector(vector, apic->regs + APIC_TMR);
+ 		kvm_vcpu_kick(vcpu);
+ 		break;
+ 

@@ -1,0 +1,157 @@
+From: Rik van Riel <riel@redhat.com>
+Date: Thu, 17 Dec 2009 14:26:52 -0500
+Subject: [mm] swap_info: private to swapfile.c
+Message-id: <20091217143336.759060135@redhat.com>
+Patchwork-id: 22033
+O-Subject: [PATCH 02/21 RHEL 6] (bz 548457) swap_info: private to swapfile.c
+Bugzilla: 548457
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+commit f29ad6a99b596b8169744d107bf088e8be9e8d0d
+Author: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+Date:   Mon Dec 14 17:58:40 2009 -0800
+
+    swap_info: private to swapfile.c
+
+    The swap_info_struct is mostly private to mm/swapfile.c, with only
+    one other in-tree user: get_swap_bio().  Adjust its interface to
+    map_swap_page(), so that we can then remove get_swap_info_struct().
+
+    But there is a popular user out-of-tree, TuxOnIce: so leave the
+    declaration of swap_info_struct in linux/swap.h.
+
+    Signed-off-by: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+    Cc: Nigel Cunningham <ncunningham@crca.org.au>
+    Cc: KAMEZAWA Hiroyuki <kamezawa.hiroyu@jp.fujitsu.com>
+    Reviewed-by: Rik van Riel <riel@redhat.com>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/swap.h b/include/linux/swap.h
+index 4ec9001..4f8ad3f 100644
+--- a/include/linux/swap.h
++++ b/include/linux/swap.h
+@@ -317,9 +317,8 @@ extern void swapcache_free(swp_entry_t, struct page *page);
+ extern int free_swap_and_cache(swp_entry_t);
+ extern int swap_type_of(dev_t, sector_t, struct block_device **);
+ extern unsigned int count_swap_pages(int, int);
+-extern sector_t map_swap_page(struct swap_info_struct *, pgoff_t);
++extern sector_t map_swap_page(swp_entry_t, struct block_device **);
+ extern sector_t swapdev_block(int, pgoff_t);
+-extern struct swap_info_struct *get_swap_info_struct(unsigned);
+ extern int reuse_swap_page(struct page *);
+ extern int try_to_free_swap(struct page *);
+ struct backing_dev_info;
+diff --git a/mm/page_io.c b/mm/page_io.c
+index c6f3e50..afeed89 100644
+--- a/mm/page_io.c
++++ b/mm/page_io.c
+@@ -19,20 +19,17 @@
+ #include <linux/writeback.h>
+ #include <asm/pgtable.h>
+ 
+-static struct bio *get_swap_bio(gfp_t gfp_flags, pgoff_t index,
++static struct bio *get_swap_bio(gfp_t gfp_flags,
+ 				struct page *page, bio_end_io_t end_io)
+ {
+ 	struct bio *bio;
+ 
+ 	bio = bio_alloc(gfp_flags, 1);
+ 	if (bio) {
+-		struct swap_info_struct *sis;
+-		swp_entry_t entry = { .val = index, };
+-
+-		sis = get_swap_info_struct(swp_type(entry));
+-		bio->bi_sector = map_swap_page(sis, swp_offset(entry)) *
+-					(PAGE_SIZE >> 9);
+-		bio->bi_bdev = sis->bdev;
++		swp_entry_t entry;
++		entry.val = page_private(page);
++		bio->bi_sector = map_swap_page(entry, &bio->bi_bdev);
++		bio->bi_sector <<= PAGE_SHIFT - 9;
+ 		bio->bi_io_vec[0].bv_page = page;
+ 		bio->bi_io_vec[0].bv_len = PAGE_SIZE;
+ 		bio->bi_io_vec[0].bv_offset = 0;
+@@ -102,8 +99,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
+ 		unlock_page(page);
+ 		goto out;
+ 	}
+-	bio = get_swap_bio(GFP_NOIO, page_private(page), page,
+-				end_swap_bio_write);
++	bio = get_swap_bio(GFP_NOIO, page, end_swap_bio_write);
+ 	if (bio == NULL) {
+ 		set_page_dirty(page);
+ 		unlock_page(page);
+@@ -127,8 +123,7 @@ int swap_readpage(struct page *page)
+ 
+ 	VM_BUG_ON(!PageLocked(page));
+ 	VM_BUG_ON(PageUptodate(page));
+-	bio = get_swap_bio(GFP_KERNEL, page_private(page), page,
+-				end_swap_bio_read);
++	bio = get_swap_bio(GFP_KERNEL, page, end_swap_bio_read);
+ 	if (bio == NULL) {
+ 		unlock_page(page);
+ 		ret = -ENOMEM;
+diff --git a/mm/swapfile.c b/mm/swapfile.c
+index 9c590ee..f83f1c6 100644
+--- a/mm/swapfile.c
++++ b/mm/swapfile.c
+@@ -1283,12 +1283,22 @@ static void drain_mmlist(void)
+ 
+ /*
+  * Use this swapdev's extent info to locate the (PAGE_SIZE) block which
+- * corresponds to page offset `offset'.
++ * corresponds to page offset `offset'.  Note that the type of this function
++ * is sector_t, but it returns page offset into the bdev, not sector offset.
+  */
+-sector_t map_swap_page(struct swap_info_struct *sis, pgoff_t offset)
++sector_t map_swap_page(swp_entry_t entry, struct block_device **bdev)
+ {
+-	struct swap_extent *se = sis->curr_swap_extent;
+-	struct swap_extent *start_se = se;
++	struct swap_info_struct *sis;
++	struct swap_extent *start_se;
++	struct swap_extent *se;
++	pgoff_t offset;
++
++	sis = swap_info + swp_type(entry);
++	*bdev = sis->bdev;
++
++	offset = swp_offset(entry);
++	start_se = sis->curr_swap_extent;
++	se = start_se;
+ 
+ 	for ( ; ; ) {
+ 		struct list_head *lh;
+@@ -1314,12 +1324,14 @@ sector_t map_swap_page(struct swap_info_struct *sis, pgoff_t offset)
+ sector_t swapdev_block(int swap_type, pgoff_t offset)
+ {
+ 	struct swap_info_struct *sis;
++	struct block_device *bdev;
+ 
+ 	if (swap_type >= nr_swapfiles)
+ 		return 0;
+ 
+ 	sis = swap_info + swap_type;
+-	return (sis->flags & SWP_WRITEOK) ? map_swap_page(sis, offset) : 0;
++	return (sis->flags & SWP_WRITEOK) ?
++		map_swap_page(swp_entry(swap_type, offset), &bdev) : 0;
+ }
+ #endif /* CONFIG_HIBERNATION */
+ 
+@@ -2159,13 +2171,6 @@ int swapcache_prepare(swp_entry_t entry)
+ 	return __swap_duplicate(entry, SWAP_CACHE);
+ }
+ 
+-
+-struct swap_info_struct *
+-get_swap_info_struct(unsigned type)
+-{
+-	return &swap_info[type];
+-}
+-
+ /*
+  * swap_lock prevents swap_map being freed. Don't grab an extra
+  * reference on the swaphandle, it doesn't matter if it becomes unused.

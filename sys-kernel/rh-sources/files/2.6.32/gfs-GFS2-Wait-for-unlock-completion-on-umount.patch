@@ -1,0 +1,124 @@
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Wed, 3 Feb 2010 10:43:21 -0500
+Subject: [gfs] GFS2: Wait for unlock completion on umount
+Message-id: <1265193801.2370.7.camel@localhost>
+Patchwork-id: 23110
+O-Subject: [RHEL6] GFS2: Wait for glocks on umount (bz #561287) [1/2]
+Bugzilla: 561287
+RH-Acked-by: Abhijith Das <adas@redhat.com>
+RH-Acked-by: Benjamin Marzinski <bmarzins@redhat.com>
+RH-Acked-by: Robert S Peterson <rpeterso@redhat.com>
+
+Hi,
+
+This patch and the following patch together ensure that we always wait for
+all replies to demote requests from the DLM at umount time. This prevents
+the gfs2 module from being removed until all the replies have been
+received.
+
+The patches have been tested by Fabio and are also in the upstream GFS2
+-nmw and -fixes git trees. I'm intending to send them to Linus shortly,
+
+Steve.
+
+>From e402746a945ceb9d0486a8e3d5917c9228fa4404 Mon Sep 17 00:00:00 2001
+From: Steven Whitehouse <swhiteho@redhat.com>
+Date: Mon, 25 Jan 2010 11:20:19 +0000
+Subject: [PATCH 1/2] GFS2: Wait for unlock completion on umount
+
+This patch adds a wait on umount between the point at which we
+dispose of all glocks and the point at which we unmount the
+lock protocol. This ensures that we've received all the replies
+to our unlock requests before we stop the locking.
+
+Signed-off-by: Steven Whitehouse <swhiteho@redhat.com>
+Reported-by: Fabio M. Di Nitto <fdinitto@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/incore.h b/fs/gfs2/incore.h
+index 4792200..bc0ad15 100644
+--- a/fs/gfs2/incore.h
++++ b/fs/gfs2/incore.h
+@@ -544,6 +544,8 @@ struct gfs2_sbd {
+ 	struct gfs2_holder sd_live_gh;
+ 	struct gfs2_glock *sd_rename_gl;
+ 	struct gfs2_glock *sd_trans_gl;
++	wait_queue_head_t sd_glock_wait;
++	atomic_t sd_glock_disposal;
+ 
+ 	/* Inode Stuff */
+ 
+diff --git a/fs/gfs2/lock_dlm.c b/fs/gfs2/lock_dlm.c
+index 46df988..cdd0755 100644
+--- a/fs/gfs2/lock_dlm.c
++++ b/fs/gfs2/lock_dlm.c
+@@ -21,6 +21,7 @@ static void gdlm_ast(void *arg)
+ {
+ 	struct gfs2_glock *gl = arg;
+ 	unsigned ret = gl->gl_state;
++	struct gfs2_sbd *sdp = gl->gl_sbd;
+ 
+ 	BUG_ON(gl->gl_lksb.sb_flags & DLM_SBF_DEMOTED);
+ 
+@@ -30,6 +31,8 @@ static void gdlm_ast(void *arg)
+ 	switch (gl->gl_lksb.sb_status) {
+ 	case -DLM_EUNLOCK: /* Unlocked, so glock can be freed */
+ 		kmem_cache_free(gfs2_glock_cachep, gl);
++		if (atomic_dec_and_test(&sdp->sd_glock_disposal))
++			wake_up(&sdp->sd_glock_wait);
+ 		return;
+ 	case -DLM_ECANCEL: /* Cancel while getting lock */
+ 		ret |= LM_OUT_CANCELED;
+@@ -167,7 +170,8 @@ static unsigned int gdlm_lock(struct gfs2_glock *gl,
+ static void gdlm_put_lock(struct kmem_cache *cachep, void *ptr)
+ {
+ 	struct gfs2_glock *gl = ptr;
+-	struct lm_lockstruct *ls = &gl->gl_sbd->sd_lockstruct;
++	struct gfs2_sbd *sdp = gl->gl_sbd;
++	struct lm_lockstruct *ls = &sdp->sd_lockstruct;
+ 	int error;
+ 
+ 	if (gl->gl_lksb.sb_lkid == 0) {
+@@ -183,6 +187,7 @@ static void gdlm_put_lock(struct kmem_cache *cachep, void *ptr)
+ 		       (unsigned long long)gl->gl_name.ln_number, error);
+ 		return;
+ 	}
++	atomic_inc(&sdp->sd_glock_disposal);
+ }
+ 
+ static void gdlm_cancel(struct gfs2_glock *gl)
+diff --git a/fs/gfs2/ops_fstype.c b/fs/gfs2/ops_fstype.c
+index edfee24..9390fc7 100644
+--- a/fs/gfs2/ops_fstype.c
++++ b/fs/gfs2/ops_fstype.c
+@@ -82,6 +82,8 @@ static struct gfs2_sbd *init_sbd(struct super_block *sb)
+ 
+ 	gfs2_tune_init(&sdp->sd_tune);
+ 
++	init_waitqueue_head(&sdp->sd_glock_wait);
++	atomic_set(&sdp->sd_glock_disposal, 0);
+ 	spin_lock_init(&sdp->sd_statfs_spin);
+ 
+ 	spin_lock_init(&sdp->sd_rindex_spin);
+diff --git a/fs/gfs2/super.c b/fs/gfs2/super.c
+index c282ad4..66242b3 100644
+--- a/fs/gfs2/super.c
++++ b/fs/gfs2/super.c
+@@ -21,6 +21,7 @@
+ #include <linux/gfs2_ondisk.h>
+ #include <linux/crc32.h>
+ #include <linux/time.h>
++#include <linux/wait.h>
+ 
+ #include "gfs2.h"
+ #include "incore.h"
+@@ -860,6 +861,8 @@ restart:
+ 	gfs2_jindex_free(sdp);
+ 	/*  Take apart glock structures and buffer lists  */
+ 	gfs2_gl_hash_clear(sdp);
++	/* Wait for dlm to reply to all our unlock requests */
++	wait_event(sdp->sd_glock_wait, atomic_read(&sdp->sd_glock_disposal) == 0);
+ 	/*  Unmount the locking protocol  */
+ 	gfs2_lm_unmount(sdp);
+ 

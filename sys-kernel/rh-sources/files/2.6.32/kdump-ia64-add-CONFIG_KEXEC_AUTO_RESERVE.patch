@@ -1,0 +1,40 @@
+From: Amerigo Wang <amwang@redhat.com>
+Date: Fri, 20 Nov 2009 18:25:22 -0500
+Subject: [kdump] ia64: add CONFIG_KEXEC_AUTO_RESERVE
+Message-id: <20090914071746.4415.55656.sendpatchset@localhost.localdomain>
+Patchwork-id: 20854
+O-Subject: [RHEL6 Patch 3/8] ia64: add CONFIG_KEXEC_AUTO_RESERVE
+Bugzilla: 523091
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+Introduce a new config option KEXEC_AUTO_RESERVE for ia64.
+
+Signed-off-by: WANG Cong <amwang@redhat.com>
+Acked-by: Neil Horman <nhorman@tuxdriver.com>
+
+
+diff --git a/arch/ia64/Kconfig b/arch/ia64/Kconfig
+index 1ee596c..2a845fc 100644
+--- a/arch/ia64/Kconfig
++++ b/arch/ia64/Kconfig
+@@ -591,6 +591,20 @@ config KEXEC
+ 	  support.  As of this writing the exact hardware interface is
+ 	  strongly in flux, so no good recommendation can be made.
+ 
++config KEXEC_AUTO_RESERVE
++	bool "automatically reserve memory for kexec kernel"
++	depends on KEXEC
++	default y
++	---help---
++	  Automatically reserve memory for a kexec kernel, so that you don't
++	  need to specify numbers for the "crashkernel=X@Y" boot option,
++	  instead you can use "crashkernel=auto". To make this work, you need
++	  to have more than 4G memory.
++
++	  The reserved memory size is different depends on how much memory
++	  you actually have. Please check Documentation/kdump/kdump.txt.
++	  If you doubt, say N.
++
+ config CRASH_DUMP
+ 	  bool "kernel crash dumps"
+ 	  depends on IA64_MCA_RECOVERY && !IA64_HP_SIM && (!SMP || HOTPLUG_CPU)

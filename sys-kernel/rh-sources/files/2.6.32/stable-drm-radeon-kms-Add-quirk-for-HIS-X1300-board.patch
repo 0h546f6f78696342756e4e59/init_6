@@ -1,0 +1,36 @@
+From: Alex Deucher <alexdeucher@gmail.com>
+Date: Tue, 1 Dec 2009 14:49:50 -0500
+Subject: [stable] drm/radeon/kms: Add quirk for HIS X1300 board
+Bugzilla: 555084
+
+(Pulled from -stable series)
+
+commit 4e3f9b78ff917cc5c833858fdb5d96bc262e0bf3 upstream.
+
+Board is DVI+VGA, not DVI+DVI
+
+Signed-off-by: Alex Deucher <alexdeucher@gmail.com>
+Signed-off-by: Dave Airlie <airlied@redhat.com>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+Signed-off-by: Aristeu Rozanski <aris@redhat.com>
+
+diff --git a/drivers/gpu/drm/radeon/radeon_atombios.c b/drivers/gpu/drm/radeon/radeon_atombios.c
+index 75b1ad9..c1d1e49 100644
+--- a/drivers/gpu/drm/radeon/radeon_atombios.c
++++ b/drivers/gpu/drm/radeon/radeon_atombios.c
+@@ -148,6 +148,14 @@ static bool radeon_atom_apply_quirks(struct drm_device *dev,
+ 		}
+ 	}
+ 
++	/* HIS X1300 is DVI+VGA, not DVI+DVI */
++	if ((dev->pdev->device == 0x7146) &&
++	    (dev->pdev->subsystem_vendor == 0x17af) &&
++	    (dev->pdev->subsystem_device == 0x2058)) {
++		if (supported_device == ATOM_DEVICE_DFP1_SUPPORT)
++			return false;
++	}
++
+ 	/* Funky macbooks */
+ 	if ((dev->pdev->device == 0x71C5) &&
+ 	    (dev->pdev->subsystem_vendor == 0x106b) &&

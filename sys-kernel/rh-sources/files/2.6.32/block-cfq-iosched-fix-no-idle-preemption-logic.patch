@@ -1,0 +1,45 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:57:56 -0500
+Subject: [block] cfq-iosched: fix no-idle preemption logic
+Message-id: <1260298712-12756-24-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21771
+O-Subject: [RHEL6 PATCH 23/59] cfq-iosched: fix no-idle preemption logic
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+related to bug 425895
+
+commit e4a229196a7c676514c78f6783f8994f64bf681c
+Author: Corrado Zoccolo <czoccolo@gmail.com>
+Date:   Thu Nov 26 10:02:58 2009 +0100
+
+    cfq-iosched: fix no-idle preemption logic
+
+    An incoming no-idle queue should preempt the active no-idle queue
+     only if the active queue is idling due to service tree empty.
+     Previous code was buggy in two ways:
+     * it relied on service_tree field to be set on the active queue, while
+       it is not set when the code is idling for a new request
+     * it didn't check for the service tree empty condition, so could lead to
+       LIFO behaviour if multiple queues with depth > 1 were preempting each
+       other on an non-NCQ device.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index cbd4232..7728661 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -2391,8 +2391,9 @@ cfq_should_preempt(struct cfq_data *cfqd, struct cfq_queue *new_cfqq,
+ 	if (cfq_class_idle(cfqq))
+ 		return true;
+ 
+-	if (cfqd->serving_type == SYNC_NOIDLE_WORKLOAD
+-	    && new_cfqq->service_tree == cfqq->service_tree)
++	if (cfqd->serving_type == SYNC_NOIDLE_WORKLOAD &&
++	    cfqq_type(new_cfqq) == SYNC_NOIDLE_WORKLOAD &&
++	    new_cfqq->service_tree->count == 1)
+ 		return true;
+ 
+ 	/*

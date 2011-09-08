@@ -1,0 +1,56 @@
+From: Hendrik Brueckner <brueckner@redhat.com>
+Date: Fri, 4 Dec 2009 13:57:41 -0500
+Subject: [s390] zcrypt: adjust speed rating between cex2 and pcixcc
+Message-id: <20091204135951.309088669@redhat.com>
+Patchwork-id: 21685
+O-Subject: [RHEL6 PATCH 5/6] s390 - zcrypt: adjust speed rating between cex2 and
+	pcixcc
+Bugzilla: 537495
+RH-Acked-by: Pete Zaitcev <zaitcev@redhat.com>
+
+Description
+===========
+Cards with lower speed rating are prefered. Thus change adjust the
+speed rating of cex2c adapters to be prefered before pcixcc, although
+they should not appear in the same machine anyway.
+
+Bugzilla
+========
+BZ 537495
+https://bugzilla.redhat.com/show_bug.cgi?id=537495
+
+Upstream status of the patch
+============================
+The patch will be upstream as of kernel version 2.6.33.
+The patch has been already posted to LKML:
+http://marc.info/?l=linux-kernel&m=125812557316599&w=4
+
+Test status
+===========
+The patch has been tested and fixes the problem.
+The fix has been verified by the IBM test department.
+
+Please ACK.
+
+With best regards,
+
+	Hendrik
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/s390/crypto/zcrypt_pcixcc.c b/drivers/s390/crypto/zcrypt_pcixcc.c
+index d5f770a..65cf17b 100644
+--- a/drivers/s390/crypto/zcrypt_pcixcc.c
++++ b/drivers/s390/crypto/zcrypt_pcixcc.c
+@@ -46,9 +46,9 @@
+ #define CEX3C_MIN_MOD_SIZE	PCIXCC_MIN_MOD_SIZE
+ #define CEX3C_MAX_MOD_SIZE	PCIXCC_MAX_MOD_SIZE
+ 
+-#define PCIXCC_MCL2_SPEED_RATING	7870	/* FIXME: needs finetuning */
++#define PCIXCC_MCL2_SPEED_RATING	7870
+ #define PCIXCC_MCL3_SPEED_RATING	7870
+-#define CEX2C_SPEED_RATING		8540
++#define CEX2C_SPEED_RATING		7000
+ #define CEX3C_SPEED_RATING		10000	/* FIXME: needs finetuning */
+ 
+ #define PCIXCC_MAX_ICA_MESSAGE_SIZE 0x77c  /* max size type6 v2 crt message */

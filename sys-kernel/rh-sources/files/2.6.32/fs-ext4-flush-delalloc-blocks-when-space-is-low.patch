@@ -1,0 +1,70 @@
+From: Eric Sandeen <sandeen@redhat.com>
+Date: Wed, 23 Dec 2009 18:05:16 -0500
+Subject: [fs] ext4: flush delalloc blocks when space is low
+Message-id: <4B325BDC.8050406@redhat.com>
+Patchwork-id: 22279
+O-Subject: [PATCH RHEL6 2/2] ext4: flush delalloc blocks when space is low
+Bugzilla: 526758
+RH-Acked-by: Peter Staubach <staubach@redhat.com>
+
+This is for Bug 526758 - ext4: Better ENOSPC handling needed
+
+This patch has been sent upstream, acked by Jens Axboe and
+Jan Kara, and merged into the ext4 patch queue but is not
+yet technically upstream.
+
+===
+
+Creating many small files in rapid succession on a small
+filesystem can lead to spurious ENOSPC; on a 104MB filesystem:
+
+for i in `seq 1 22500`; do
+    echo -n > $SCRATCH_MNT/$i
+    echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX > $SCRATCH_MNT/$i
+done
+
+leads to ENOSPC even though after a sync, 40% of the fs is free
+again.
+
+This is because we reserve worst-case metadata for delalloc writes,
+and when data is allocated that worst-case reservation is not
+usually needed.
+
+When freespace is low, kicking off an async writeback will start
+converting that worst-case space usage into something more realistic,
+almost always freeing up space to continue.
+
+This resolves the testcase for me, and survives all 4 generic
+ENOSPC tests in xfstests.
+
+We'll still need a hard synchronous sync to squeeze out the last bit,
+but this fixes things up to a large degree.
+
+Signed-off-by: Eric Sandeen <sandeen@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/ext4/inode.c b/fs/ext4/inode.c
+index 2c8caa5..d1866b4 100644
+--- a/fs/ext4/inode.c
++++ b/fs/ext4/inode.c
+@@ -3025,11 +3025,18 @@ static int ext4_nonda_switch(struct super_block *sb)
+ 	if (2 * free_blocks < 3 * dirty_blocks ||
+ 		free_blocks < (dirty_blocks + EXT4_FREEBLOCKS_WATERMARK)) {
+ 		/*
+-		 * free block count is less that 150% of dirty blocks
+-		 * or free blocks is less that watermark
++		 * free block count is less than 150% of dirty blocks
++		 * or free blocks is less than watermark
+ 		 */
+ 		return 1;
+ 	}
++	/*
++	 * Even if we don't switch but are nearing capacity,
++	 * start pushing delalloc when 1/2 of free blocks are dirty.
++	 */
++	if (free_blocks < 2 * dirty_blocks)
++		writeback_inodes_sb_if_idle(sb);
++
+ 	return 0;
+ }
+ 

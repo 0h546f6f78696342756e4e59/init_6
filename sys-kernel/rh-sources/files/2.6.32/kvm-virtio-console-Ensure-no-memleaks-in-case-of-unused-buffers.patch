@@ -1,0 +1,54 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Thu, 18 Feb 2010 10:27:38 -0500
+Subject: [kvm] virtio: console: Ensure no memleaks in case of unused buffers
+Message-id: <f194f96374c5b84f3b497fda035afb72e52eabd9.1266488420.git.amit.shah@redhat.com>
+Patchwork-id: 23340
+O-Subject: [PATCH 06/10] virtio: console: Ensure no memleaks in case of unused
+	buffers
+Bugzilla: 566391
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+If unused data exists in in_vq, ensure we flush that first and then
+detach unused buffers, which will ensure all buffers from the in_vq are
+removed.
+
+Also ensure we free the buffers after detaching them.
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/virtio_console.c b/drivers/char/virtio_console.c
+index 93d3e15..adb4dee 100644
+--- a/drivers/char/virtio_console.c
++++ b/drivers/char/virtio_console.c
+@@ -838,6 +838,8 @@ static const struct file_operations port_debugfs_ops = {
+ /* Remove all port-specific data. */
+ static int remove_port(struct port *port)
+ {
++	struct port_buffer *buf;
++
+ 	spin_lock_irq(&port->portdev->ports_lock);
+ 	list_del(&port->list);
+ 	spin_unlock_irq(&port->portdev->ports_lock);
+@@ -851,14 +853,17 @@ static int remove_port(struct port *port)
+ 	if (port->guest_connected)
+ 		send_control_msg(port, VIRTIO_CONSOLE_PORT_OPEN, 0);
+ 
+-	while (port->in_vq->vq_ops->detach_unused_buf(port->in_vq))
+-		;
+-
+ 	sysfs_remove_group(&port->dev->kobj, &port_attribute_group);
+ 	device_destroy(pdrvdata.class, port->dev->devt);
+ 	cdev_del(&port->cdev);
+ 
++	/* Remove unused data this port might have received. */
+ 	discard_port_data(port);
++
++	/* Remove buffers we queued up for the Host to send us data in. */
++	while ((buf = port->in_vq->vq_ops->detach_unused_buf(port->in_vq)))
++		free_buf(buf);
++
+ 	kfree(port->name);
+ 
+ 	debugfs_remove(port->debugfs_file);

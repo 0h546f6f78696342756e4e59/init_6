@@ -1,0 +1,33 @@
+From: Gleb Natapov <gleb@redhat.com>
+Date: Mon, 22 Feb 2010 13:59:57 -0500
+Subject: [kvm] x86 emulator: code style cleanup
+Message-id: <1266847206-28077-12-git-send-email-gleb@redhat.com>
+Patchwork-id: 23379
+O-Subject: [PATCH 11/20] KVM: x86 emulator: code style cleanup
+Bugzilla: 560903 560904 563466
+CVE: CVE-2010-0298 CVE-2010-0306 CVE-2010-0419
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+RH-Acked-by: Zachary Amsden <zamsden@redhat.com>
+
+From: Wei Yongjun <yjwei@cn.fujitsu.com>
+
+Just remove redundant semicolon.
+
+Signed-off-by: Wei Yongjun <yjwei@cn.fujitsu.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index d2a2ea9..8d667f8 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -1010,7 +1010,7 @@ done_prefixes:
+ 	}
+ 
+ 	if (mode == X86EMUL_MODE_PROT64 && (c->d & No64)) {
+-		kvm_report_emulation_failure(ctxt->vcpu, "invalid x86/64 instruction");;
++		kvm_report_emulation_failure(ctxt->vcpu, "invalid x86/64 instruction");
+ 		return -1;
+ 	}
+ 

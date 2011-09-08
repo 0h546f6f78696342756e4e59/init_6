@@ -1,0 +1,846 @@
+From: Michal Schmidt <mschmidt@redhat.com>
+Date: Thu, 21 Jan 2010 15:30:26 -0500
+Subject: [netdrv] vxge: fix issues found in Neterion testing
+Message-id: <20100121163026.0ef65447@leela>
+Patchwork-id: 22692
+O-Subject: [RHEL6.0 PATCH] vxge: fix issues found in Neterion testing
+Bugzilla: 493985
+RH-Acked-by: David S. Miller <davem@redhat.com>
+RH-Acked-by: Neil Horman <nhorman@redhat.com>
+
+BZ: https://bugzilla.redhat.com/show_bug.cgi?id=493985
+
+Neterion tested the vxge driver in the current RHEL6 kernel and they could
+reproduce some issues with it. Two of them are serious:
+ - DMA engine lockup
+ - crash in 32-bit with PAE
+
+Ramkrishna Vepa recommended to pick up several patches from 2.6.33-rc to
+fix them. Rather than cherry-picking we decided it's better to take
+9 consecutive vxge patches from upstream:
+
+ - 2 important bugfixes for the bugs mentioned above
+ - 3 normal bugfixes:
+   - 2 related to SR-IOV
+   - 1 improves the fallback to INTA when MSI-X is not available
+ - 2 cleanups (useless code removal)
+ - 1 just to update the version string
+ - 1 makes revision 2 (the currently shipping one) x3100 cards work
+
+Brew build:
+http://download.devel.redhat.com/brewroot/scratch/mschmidt/task_2207801/
+
+Testing:
+Neterion tested the build and the driver worked fine.
+
+KABI:
+No changes.
+
+All the patches were taken from upstream:
+
+commit 5beefb4f7793e5bb4d3527ee6559f8281d7d2b76
+Author: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+Date:   Wed Oct 28 02:46:54 2009 -0700
+
+    vxge: Configure the number of transmit descriptors per packet to MAX_SKB_FRAGS + 1.
+
+    - Configure the number of transmit descriptors per packet to MAX_SKB_FRAGS + 1.
+
+    Signed-off-by: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+    Signed-off-by: Ramkrishna Vepa <ram.vepa@neterion.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit bd32cafc4707ccc1e66fafdb47fac42217569070
+Author: Sreenivasa Honnur <Sreenivasa.Honnur@neterion.com>
+Date:   Mon Oct 5 01:59:41 2009 +0000
+
+    vxge: Version update.
+
+    - Version Update.
+
+    Signed-off-by: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit eb5f10c21badd967aa466fd4f7eddfc724c8cb64
+Author: Sreenivasa Honnur <Sreenivasa.Honnur@neterion.com>
+Date:   Mon Oct 5 01:57:29 2009 +0000
+
+    vxge: Allow multiple functions with INTA.
+
+    - Allow multiple functions with INTA.
+    - Removed the condition to allow only one vpath with INTA
+    - Ensure that the alarm bit in titan_mask_all_int register is cleared when
+      driver exits.
+
+    Signed-off-by: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit fa41fd10038ab575f043a62dace374e07e9193de
+Author: Sreenivasa Honnur <Sreenivasa.Honnur@neterion.com>
+Date:   Mon Oct 5 01:56:35 2009 +0000
+
+    vxge: Check if FCS stripping is disabled by the firmware.
+
+    - Added a function to check if FCS stripping is disabled by the firmware, if
+      it is not disabled fail driver load.
+
+    - By default FCS stripping is disabled by the firmware. With this assumption
+      driver decrements the indicated packet length by 4 bytes(FCS length).
+
+    - This patch ensures that FCS stripping is disabled during driver load time.
+
+    Signed-off-by: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f0dfebafcc14a7456eb6ae974b68f600fdd8b42d
+Author: Sreenivasa Honnur <Sreenivasa.Honnur@neterion.com>
+Date:   Mon Oct 5 01:55:47 2009 +0000
+
+    vxge: Removed unused functions.
+
+    - Removed the wrr_rebalance function
+
+    - This feature is not supported by the ASIC, hence removing the related code.
+
+    Signed-off-by: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit a4a987d82258f55c4bc4ab0156fb20a2b3fa4f41
+Author: Sreenivasa Honnur <Sreenivasa.Honnur@neterion.com>
+Date:   Mon Oct 5 01:54:42 2009 +0000
+
+    vxge: Fixed crash in PAE system due to wrong typecasting.
+
+    - Fix a crash in PAE system due to wrong typecasting.
+
+    - On PAE system size_t is unsigned int which is 32bit. Avoid casting
+      64 bit address to 32 bit
+
+    Signed-off-by: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 0f8f7d58eb4840ee8790e914a88b8a773aca9143
+Author: Sreenivasa Honnur <Sreenivasa.Honnur@neterion.com>
+Date:   Mon Oct 5 01:53:38 2009 +0000
+
+    vxge: Removed accessing non-supported registers.
+
+    - Removed accessing GENDMA_INT register
+     - This allowed the firmware to perform a generic DMA write to host memory.
+       This feature is not supported by the ASIC, this patch removes access to
+       GENDMA_INT register.
+
+    Signed-off-by: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 657205bdd7b276d95b3a5bac7e856e22c4001136
+Author: Sreenivasa Honnur <Sreenivasa.Honnur@neterion.com>
+Date:   Mon Oct 5 01:52:54 2009 +0000
+
+    vxge: Update driver_config->vpath_per_dev for each function in probe.
+
+    - Update driver_config->vpath_per_dev for each function in probe.
+
+    - vpath_per_device specifies number of vpaths supported for each function/device. The
+      current code was updating vpath_per_device only for physical device, however this has
+      to be updated for each function also in case of a MF(Multi function) device.
+
+    Signed-off-by: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 92cdd7c377c893c72d6968537076a18a510ae5cc
+Author: Sreenivasa Honnur <Sreenivasa.Honnur@neterion.com>
+Date:   Mon Oct 5 01:51:38 2009 +0000
+
+    vxge: Modify __vxge_hw_device_is_privilaged() to not assume function-0 as the privileged function: Resubmit#1
+
+    - vxge driver was assuming function-0 is always the privilaged function. Now that
+      restriction has been removed any function can act as a privilaged function.
+
+    - This patch modifies the __vxge_hw_device_is_privilaged routine to not assume
+      function-0 as the privileged function.
+
+    - Recreated the patch by incorporating review comments from Dave Miller to
+      remove double slash in path names.
+
+    Signed-off-by: Sreenivasa Honnur <sreenivasa.honnur@neterion.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+--
+Michal
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/net/vxge/vxge-config.c b/drivers/net/vxge/vxge-config.c
+index 9e94c4b..32a75fa 100644
+--- a/drivers/net/vxge/vxge-config.c
++++ b/drivers/net/vxge/vxge-config.c
+@@ -356,10 +356,8 @@ __vxge_hw_device_access_rights_get(u32 host_type, u32 func_id)
+ 
+ 	switch (host_type) {
+ 	case VXGE_HW_NO_MR_NO_SR_NORMAL_FUNCTION:
+-		if (func_id == 0) {
+-			access_rights |= VXGE_HW_DEVICE_ACCESS_RIGHT_MRPCIM |
+-					VXGE_HW_DEVICE_ACCESS_RIGHT_SRPCIM;
+-		}
++		access_rights |= VXGE_HW_DEVICE_ACCESS_RIGHT_MRPCIM |
++				VXGE_HW_DEVICE_ACCESS_RIGHT_SRPCIM;
+ 		break;
+ 	case VXGE_HW_MR_NO_SR_VH0_BASE_FUNCTION:
+ 		access_rights |= VXGE_HW_DEVICE_ACCESS_RIGHT_MRPCIM |
+@@ -382,6 +380,22 @@ __vxge_hw_device_access_rights_get(u32 host_type, u32 func_id)
+ 	return access_rights;
+ }
+ /*
++ * __vxge_hw_device_is_privilaged
++ * This routine checks if the device function is privilaged or not
++ */
++
++enum vxge_hw_status
++__vxge_hw_device_is_privilaged(u32 host_type, u32 func_id)
++{
++	if (__vxge_hw_device_access_rights_get(host_type,
++		func_id) &
++		VXGE_HW_DEVICE_ACCESS_RIGHT_MRPCIM)
++		return VXGE_HW_OK;
++	else
++		return VXGE_HW_ERR_PRIVILAGED_OPEARATION;
++}
++
++/*
+  * __vxge_hw_device_host_info_get
+  * This routine returns the host type assignments
+  */
+@@ -446,220 +460,6 @@ __vxge_hw_verify_pci_e_info(struct __vxge_hw_device *hldev)
+ 	return VXGE_HW_OK;
+ }
+ 
+-enum vxge_hw_status
+-__vxge_hw_device_is_privilaged(struct __vxge_hw_device *hldev)
+-{
+-	if ((hldev->host_type == VXGE_HW_NO_MR_NO_SR_NORMAL_FUNCTION ||
+-	hldev->host_type == VXGE_HW_MR_NO_SR_VH0_BASE_FUNCTION ||
+-	hldev->host_type == VXGE_HW_NO_MR_SR_VH0_FUNCTION0) &&
+-	(hldev->func_id == 0))
+-		return VXGE_HW_OK;
+-	else
+-		return VXGE_HW_ERR_PRIVILAGED_OPEARATION;
+-}
+-
+-/*
+- * vxge_hw_wrr_rebalance - Rebalance the RX_WRR and KDFC_WRR calandars.
+- * Rebalance the RX_WRR and KDFC_WRR calandars.
+- */
+-static enum
+-vxge_hw_status vxge_hw_wrr_rebalance(struct __vxge_hw_device *hldev)
+-{
+-	u64 val64;
+-	u32 wrr_states[VXGE_HW_WEIGHTED_RR_SERVICE_STATES];
+-	u32 i, j, how_often = 1;
+-	enum vxge_hw_status status = VXGE_HW_OK;
+-
+-	status = __vxge_hw_device_is_privilaged(hldev);
+-	if (status != VXGE_HW_OK)
+-		goto exit;
+-
+-	/* Reset the priorities assigned to the WRR arbitration
+-	phases for the receive traffic */
+-	for (i = 0; i < VXGE_HW_WRR_RING_COUNT; i++)
+-		writeq(0, ((&hldev->mrpcim_reg->rx_w_round_robin_0) + i));
+-
+-	/* Reset the transmit FIFO servicing calendar for FIFOs */
+-	for (i = 0; i < VXGE_HW_WRR_FIFO_COUNT; i++) {
+-		writeq(0, ((&hldev->mrpcim_reg->kdfc_w_round_robin_0) + i));
+-		writeq(0, ((&hldev->mrpcim_reg->kdfc_w_round_robin_20) + i));
+-	}
+-
+-	/* Assign WRR priority  0 for all FIFOs */
+-	for (i = 1; i < VXGE_HW_MAX_VIRTUAL_PATHS; i++) {
+-		writeq(VXGE_HW_KDFC_FIFO_0_CTRL_WRR_NUMBER(0),
+-				((&hldev->mrpcim_reg->kdfc_fifo_0_ctrl)  + i));
+-
+-		writeq(VXGE_HW_KDFC_FIFO_17_CTRL_WRR_NUMBER(0),
+-			((&hldev->mrpcim_reg->kdfc_fifo_17_ctrl) + i));
+-	}
+-
+-	/* Reset to service non-offload doorbells */
+-	writeq(0, &hldev->mrpcim_reg->kdfc_entry_type_sel_0);
+-	writeq(0, &hldev->mrpcim_reg->kdfc_entry_type_sel_1);
+-
+-	/* Set priority 0 to all receive queues */
+-	writeq(0, &hldev->mrpcim_reg->rx_queue_priority_0);
+-	writeq(0, &hldev->mrpcim_reg->rx_queue_priority_1);
+-	writeq(0, &hldev->mrpcim_reg->rx_queue_priority_2);
+-
+-	/* Initialize all the slots as unused */
+-	for (i = 0; i < VXGE_HW_WEIGHTED_RR_SERVICE_STATES; i++)
+-		wrr_states[i] = -1;
+-
+-	/* Prepare the Fifo service states */
+-	for (i = 0; i < VXGE_HW_MAX_VIRTUAL_PATHS; i++) {
+-
+-		if (!hldev->config.vp_config[i].min_bandwidth)
+-			continue;
+-
+-		how_often = VXGE_HW_VPATH_BANDWIDTH_MAX /
+-				hldev->config.vp_config[i].min_bandwidth;
+-		if (how_often) {
+-
+-			for (j = 0; j < VXGE_HW_WRR_FIFO_SERVICE_STATES;) {
+-				if (wrr_states[j] == -1) {
+-					wrr_states[j] = i;
+-					/* Make sure each fifo is serviced
+-					 * atleast once */
+-					if (i == j)
+-						j += VXGE_HW_MAX_VIRTUAL_PATHS;
+-					else
+-						j += how_often;
+-				} else
+-					j++;
+-			}
+-		}
+-	}
+-
+-	/* Fill the unused slots with 0 */
+-	for (j = 0; j < VXGE_HW_WEIGHTED_RR_SERVICE_STATES; j++) {
+-		if (wrr_states[j] == -1)
+-			wrr_states[j] = 0;
+-	}
+-
+-	/* Assign WRR priority number for FIFOs */
+-	for (i = 0; i < VXGE_HW_MAX_VIRTUAL_PATHS; i++) {
+-		writeq(VXGE_HW_KDFC_FIFO_0_CTRL_WRR_NUMBER(i),
+-				((&hldev->mrpcim_reg->kdfc_fifo_0_ctrl) + i));
+-
+-		writeq(VXGE_HW_KDFC_FIFO_17_CTRL_WRR_NUMBER(i),
+-			((&hldev->mrpcim_reg->kdfc_fifo_17_ctrl) + i));
+-	}
+-
+-	/* Modify the servicing algorithm applied to the 3 types of doorbells.
+-	i.e, none-offload, message and offload */
+-	writeq(VXGE_HW_KDFC_ENTRY_TYPE_SEL_0_NUMBER_0(0) |
+-				VXGE_HW_KDFC_ENTRY_TYPE_SEL_0_NUMBER_1(0) |
+-				VXGE_HW_KDFC_ENTRY_TYPE_SEL_0_NUMBER_2(0) |
+-				VXGE_HW_KDFC_ENTRY_TYPE_SEL_0_NUMBER_3(0) |
+-				VXGE_HW_KDFC_ENTRY_TYPE_SEL_0_NUMBER_4(1) |
+-				VXGE_HW_KDFC_ENTRY_TYPE_SEL_0_NUMBER_5(0) |
+-				VXGE_HW_KDFC_ENTRY_TYPE_SEL_0_NUMBER_6(0) |
+-				VXGE_HW_KDFC_ENTRY_TYPE_SEL_0_NUMBER_7(0),
+-				&hldev->mrpcim_reg->kdfc_entry_type_sel_0);
+-
+-	writeq(VXGE_HW_KDFC_ENTRY_TYPE_SEL_1_NUMBER_8(1),
+-				&hldev->mrpcim_reg->kdfc_entry_type_sel_1);
+-
+-	for (i = 0, j = 0; i < VXGE_HW_WRR_FIFO_COUNT; i++) {
+-
+-		val64 = VXGE_HW_KDFC_W_ROUND_ROBIN_0_NUMBER_0(wrr_states[j++]);
+-		val64 |= VXGE_HW_KDFC_W_ROUND_ROBIN_0_NUMBER_1(wrr_states[j++]);
+-		val64 |= VXGE_HW_KDFC_W_ROUND_ROBIN_0_NUMBER_2(wrr_states[j++]);
+-		val64 |= VXGE_HW_KDFC_W_ROUND_ROBIN_0_NUMBER_3(wrr_states[j++]);
+-		val64 |= VXGE_HW_KDFC_W_ROUND_ROBIN_0_NUMBER_4(wrr_states[j++]);
+-		val64 |= VXGE_HW_KDFC_W_ROUND_ROBIN_0_NUMBER_5(wrr_states[j++]);
+-		val64 |= VXGE_HW_KDFC_W_ROUND_ROBIN_0_NUMBER_6(wrr_states[j++]);
+-		val64 |= VXGE_HW_KDFC_W_ROUND_ROBIN_0_NUMBER_7(wrr_states[j++]);
+-
+-		writeq(val64, (&hldev->mrpcim_reg->kdfc_w_round_robin_0 + i));
+-		writeq(val64, (&hldev->mrpcim_reg->kdfc_w_round_robin_20 + i));
+-	}
+-
+-	/* Set up the priorities assigned to receive queues */
+-	writeq(VXGE_HW_RX_QUEUE_PRIORITY_0_RX_Q_NUMBER_0(0) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_0_RX_Q_NUMBER_1(1) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_0_RX_Q_NUMBER_2(2) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_0_RX_Q_NUMBER_3(3) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_0_RX_Q_NUMBER_4(4) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_0_RX_Q_NUMBER_5(5) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_0_RX_Q_NUMBER_6(6) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_0_RX_Q_NUMBER_7(7),
+-			&hldev->mrpcim_reg->rx_queue_priority_0);
+-
+-	writeq(VXGE_HW_RX_QUEUE_PRIORITY_1_RX_Q_NUMBER_8(8) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_1_RX_Q_NUMBER_9(9) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_1_RX_Q_NUMBER_10(10) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_1_RX_Q_NUMBER_11(11) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_1_RX_Q_NUMBER_12(12) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_1_RX_Q_NUMBER_13(13) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_1_RX_Q_NUMBER_14(14) |
+-			VXGE_HW_RX_QUEUE_PRIORITY_1_RX_Q_NUMBER_15(15),
+-			&hldev->mrpcim_reg->rx_queue_priority_1);
+-
+-	writeq(VXGE_HW_RX_QUEUE_PRIORITY_2_RX_Q_NUMBER_16(16),
+-				&hldev->mrpcim_reg->rx_queue_priority_2);
+-
+-	/* Initialize all the slots as unused */
+-	for (i = 0; i < VXGE_HW_WEIGHTED_RR_SERVICE_STATES; i++)
+-		wrr_states[i] = -1;
+-
+-	/* Prepare the Ring service states */
+-	for (i = 0; i < VXGE_HW_MAX_VIRTUAL_PATHS; i++) {
+-
+-		if (!hldev->config.vp_config[i].min_bandwidth)
+-			continue;
+-
+-		how_often = VXGE_HW_VPATH_BANDWIDTH_MAX /
+-				hldev->config.vp_config[i].min_bandwidth;
+-
+-		if (how_often) {
+-			for (j = 0; j < VXGE_HW_WRR_RING_SERVICE_STATES;) {
+-				if (wrr_states[j] == -1) {
+-					wrr_states[j] = i;
+-					/* Make sure each ring is
+-					 * serviced atleast once */
+-					if (i == j)
+-						j += VXGE_HW_MAX_VIRTUAL_PATHS;
+-					else
+-						j += how_often;
+-				} else
+-					j++;
+-			}
+-		}
+-	}
+-
+-	/* Fill the unused slots with 0 */
+-	for (j = 0; j < VXGE_HW_WEIGHTED_RR_SERVICE_STATES; j++) {
+-		if (wrr_states[j] == -1)
+-			wrr_states[j] = 0;
+-	}
+-
+-	for (i = 0, j = 0; i < VXGE_HW_WRR_RING_COUNT; i++) {
+-		val64 =  VXGE_HW_RX_W_ROUND_ROBIN_0_RX_W_PRIORITY_SS_0(
+-				wrr_states[j++]);
+-		val64 |=  VXGE_HW_RX_W_ROUND_ROBIN_0_RX_W_PRIORITY_SS_1(
+-				wrr_states[j++]);
+-		val64 |=  VXGE_HW_RX_W_ROUND_ROBIN_0_RX_W_PRIORITY_SS_2(
+-				wrr_states[j++]);
+-		val64 |=  VXGE_HW_RX_W_ROUND_ROBIN_0_RX_W_PRIORITY_SS_3(
+-				wrr_states[j++]);
+-		val64 |=  VXGE_HW_RX_W_ROUND_ROBIN_0_RX_W_PRIORITY_SS_4(
+-				wrr_states[j++]);
+-		val64 |=  VXGE_HW_RX_W_ROUND_ROBIN_0_RX_W_PRIORITY_SS_5(
+-				wrr_states[j++]);
+-		val64 |=  VXGE_HW_RX_W_ROUND_ROBIN_0_RX_W_PRIORITY_SS_6(
+-				wrr_states[j++]);
+-		val64 |=  VXGE_HW_RX_W_ROUND_ROBIN_0_RX_W_PRIORITY_SS_7(
+-				wrr_states[j++]);
+-
+-		writeq(val64, ((&hldev->mrpcim_reg->rx_w_round_robin_0) + i));
+-	}
+-exit:
+-	return status;
+-}
+-
+ /*
+  * __vxge_hw_device_initialize
+  * Initialize Titan-V hardware.
+@@ -668,14 +468,14 @@ enum vxge_hw_status __vxge_hw_device_initialize(struct __vxge_hw_device *hldev)
+ {
+ 	enum vxge_hw_status status = VXGE_HW_OK;
+ 
+-	if (VXGE_HW_OK == __vxge_hw_device_is_privilaged(hldev)) {
++	if (VXGE_HW_OK == __vxge_hw_device_is_privilaged(hldev->host_type,
++				hldev->func_id)) {
+ 		/* Validate the pci-e link width and speed */
+ 		status = __vxge_hw_verify_pci_e_info(hldev);
+ 		if (status != VXGE_HW_OK)
+ 			goto exit;
+ 	}
+ 
+-	vxge_hw_wrr_rebalance(hldev);
+ exit:
+ 	return status;
+ }
+@@ -953,7 +753,8 @@ vxge_hw_mrpcim_stats_access(struct __vxge_hw_device *hldev,
+ 	u64 val64;
+ 	enum vxge_hw_status status = VXGE_HW_OK;
+ 
+-	status = __vxge_hw_device_is_privilaged(hldev);
++	status = __vxge_hw_device_is_privilaged(hldev->host_type,
++			hldev->func_id);
+ 	if (status != VXGE_HW_OK)
+ 		goto exit;
+ 
+@@ -990,7 +791,8 @@ vxge_hw_device_xmac_aggr_stats_get(struct __vxge_hw_device *hldev, u32 port,
+ 
+ 	val64 = (u64 *)aggr_stats;
+ 
+-	status = __vxge_hw_device_is_privilaged(hldev);
++	status = __vxge_hw_device_is_privilaged(hldev->host_type,
++			hldev->func_id);
+ 	if (status != VXGE_HW_OK)
+ 		goto exit;
+ 
+@@ -1023,7 +825,8 @@ vxge_hw_device_xmac_port_stats_get(struct __vxge_hw_device *hldev, u32 port,
+ 	u32 offset = 0x0;
+ 	val64 = (u64 *) port_stats;
+ 
+-	status = __vxge_hw_device_is_privilaged(hldev);
++	status = __vxge_hw_device_is_privilaged(hldev->host_type,
++			hldev->func_id);
+ 	if (status != VXGE_HW_OK)
+ 		goto exit;
+ 
+@@ -1221,7 +1024,8 @@ enum vxge_hw_status vxge_hw_device_setpause_data(struct __vxge_hw_device *hldev,
+ 		goto exit;
+ 	}
+ 
+-	status = __vxge_hw_device_is_privilaged(hldev);
++	status = __vxge_hw_device_is_privilaged(hldev->host_type,
++			hldev->func_id);
+ 	if (status != VXGE_HW_OK)
+ 		goto exit;
+ 
+@@ -2353,6 +2157,28 @@ exit:
+ }
+ 
+ /*
++ * vxge_hw_vpath_strip_fcs_check - Check for FCS strip.
++ */
++enum vxge_hw_status
++vxge_hw_vpath_strip_fcs_check(struct __vxge_hw_device *hldev, u64 vpath_mask)
++{
++	struct vxge_hw_vpmgmt_reg       __iomem *vpmgmt_reg;
++	enum vxge_hw_status status = VXGE_HW_OK;
++	int i = 0, j = 0;
++
++	for (i = 0; i < VXGE_HW_MAX_VIRTUAL_PATHS; i++) {
++		if (!((vpath_mask) & vxge_mBIT(i)))
++			continue;
++		vpmgmt_reg = hldev->vpmgmt_reg[i];
++		for (j = 0; j < VXGE_HW_MAC_MAX_MAC_PORT_ID; j++) {
++			if (readq(&vpmgmt_reg->rxmac_cfg0_port_vpmgmt_clone[j])
++			& VXGE_HW_RXMAC_CFG0_PORT_VPMGMT_CLONE_STRIP_FCS)
++				return VXGE_HW_FAIL;
++		}
++	}
++	return status;
++}
++/*
+  * vxge_hw_mgmt_reg_Write - Write Titan register.
+  */
+ enum vxge_hw_status
+@@ -4056,6 +3882,30 @@ __vxge_hw_vpath_tim_configure(struct __vxge_hw_device *hldev, u32 vp_id)
+ 	return status;
+ }
+ 
++void
++vxge_hw_vpath_tti_ci_set(struct __vxge_hw_device *hldev, u32 vp_id)
++{
++	struct __vxge_hw_virtualpath *vpath;
++	struct vxge_hw_vpath_reg __iomem *vp_reg;
++	struct vxge_hw_vp_config *config;
++	u64 val64;
++
++	vpath = &hldev->virtual_paths[vp_id];
++	vp_reg = vpath->vp_reg;
++	config = vpath->vp_config;
++
++	if (config->fifo.enable == VXGE_HW_FIFO_ENABLE) {
++		val64 = readq(&vp_reg->tim_cfg1_int_num[VXGE_HW_VPATH_INTR_TX]);
++
++		if (config->tti.timer_ci_en != VXGE_HW_TIM_TIMER_CI_ENABLE) {
++			config->tti.timer_ci_en = VXGE_HW_TIM_TIMER_CI_ENABLE;
++			val64 |= VXGE_HW_TIM_CFG1_INT_NUM_TIMER_CI;
++			writeq(val64,
++			&vp_reg->tim_cfg1_int_num[VXGE_HW_VPATH_INTR_TX]);
++		}
++	}
++	return;
++}
+ /*
+  * __vxge_hw_vpath_initialize
+  * This routine is the final phase of init which initializes the
+@@ -4098,8 +3948,6 @@ __vxge_hw_vpath_initialize(struct __vxge_hw_device *hldev, u32 vp_id)
+ 	if (status != VXGE_HW_OK)
+ 		goto exit;
+ 
+-	writeq(0, &vp_reg->gendma_int);
+-
+ 	val64 = readq(&vp_reg->rtdma_rd_optimization_ctrl);
+ 
+ 	/* Get MRRS value from device control */
+diff --git a/drivers/net/vxge/vxge-config.h b/drivers/net/vxge/vxge-config.h
+index 3e94f0c..e7877df 100644
+--- a/drivers/net/vxge/vxge-config.h
++++ b/drivers/net/vxge/vxge-config.h
+@@ -2201,6 +2201,8 @@ __vxge_hw_vpath_func_id_get(
+ enum vxge_hw_status
+ __vxge_hw_vpath_reset_check(struct __vxge_hw_virtualpath *vpath);
+ 
++enum vxge_hw_status
++vxge_hw_vpath_strip_fcs_check(struct __vxge_hw_device *hldev, u64 vpath_mask);
+ /**
+  * vxge_debug
+  * @level: level of debug verbosity.
+diff --git a/drivers/net/vxge/vxge-main.c b/drivers/net/vxge/vxge-main.c
+index 068d7a9..e21358e 100644
+--- a/drivers/net/vxge/vxge-main.c
++++ b/drivers/net/vxge/vxge-main.c
+@@ -2435,7 +2435,6 @@ static int vxge_add_isr(struct vxgedev *vdev)
+ 	int ret = 0;
+ #ifdef CONFIG_PCI_MSI
+ 	int vp_idx = 0, intr_idx = 0, intr_cnt = 0, msix_idx = 0, irq_req = 0;
+-	u64 function_mode = vdev->config.device_hw_info.function_mode;
+ 	int pci_fun = PCI_FUNC(vdev->pdev->devfn);
+ 
+ 	if (vdev->config.intr_type == MSI_X)
+@@ -2444,20 +2443,9 @@ static int vxge_add_isr(struct vxgedev *vdev)
+ 	if (ret) {
+ 		vxge_debug_init(VXGE_ERR,
+ 			"%s: Enabling MSI-X Failed", VXGE_DRIVER_NAME);
+-		if ((function_mode == VXGE_HW_FUNCTION_MODE_MULTI_FUNCTION) &&
+-			test_and_set_bit(__VXGE_STATE_CARD_UP,
+-				&driver_config->inta_dev_open))
+-			return VXGE_HW_FAIL;
+-		else {
+-			vxge_debug_init(VXGE_ERR,
+-				"%s: Defaulting to INTA", VXGE_DRIVER_NAME);
+-			vdev->config.intr_type = INTA;
+-			vxge_hw_device_set_intr_type(vdev->devh,
+-				VXGE_HW_INTR_MODE_IRQLINE);
+-			vxge_close_vpaths(vdev, 1);
+-			vdev->no_of_vpath = 1;
+-			vdev->stats.vpaths_open = 1;
+-		}
++		vxge_debug_init(VXGE_ERR,
++			"%s: Defaulting to INTA", VXGE_DRIVER_NAME);
++		vdev->config.intr_type = INTA;
+ 	}
+ 
+ 	if (vdev->config.intr_type == MSI_X) {
+@@ -2505,24 +2493,11 @@ static int vxge_add_isr(struct vxgedev *vdev)
+ 					"%s: MSIX - %d  Registration failed",
+ 					vdev->ndev->name, intr_cnt);
+ 				vxge_rem_msix_isr(vdev);
+-				if ((function_mode ==
+-					VXGE_HW_FUNCTION_MODE_MULTI_FUNCTION) &&
+-					test_and_set_bit(__VXGE_STATE_CARD_UP,
+-						&driver_config->inta_dev_open))
+-					return VXGE_HW_FAIL;
+-				else {
+-					vxge_hw_device_set_intr_type(
+-						vdev->devh,
+-						VXGE_HW_INTR_MODE_IRQLINE);
+-						vdev->config.intr_type = INTA;
+-					vxge_debug_init(VXGE_ERR,
+-						"%s: Defaulting to INTA"
+-						, vdev->ndev->name);
+-					vxge_close_vpaths(vdev, 1);
+-					vdev->no_of_vpath = 1;
+-					vdev->stats.vpaths_open = 1;
++				vdev->config.intr_type = INTA;
++				vxge_debug_init(VXGE_ERR,
++					"%s: Defaulting to INTA"
++					, vdev->ndev->name);
+ 					goto INTA_MODE;
+-				}
+ 			}
+ 
+ 			if (irq_req) {
+@@ -2555,23 +2530,11 @@ static int vxge_add_isr(struct vxgedev *vdev)
+ 				"%s: MSIX - %d Registration failed",
+ 				vdev->ndev->name, intr_cnt);
+ 			vxge_rem_msix_isr(vdev);
+-			if ((function_mode ==
+-				VXGE_HW_FUNCTION_MODE_MULTI_FUNCTION) &&
+-				test_and_set_bit(__VXGE_STATE_CARD_UP,
+-						&driver_config->inta_dev_open))
+-				return VXGE_HW_FAIL;
+-			else {
+-				vxge_hw_device_set_intr_type(vdev->devh,
+-						VXGE_HW_INTR_MODE_IRQLINE);
+-				vdev->config.intr_type = INTA;
+-				vxge_debug_init(VXGE_ERR,
+-					"%s: Defaulting to INTA",
+-					vdev->ndev->name);
+-				vxge_close_vpaths(vdev, 1);
+-				vdev->no_of_vpath = 1;
+-				vdev->stats.vpaths_open = 1;
++			vdev->config.intr_type = INTA;
++			vxge_debug_init(VXGE_ERR,
++				"%s: Defaulting to INTA",
++				vdev->ndev->name);
+ 				goto INTA_MODE;
+-			}
+ 		}
+ 
+ 		vxge_hw_vpath_msix_unmask(vdev->vpaths[vp_idx].handle,
+@@ -2584,6 +2547,10 @@ INTA_MODE:
+ 	snprintf(vdev->desc[0], VXGE_INTR_STRLEN, "%s:vxge", vdev->ndev->name);
+ 
+ 	if (vdev->config.intr_type == INTA) {
++		vxge_hw_device_set_intr_type(vdev->devh,
++			VXGE_HW_INTR_MODE_IRQLINE);
++		vxge_hw_vpath_tti_ci_set(vdev->devh,
++			vdev->vpaths[0].device_id);
+ 		ret = request_irq((int) vdev->pdev->irq,
+ 			vxge_isr_napi,
+ 			IRQF_SHARED, vdev->desc[0], vdev);
+@@ -2688,13 +2655,6 @@ vxge_open(struct net_device *dev)
+ 	 * initialized */
+ 	netif_carrier_off(dev);
+ 
+-	/* Check for another device already opn with INTA */
+-	if ((function_mode == VXGE_HW_FUNCTION_MODE_MULTI_FUNCTION) &&
+-		test_bit(__VXGE_STATE_CARD_UP, &driver_config->inta_dev_open)) {
+-		ret = -EPERM;
+-		goto out0;
+-	}
+-
+ 	/* Open VPATHs */
+ 	status = vxge_open_vpaths(vdev);
+ 	if (status != VXGE_HW_OK) {
+@@ -2983,7 +2943,6 @@ int do_vxge_close(struct net_device *dev, int do_io)
+ 	vxge_debug_entryexit(VXGE_TRACE,
+ 		"%s: %s:%d  Exiting...", dev->name, __func__, __LINE__);
+ 
+-	clear_bit(__VXGE_STATE_CARD_UP, &driver_config->inta_dev_open);
+ 	clear_bit(__VXGE_STATE_RESET_CARD, &vdev->state);
+ 
+ 	return 0;
+@@ -3653,11 +3612,12 @@ static int __devinit vxge_config_vpaths(
+ 		device_config->vp_config[i].fifo.enable =
+ 						VXGE_HW_FIFO_ENABLE;
+ 		device_config->vp_config[i].fifo.max_frags =
+-				MAX_SKB_FRAGS;
++				MAX_SKB_FRAGS + 1;
+ 		device_config->vp_config[i].fifo.memblock_size =
+ 			VXGE_HW_MIN_FIFO_MEMBLOCK_SIZE;
+ 
+-		txdl_size = MAX_SKB_FRAGS * sizeof(struct vxge_hw_fifo_txd);
++		txdl_size = device_config->vp_config[i].fifo.max_frags *
++				sizeof(struct vxge_hw_fifo_txd);
+ 		txdl_per_memblock = VXGE_HW_MIN_FIFO_MEMBLOCK_SIZE / txdl_size;
+ 
+ 		device_config->vp_config[i].fifo.fifo_blocks =
+@@ -4088,9 +4048,10 @@ vxge_probe(struct pci_dev *pdev, const struct pci_device_id *pre)
+ 		driver_config->config_dev_cnt = 0;
+ 		driver_config->total_dev_cnt = 0;
+ 		driver_config->g_no_cpus = 0;
+-		driver_config->vpath_per_dev = max_config_vpath;
+ 	}
+ 
++	driver_config->vpath_per_dev = max_config_vpath;
++
+ 	driver_config->total_dev_cnt++;
+ 	if (++driver_config->config_dev_cnt > max_config_dev) {
+ 		ret = 0;
+@@ -4243,6 +4204,15 @@ vxge_probe(struct pci_dev *pdev, const struct pci_device_id *pre)
+ 			goto _exit3;
+ 	}
+ 
++	/* if FCS stripping is not disabled in MAC fail driver load */
++	if (vxge_hw_vpath_strip_fcs_check(hldev, vpath_mask) != VXGE_HW_OK) {
++		vxge_debug_init(VXGE_ERR,
++			"%s: FCS stripping is not disabled in MAC"
++			" failing driver load", VXGE_DRIVER_NAME);
++		ret = -EINVAL;
++		goto _exit4;
++	}
++
+ 	vxge_hw_device_debug_set(hldev, VXGE_ERR, VXGE_COMPONENT_LL);
+ 
+ 	/* set private device info */
+@@ -4387,6 +4357,27 @@ vxge_probe(struct pci_dev *pdev, const struct pci_device_id *pre)
+ 	}
+ 
+ 	kfree(device_config);
++
++	/*
++	 * INTA is shared in multi-function mode. This is unlike the INTA
++	 * implementation in MR mode, where each VH has its own INTA message.
++	 * - INTA is masked (disabled) as long as at least one function sets
++	 * its TITAN_MASK_ALL_INT.ALARM bit.
++	 * - INTA is unmasked (enabled) when all enabled functions have cleared
++	 * their own TITAN_MASK_ALL_INT.ALARM bit.
++	 * The TITAN_MASK_ALL_INT ALARM & TRAFFIC bits are cleared on power up.
++	 * Though this driver leaves the top level interrupts unmasked while
++	 * leaving the required module interrupt bits masked on exit, there
++	 * could be a rougue driver around that does not follow this procedure
++	 * resulting in a failure to generate interrupts. The following code is
++	 * present to prevent such a failure.
++	 */
++
++	if (ll_config.device_hw_info.function_mode ==
++		VXGE_HW_FUNCTION_MODE_MULTI_FUNCTION)
++		if (vdev->config.intr_type == INTA)
++			vxge_hw_device_unmask_all(hldev);
++
+ 	vxge_debug_entryexit(VXGE_TRACE, "%s: %s:%d  Exiting...",
+ 		vdev->ndev->name, __func__, __LINE__);
+ 
+diff --git a/drivers/net/vxge/vxge-main.h b/drivers/net/vxge/vxge-main.h
+index 9c36b3a..7c83ba4 100644
+--- a/drivers/net/vxge/vxge-main.h
++++ b/drivers/net/vxge/vxge-main.h
+@@ -112,7 +112,6 @@ enum vxge_mac_addr_state {
+ struct vxge_drv_config {
+ 	int config_dev_cnt;
+ 	int total_dev_cnt;
+-	unsigned long inta_dev_open;
+ 	int g_no_cpus;
+ 	unsigned int vpath_per_dev;
+ };
+diff --git a/drivers/net/vxge/vxge-reg.h b/drivers/net/vxge/vxge-reg.h
+index 9a3b823..9a0cf8e 100644
+--- a/drivers/net/vxge/vxge-reg.h
++++ b/drivers/net/vxge/vxge-reg.h
+@@ -4326,10 +4326,6 @@ struct vxge_hw_vpath_reg {
+ /*0x011e0*/	u64	umq_bwr_init_byte;
+ #define VXGE_HW_UMQ_BWR_INIT_BYTE_COUNT(val) vxge_vBIT(val, 0, 32)
+ /*0x011e8*/	u64	gendma_int;
+-#define	VXGE_HW_GENDMA_INT_IMMED_ENABLE	vxge_mBIT(6)
+-#define	VXGE_HW_GENDMA_INT_EVENT_ENABLE	vxge_mBIT(7)
+-#define VXGE_HW_GENDMA_INT_NUMBER(val) vxge_vBIT(val, 9, 7)
+-#define VXGE_HW_GENDMA_INT_BITMAP(val) vxge_vBIT(val, 16, 16)
+ /*0x011f0*/	u64	umqdmq_ir_init_notify;
+ #define	VXGE_HW_UMQDMQ_IR_INIT_NOTIFY_PULSE	vxge_mBIT(3)
+ /*0x011f8*/	u64	dmq_init_notify;
+diff --git a/drivers/net/vxge/vxge-traffic.c b/drivers/net/vxge/vxge-traffic.c
+index fe3ae51..61ce754 100644
+--- a/drivers/net/vxge/vxge-traffic.c
++++ b/drivers/net/vxge/vxge-traffic.c
+@@ -295,6 +295,8 @@ void vxge_hw_device_intr_enable(struct __vxge_hw_device *hldev)
+ 	u64 val64;
+ 	u32 val32;
+ 
++	vxge_hw_device_mask_all(hldev);
++
+ 	for (i = 0; i < VXGE_HW_MAX_VIRTUAL_PATHS; i++) {
+ 
+ 		if (!(hldev->vpaths_deployed & vxge_mBIT(i)))
+@@ -1232,7 +1234,7 @@ void vxge_hw_fifo_txdl_post(struct __vxge_hw_fifo *fifo, void *txdlh)
+ 	vxge_hw_channel_dtr_post(&fifo->channel, txdlh);
+ 
+ 	__vxge_hw_non_offload_db_post(fifo,
+-		(u64)(size_t)txdl_priv->dma_addr,
++		(u64)txdl_priv->dma_addr,
+ 		txdl_priv->frags - 1,
+ 		fifo->no_snoop_bits);
+ 
+diff --git a/drivers/net/vxge/vxge-traffic.h b/drivers/net/vxge/vxge-traffic.h
+index 461742b..861c853 100644
+--- a/drivers/net/vxge/vxge-traffic.h
++++ b/drivers/net/vxge/vxge-traffic.h
+@@ -2389,6 +2389,8 @@ vxge_hw_channel_dtr_free(struct __vxge_hw_channel *channel, void *dtrh);
+ 
+ int
+ vxge_hw_channel_dtr_count(struct __vxge_hw_channel *channel);
++void
++vxge_hw_vpath_tti_ci_set(struct __vxge_hw_device *hldev, u32 vp_id);
+ 
+ /* ========================== PRIVATE API ================================= */
+ 
+diff --git a/drivers/net/vxge/vxge-version.h b/drivers/net/vxge/vxge-version.h
+index 8fbce75..77c2a75 100644
+--- a/drivers/net/vxge/vxge-version.h
++++ b/drivers/net/vxge/vxge-version.h
+@@ -17,7 +17,7 @@
+ 
+ #define VXGE_VERSION_MAJOR	"2"
+ #define VXGE_VERSION_MINOR	"0"
+-#define VXGE_VERSION_FIX	"5"
+-#define VXGE_VERSION_BUILD	"18053"
++#define VXGE_VERSION_FIX	"6"
++#define VXGE_VERSION_BUILD	"18937"
+ #define VXGE_VERSION_FOR	"k"
+ #endif

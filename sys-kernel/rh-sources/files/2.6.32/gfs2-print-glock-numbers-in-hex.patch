@@ -1,0 +1,54 @@
+From: Robert S Peterson <rpeterso@redhat.com>
+Date: Wed, 24 Feb 2010 16:14:22 -0500
+Subject: [gfs2] print glock numbers in hex
+Message-id: <679138934.2631011267028062580.JavaMail.root@zmail06.collab.prod.int.phx2.redhat.com>
+Patchwork-id: 23419
+O-Subject: [RHEL6 PATCH] 566755 -  GFS2: print glock numbers in hex
+Bugzilla: 566755
+RH-Acked-by: Abhijith Das <adas@redhat.com>
+RH-Acked-by: Steven Whitehouse <swhiteho@redhat.com>
+
+Hi,
+
+This patch is for bug #566755.  It has been sent upstream but since
+Steve Whitehouse is on holiday, he is unable to process it until next week.
+The glock information in question is printed in hex in RHEL5 so the fact
+that it's not in RHEL6 would be considered a regression.  It may not look
+like an important fix, but our gfs2 glock hang analyzer program
+(gfs2_hangalyzer) relies on the number being in hex to match the values
+coming back from DLM.
+
+Regards,
+
+Bob Peterson
+Red Hat GFS
+
+Signed-off-by: Bob Peterson <rpeterso@redhat.com>
+--
+commit 5a9f7d1cbbcf95fa27f64156ed634357e2b0ffaf
+Author: Bob Peterson <bob@ganesha.peterson>
+Date:   Tue Feb 23 11:22:35 2010 -0600
+
+    GFS2: print glock numbers in hex
+
+    This patch changes glock numbers from printing in decimal to hex.
+    Since DLM prints corresponding resource IDs in hex, it makes debugging
+    easier.
+
+    rhbz#566755
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/gfs2/glock.c b/fs/gfs2/glock.c
+index f426633..c69d5fd 100644
+--- a/fs/gfs2/glock.c
++++ b/fs/gfs2/glock.c
+@@ -1685,7 +1685,7 @@ static int __dump_glock(struct seq_file *seq, const struct gfs2_glock *gl)
+ 	dtime *= 1000000/HZ; /* demote time in uSec */
+ 	if (!test_bit(GLF_DEMOTE, &gl->gl_flags))
+ 		dtime = 0;
+-	gfs2_print_dbg(seq, "G:  s:%s n:%u/%llu f:%s t:%s d:%s/%llu a:%d r:%d\n",
++	gfs2_print_dbg(seq, "G:  s:%s n:%u/%llx f:%s t:%s d:%s/%llu a:%d r:%d\n",
+ 		  state2str(gl->gl_state),
+ 		  gl->gl_name.ln_type,
+ 		  (unsigned long long)gl->gl_name.ln_number,

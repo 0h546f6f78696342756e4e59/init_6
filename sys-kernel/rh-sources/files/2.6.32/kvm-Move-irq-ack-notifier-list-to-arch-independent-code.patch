@@ -1,0 +1,100 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:11:55 -0500
+Subject: [kvm] Move irq ack notifier list to arch independent code
+Message-id: <20100114171426.461027170@amt.cnet>
+Patchwork-id: 22523
+O-Subject: [RHEL 6 KVM 07/27] KVM: Move irq ack notifier list to arch
+	independent code
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 136bdfeee7b5bc986fc94af3a40d7d13ea37bb95
+Author: Gleb Natapov <gleb@redhat.com>
+Date:   Mon Aug 24 11:54:23 2009 +0300
+
+KVM: Move irq ack notifier list to arch independent code
+
+Mask irq notifier list is already there.
+
+Signed-off-by: Gleb Natapov <gleb@redhat.com>
+Signed-off-by: Avi Kivity <avi@redhat.com>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/ia64/include/asm/kvm_host.h b/arch/ia64/include/asm/kvm_host.h
+index d9b6325..a362e67 100644
+--- a/arch/ia64/include/asm/kvm_host.h
++++ b/arch/ia64/include/asm/kvm_host.h
+@@ -475,7 +475,6 @@ struct kvm_arch {
+ 	struct list_head assigned_dev_head;
+ 	struct iommu_domain *iommu_domain;
+ 	int iommu_flags;
+-	struct hlist_head irq_ack_notifier_list;
+ 
+ 	unsigned long irq_sources_bitmap;
+ 	unsigned long irq_states[KVM_IOAPIC_NUM_PINS];
+diff --git a/arch/x86/include/asm/kvm_host.h b/arch/x86/include/asm/kvm_host.h
+index 9e4a727..268878d 100644
+--- a/arch/x86/include/asm/kvm_host.h
++++ b/arch/x86/include/asm/kvm_host.h
+@@ -397,7 +397,6 @@ struct kvm_arch{
+ 	struct kvm_pic *vpic;
+ 	struct kvm_ioapic *vioapic;
+ 	struct kvm_pit *vpit;
+-	struct hlist_head irq_ack_notifier_list;
+ 	int vapics_in_nmi_mode;
+ 
+ 	unsigned int tss_addr;
+diff --git a/include/linux/kvm_host.h b/include/linux/kvm_host.h
+index cc2d749..4aa5e1d 100644
+--- a/include/linux/kvm_host.h
++++ b/include/linux/kvm_host.h
+@@ -187,6 +187,7 @@ struct kvm {
+ #ifdef CONFIG_HAVE_KVM_IRQCHIP
+ 	struct kvm_irq_routing_table *irq_routing;
+ 	struct hlist_head mask_notifier_list;
++	struct hlist_head irq_ack_notifier_list;
+ #endif
+ 
+ #ifdef KVM_ARCH_WANT_MMU_NOTIFIER
+diff --git a/virt/kvm/irq_comm.c b/virt/kvm/irq_comm.c
+index 06d4b4b..bda72da 100644
+--- a/virt/kvm/irq_comm.c
++++ b/virt/kvm/irq_comm.c
+@@ -186,8 +186,7 @@ void kvm_notify_acked_irq(struct kvm *kvm, unsigned irqchip, unsigned pin)
+ 	rcu_read_unlock();
+ 
+ 	if (gsi != -1)
+-		hlist_for_each_entry(kian, n, &kvm->arch.irq_ack_notifier_list,
+-				     link)
++		hlist_for_each_entry(kian, n, &kvm->irq_ack_notifier_list, link)
+ 			if (kian->gsi == gsi)
+ 				kian->irq_acked(kian);
+ }
+@@ -196,7 +195,7 @@ void kvm_register_irq_ack_notifier(struct kvm *kvm,
+ 				   struct kvm_irq_ack_notifier *kian)
+ {
+ 	mutex_lock(&kvm->irq_lock);
+-	hlist_add_head(&kian->link, &kvm->arch.irq_ack_notifier_list);
++	hlist_add_head(&kian->link, &kvm->irq_ack_notifier_list);
+ 	mutex_unlock(&kvm->irq_lock);
+ }
+ 
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index 21bb4e9..fa3da64 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -958,6 +958,7 @@ static struct kvm *kvm_create_vm(void)
+ 		goto out;
+ #ifdef CONFIG_HAVE_KVM_IRQCHIP
+ 	INIT_HLIST_HEAD(&kvm->mask_notifier_list);
++	INIT_HLIST_HEAD(&kvm->irq_ack_notifier_list);
+ #endif
+ 
+ #ifdef KVM_COALESCED_MMIO_PAGE_OFFSET

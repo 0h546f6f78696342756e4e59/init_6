@@ -1,0 +1,40 @@
+From: Rik van Riel <riel@redhat.com>
+Date: Thu, 17 Dec 2009 14:27:10 -0500
+Subject: [mm] vmscan: make consistent of reclaim bale out between do_try_to_free_page and shrink_zone
+Message-id: <20091217143337.918115997@redhat.com>
+Patchwork-id: 22025
+O-Subject: [PATCH 20/21 RHEL 6] (bz 548457) vmscan: make consistent of reclaim
+	bale out between do_try_to_free_page and shrink_zone
+Bugzilla: 548457
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+commit 338fde90930eaa02f6f394daa23d35a410af5852
+Author: KOSAKI Motohiro <kosaki.motohiro@jp.fujitsu.com>
+Date:   Mon Dec 14 17:59:15 2009 -0800
+
+    vmscan: make consistent of reclaim bale out between do_try_to_free_page and shrink_zone
+
+    Fix small inconsistent of ">" and ">=".
+
+    Signed-off-by: KOSAKI Motohiro <kosaki.motohiro@jp.fujitsu.com>
+    Reviewed-by: Rik van Riel <riel@redhat.com>
+    Reviewed-by: Minchan Kim <minchan.kim@gmail.com>
+    Cc: Mel Gorman <mel@csn.ul.ie>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/mm/vmscan.c b/mm/vmscan.c
+index ae19476..9804e8a 100644
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
+@@ -1637,7 +1637,7 @@ static void shrink_zone(int priority, struct zone *zone,
+ 		 * with multiple processes reclaiming pages, the total
+ 		 * freeing target can get unreasonably large.
+ 		 */
+-		if (nr_reclaimed > nr_to_reclaim && priority < DEF_PRIORITY)
++		if (nr_reclaimed >= nr_to_reclaim && priority < DEF_PRIORITY)
+ 			break;
+ 	}
+ 

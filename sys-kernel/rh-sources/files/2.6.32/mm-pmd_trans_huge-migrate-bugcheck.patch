@@ -1,0 +1,65 @@
+From: Andrea Arcangeli <aarcange@redhat.com>
+Date: Mon, 1 Feb 2010 15:17:28 -0500
+Subject: [mm] pmd_trans_huge migrate bugcheck
+Message-id: <20100201152040.804618201@redhat.com>
+Patchwork-id: 23046
+O-Subject: [RHEL6 31/37] pmd_trans_huge migrate bugcheck
+Bugzilla: 556572
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+From: Andrea Arcangeli <aarcange@redhat.com>
+
+No pmd_trans_huge should ever materialize in migration ptes areas, because
+we split the hugepage before migration ptes are instantiated.
+
+Signed-off-by: Andrea Arcangeli <aarcange@redhat.com>
+Acked-by: Rik van Riel <riel@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/huge_mm.h b/include/linux/huge_mm.h
+index 3ec53ed..c689343 100644
+--- a/include/linux/huge_mm.h
++++ b/include/linux/huge_mm.h
+@@ -109,6 +109,10 @@ static inline int PageTransHuge(struct page *page)
+ 	VM_BUG_ON(PageTail(page));
+ 	return PageHead(page);
+ }
++static inline int PageTransCompound(struct page *page)
++{
++	return PageCompound(page);
++}
+ #else /* CONFIG_TRANSPARENT_HUGEPAGE */
+ #define HPAGE_PMD_SHIFT ({ BUG(); 0; })
+ #define HPAGE_PMD_MASK ({ BUG(); 0; })
+@@ -128,6 +132,7 @@ static inline int split_huge_page(struct page *page)
+ #define wait_split_huge_page(__anon_vma, __pmd)	\
+ 	do { } while (0)
+ #define PageTransHuge(page) 0
++#define PageTransCompound(page) 0
+ static inline int hugepage_madvise(unsigned long *vm_flags)
+ {
+ 	BUG_ON(0);
+diff --git a/mm/migrate.c b/mm/migrate.c
+index 72f3900..c777f6b 100644
+--- a/mm/migrate.c
++++ b/mm/migrate.c
+@@ -99,6 +99,7 @@ static int remove_migration_pte(struct page *new, struct vm_area_struct *vma,
+ 		goto out;
+ 
+ 	pmd = pmd_offset(pud, addr);
++	VM_BUG_ON(pmd_trans_huge(*pmd));
+ 	if (!pmd_present(*pmd))
+ 		goto out;
+ 
+@@ -819,6 +820,10 @@ static int do_move_page_to_node_array(struct mm_struct *mm,
+ 		if (PageReserved(page) || PageKsm(page))
+ 			goto put_and_set;
+ 
++		if (unlikely(PageTransCompound(page)))
++			if (unlikely(split_huge_page(page)))
++				goto put_and_set;
++
+ 		pp->page = page;
+ 		err = page_to_nid(page);
+ 

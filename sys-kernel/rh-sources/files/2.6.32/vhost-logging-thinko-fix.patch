@@ -1,0 +1,58 @@
+From: Michael S. Tsirkin <mst@redhat.com>
+Date: Thu, 4 Mar 2010 10:34:02 -0500
+Subject: [vhost] logging thinko fix
+Message-id: <bad8005ff754f180d1cf925f31c773fc7b521b11.1267698800.git.mst@redhat.com>
+Patchwork-id: 23481
+O-Subject: [RHEL6.0 PATCH 2/5] vhost: logging thinko fix
+Bugzilla: 562837
+RH-Acked-by: David S. Miller <davem@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Herbert Xu <herbert.xu@redhat.com>
+
+BZ#562837
+https://bugzilla.redhat.com/show_bug.cgi?id=562837
+
+Description
+vhost was dong some complex math to get
+offset to log at, and got it wrong by a couple of bytes,
+while in fact it's simple: get address where we write,
+subtract start of buffer, add log base.
+
+Do it this way.
+
+Reviewed-by: Juan Quintela <quintela@redhat.com>
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+
+Upstream status
+This patch has been merged for 2.6.34, commit
+86e9424d7252bae5ad1c17b4b8088193e6b27cbe
+
+Brew build#: 2297441
+
+This change has been tested in house on x86_64 platform
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/vhost/vhost.c b/drivers/vhost/vhost.c
+index 6eb1525..db21518 100644
+--- a/drivers/vhost/vhost.c
++++ b/drivers/vhost/vhost.c
+@@ -1004,10 +1004,14 @@ int vhost_add_used(struct vhost_virtqueue *vq, unsigned int head, int len)
+ 	if (unlikely(vq->log_used)) {
+ 		/* Make sure data is seen before log. */
+ 		smp_wmb();
+-		log_write(vq->log_base, vq->log_addr + sizeof *vq->used->ring *
+-			  (vq->last_used_idx % vq->num),
+-			  sizeof *vq->used->ring);
+-		log_write(vq->log_base, vq->log_addr, sizeof *vq->used->ring);
++		/* Log used ring entry write. */
++		log_write(vq->log_base,
++			  vq->log_addr + ((void *)used - (void *)vq->used),
++			  sizeof *used);
++		/* Log used index update. */
++		log_write(vq->log_base,
++			  vq->log_addr + offsetof(struct vring_used, idx),
++			  sizeof vq->used->idx);
+ 		if (vq->log_ctx)
+ 			eventfd_signal(vq->log_ctx, 1);
+ 	}

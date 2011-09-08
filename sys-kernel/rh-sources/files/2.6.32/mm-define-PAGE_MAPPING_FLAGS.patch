@@ -1,0 +1,200 @@
+From: Rik van Riel <riel@redhat.com>
+Date: Thu, 17 Dec 2009 14:27:00 -0500
+Subject: [mm] define PAGE_MAPPING_FLAGS
+Message-id: <20091217143337.285113358@redhat.com>
+Patchwork-id: 22032
+O-Subject: [PATCH 10/21 RHEL 6] (bz 548457) mm: define PAGE_MAPPING_FLAGS
+Bugzilla: 548457
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+
+commit 3ca7b3c5b64d35fe02c35b5d44c2c58b49499fee
+Author: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+Date:   Mon Dec 14 17:58:57 2009 -0800
+
+    mm: define PAGE_MAPPING_FLAGS
+
+    At present we define PageAnon(page) by the low PAGE_MAPPING_ANON bit set
+    in page->mapping, with the higher bits a pointer to the anon_vma; and have
+    defined PageKsm(page) as that with NULL anon_vma.
+
+    But KSM swapping will need to store a pointer there: so in preparation for
+    that, now define PAGE_MAPPING_FLAGS as the low two bits, including
+    PAGE_MAPPING_KSM (always set along with PAGE_MAPPING_ANON, until some
+    other use for the bit emerges).
+
+    Declare page_rmapping(page) to return the pointer part of page->mapping,
+    and page_anon_vma(page) to return the anon_vma pointer when that's what it
+    is.  Use these in a few appropriate places: notably, unuse_vma() has been
+    testing page->mapping, but is better to be testing page_anon_vma() (cases
+    may be added in which flag bits are set without any pointer).
+
+    Signed-off-by: Hugh Dickins <hugh.dickins@tiscali.co.uk>
+    Cc: Izik Eidus <ieidus@redhat.com>
+    Cc: Andrea Arcangeli <aarcange@redhat.com>
+    Cc: Nick Piggin <npiggin@suse.de>
+    Cc: KOSAKI Motohiro <kosaki.motohiro@jp.fujitsu.com>
+    Reviewed-by: Rik van Riel <riel@redhat.com>
+    Cc: Lee Schermerhorn <Lee.Schermerhorn@hp.com>
+    Cc: Andi Kleen <andi@firstfloor.org>
+    Cc: KAMEZAWA Hiroyuki <kamezawa.hiroyu@jp.fujitsu.com>
+    Cc: Wu Fengguang <fengguang.wu@intel.com>
+    Cc: Minchan Kim <minchan.kim@gmail.com>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/include/linux/ksm.h b/include/linux/ksm.h
+index a485c14..1401a31 100644
+--- a/include/linux/ksm.h
++++ b/include/linux/ksm.h
+@@ -38,7 +38,8 @@ static inline void ksm_exit(struct mm_struct *mm)
+  */
+ static inline int PageKsm(struct page *page)
+ {
+-	return ((unsigned long)page->mapping == PAGE_MAPPING_ANON);
++	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) ==
++				(PAGE_MAPPING_ANON | PAGE_MAPPING_KSM);
+ }
+ 
+ /*
+@@ -47,7 +48,7 @@ static inline int PageKsm(struct page *page)
+ static inline void page_add_ksm_rmap(struct page *page)
+ {
+ 	if (atomic_inc_and_test(&page->_mapcount)) {
+-		page->mapping = (void *) PAGE_MAPPING_ANON;
++		page->mapping = (void *) (PAGE_MAPPING_ANON | PAGE_MAPPING_KSM);
+ 		__inc_zone_page_state(page, NR_ANON_PAGES);
+ 	}
+ }
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+index 88f944d..09f99eb 100644
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -620,13 +620,22 @@ void page_address_init(void);
+ /*
+  * On an anonymous page mapped into a user virtual memory area,
+  * page->mapping points to its anon_vma, not to a struct address_space;
+- * with the PAGE_MAPPING_ANON bit set to distinguish it.
++ * with the PAGE_MAPPING_ANON bit set to distinguish it.  See rmap.h.
++ *
++ * On an anonymous page in a VM_MERGEABLE area, if CONFIG_KSM is enabled,
++ * the PAGE_MAPPING_KSM bit may be set along with the PAGE_MAPPING_ANON bit;
++ * and then page->mapping points, not to an anon_vma, but to a private
++ * structure which KSM associates with that merged page.  See ksm.h.
++ *
++ * PAGE_MAPPING_KSM without PAGE_MAPPING_ANON is currently never used.
+  *
+  * Please note that, confusingly, "page_mapping" refers to the inode
+  * address_space which maps the page from disk; whereas "page_mapped"
+  * refers to user virtual address space into which the page is mapped.
+  */
+ #define PAGE_MAPPING_ANON	1
++#define PAGE_MAPPING_KSM	2
++#define PAGE_MAPPING_FLAGS	(PAGE_MAPPING_ANON | PAGE_MAPPING_KSM)
+ 
+ extern struct address_space swapper_space;
+ static inline struct address_space *page_mapping(struct page *page)
+@@ -644,6 +653,12 @@ static inline struct address_space *page_mapping(struct page *page)
+ 	return mapping;
+ }
+ 
++/* Neutral page->mapping pointer to address_space or anon_vma or other */
++static inline void *page_rmapping(struct page *page)
++{
++	return (void *)((unsigned long)page->mapping & ~PAGE_MAPPING_FLAGS);
++}
++
+ static inline int PageAnon(struct page *page)
+ {
+ 	return ((unsigned long)page->mapping & PAGE_MAPPING_ANON) != 0;
+diff --git a/include/linux/rmap.h b/include/linux/rmap.h
+index cb0ba70..1f65af4 100644
+--- a/include/linux/rmap.h
++++ b/include/linux/rmap.h
+@@ -39,6 +39,14 @@ struct anon_vma {
+ 
+ #ifdef CONFIG_MMU
+ 
++static inline struct anon_vma *page_anon_vma(struct page *page)
++{
++	if (((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) !=
++					    PAGE_MAPPING_ANON)
++		return NULL;
++	return page_rmapping(page);
++}
++
+ static inline void anon_vma_lock(struct vm_area_struct *vma)
+ {
+ 	struct anon_vma *anon_vma = vma->anon_vma;
+diff --git a/mm/migrate.c b/mm/migrate.c
+index f11ee8b..cc79ffb 100644
+--- a/mm/migrate.c
++++ b/mm/migrate.c
+@@ -172,17 +172,14 @@ static void remove_anon_migration_ptes(struct page *old, struct page *new)
+ {
+ 	struct anon_vma *anon_vma;
+ 	struct vm_area_struct *vma;
+-	unsigned long mapping;
+-
+-	mapping = (unsigned long)new->mapping;
+-
+-	if (!mapping || (mapping & PAGE_MAPPING_ANON) == 0)
+-		return;
+ 
+ 	/*
+ 	 * We hold the mmap_sem lock. So no need to call page_lock_anon_vma.
+ 	 */
+-	anon_vma = (struct anon_vma *) (mapping - PAGE_MAPPING_ANON);
++	anon_vma = page_anon_vma(new);
++	if (!anon_vma)
++		return;
++
+ 	spin_lock(&anon_vma->lock);
+ 
+ 	list_for_each_entry(vma, &anon_vma->head, anon_vma_node)
+diff --git a/mm/rmap.c b/mm/rmap.c
+index 710bb4b..1b31e8a 100644
+--- a/mm/rmap.c
++++ b/mm/rmap.c
+@@ -203,7 +203,7 @@ struct anon_vma *page_lock_anon_vma(struct page *page)
+ 
+ 	rcu_read_lock();
+ 	anon_mapping = (unsigned long) page->mapping;
+-	if (!(anon_mapping & PAGE_MAPPING_ANON))
++	if ((anon_mapping & PAGE_MAPPING_FLAGS) != PAGE_MAPPING_ANON)
+ 		goto out;
+ 	if (!page_mapped(page))
+ 		goto out;
+@@ -248,8 +248,7 @@ vma_address(struct page *page, struct vm_area_struct *vma)
+ unsigned long page_address_in_vma(struct page *page, struct vm_area_struct *vma)
+ {
+ 	if (PageAnon(page)) {
+-		if ((void *)vma->anon_vma !=
+-		    (void *)page->mapping - PAGE_MAPPING_ANON)
++		if (vma->anon_vma != page_anon_vma(page))
+ 			return -EFAULT;
+ 	} else if (page->mapping && !(vma->vm_flags & VM_NONLINEAR)) {
+ 		if (!vma->vm_file ||
+@@ -512,7 +511,7 @@ int page_referenced(struct page *page,
+ 		referenced++;
+ 
+ 	*vm_flags = 0;
+-	if (page_mapped(page) && page->mapping) {
++	if (page_mapped(page) && page_rmapping(page)) {
+ 		if (PageAnon(page))
+ 			referenced += page_referenced_anon(page, mem_cont,
+ 								vm_flags);
+diff --git a/mm/swapfile.c b/mm/swapfile.c
+index 58bec66..257f51b 100644
+--- a/mm/swapfile.c
++++ b/mm/swapfile.c
+@@ -937,7 +937,7 @@ static int unuse_vma(struct vm_area_struct *vma,
+ 	unsigned long addr, end, next;
+ 	int ret;
+ 
+-	if (page->mapping) {
++	if (page_anon_vma(page)) {
+ 		addr = page_address_in_vma(page, vma);
+ 		if (addr == -EFAULT)
+ 			return 0;

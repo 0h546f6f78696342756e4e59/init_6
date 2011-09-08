@@ -1,0 +1,40 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Thu, 18 Feb 2010 10:27:36 -0500
+Subject: [kvm] virtio: console: update Red Hat copyright for 2010
+Message-id: <fe79ba3a829f5d2770e0ba8ae808c9434471bca7.1266488420.git.amit.shah@redhat.com>
+Patchwork-id: 23339
+O-Subject: [PATCH 04/10] virtio: console: update Red Hat copyright for 2010
+Bugzilla: 566391
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+
+virtio: console: update Red Hat copyright for 2010
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/virtio_console.c b/drivers/char/virtio_console.c
+index 793285d..93d3e15 100644
+--- a/drivers/char/virtio_console.c
++++ b/drivers/char/virtio_console.c
+@@ -1,6 +1,6 @@
+ /*
+  * Copyright (C) 2006, 2007, 2009 Rusty Russell, IBM Corporation
+- * Copyright (C) 2009, Red Hat, Inc.
++ * Copyright (C) 2009, 2010 Red Hat, Inc.
+  *
+  * This program is free software; you can redistribute it and/or modify
+  * it under the terms of the GNU General Public License as published by
+diff --git a/include/linux/virtio_console.h b/include/linux/virtio_console.h
+index dd08675..ae4f039 100644
+--- a/include/linux/virtio_console.h
++++ b/include/linux/virtio_console.h
+@@ -7,7 +7,7 @@
+  * This header, excluding the #ifdef __KERNEL__ part, is BSD licensed so
+  * anyone can use the definitions to implement compatible drivers/servers.
+  *
+- * Copyright (C) Red Hat, Inc., 2009
++ * Copyright (C) Red Hat, Inc., 2009, 2010
+  */
+ 
+ /* Feature bits */

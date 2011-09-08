@@ -1,0 +1,61 @@
+From: Prarit Bhargava <prarit@redhat.com>
+Date: Fri, 11 Dec 2009 12:59:07 -0500
+Subject: [x86] AMD: Fix stale cpuid4_info shared_map data in shared_cpu_map cpumasks
+Message-id: <20091211125545.27840.50939.sendpatchset@prarit.bos.redhat.com>
+Patchwork-id: 21881
+O-Subject: [RHEL6 PATCH]: x86,
+	AMD: Fix stale cpuid4_info shared_map data in shared_cpu_map cpumasks
+Bugzilla: 546610
+RH-Acked-by: Andrew Jones <drjones@redhat.com>
+RH-Acked-by: Christopher Lalancette <clalance@redhat.com>
+RH-Acked-by: Dean Nelson <dnelson@redhat.com>
+
+x86, AMD: Fix stale cpuid4_info shared_map data in shared_cpu_map cpumasks
+
+The per_cpu cpuid4_info shared_map can contain stale data when CPUs are added
+and removed.
+
+The stale data can lead to a NULL pointer derefernce panic on a remove of a
+CPU that has had siblings previously removed.
+
+This patch resolves the panic by verifying a cpu is actually online before
+adding it to the shared_cpu_map, only examining cpus that are part of
+the same lower level cache, and by updating other siblings lowest level cache
+maps when a cpu is added.
+
+Successfully tested by me.
+
+Resolves BZ 546610.
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/x86/kernel/cpu/intel_cacheinfo.c b/arch/x86/kernel/cpu/intel_cacheinfo.c
+index 6c40f6b..63ada17 100644
+--- a/arch/x86/kernel/cpu/intel_cacheinfo.c
++++ b/arch/x86/kernel/cpu/intel_cacheinfo.c
+@@ -507,18 +507,19 @@ static void __cpuinit cache_shared_cpu_map_setup(unsigned int cpu, int index)
+ {
+ 	struct _cpuid4_info	*this_leaf, *sibling_leaf;
+ 	unsigned long num_threads_sharing;
+-	int index_msb, i;
++	int index_msb, i, sibling;
+ 	struct cpuinfo_x86 *c = &cpu_data(cpu);
+ 
+ 	if ((index == 3) && (c->x86_vendor == X86_VENDOR_AMD)) {
+-		struct cpuinfo_x86 *d;
+-		for_each_online_cpu(i) {
++		for_each_cpu(i, c->llc_shared_map) {
+ 			if (!per_cpu(cpuid4_info, i))
+ 				continue;
+-			d = &cpu_data(i);
+ 			this_leaf = CPUID4_INFO_IDX(i, index);
+-			cpumask_copy(to_cpumask(this_leaf->shared_cpu_map),
+-				     d->llc_shared_map);
++			for_each_cpu(sibling, c->llc_shared_map) {
++				if (!cpu_online(sibling))
++					continue;
++				set_bit(sibling, this_leaf->shared_cpu_map);
++			}
+ 		}
+ 		return;
+ 	}

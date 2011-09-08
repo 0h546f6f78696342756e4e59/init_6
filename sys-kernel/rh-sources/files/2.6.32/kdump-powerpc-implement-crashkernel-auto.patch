@@ -1,0 +1,89 @@
+From: Amerigo Wang <amwang@redhat.com>
+Date: Fri, 20 Nov 2009 18:25:24 -0500
+Subject: [kdump] powerpc: implement crashkernel=auto
+Message-id: <20090914071812.4415.54828.sendpatchset@localhost.localdomain>
+Patchwork-id: 20857
+O-Subject: [RHEL6 Patch 6/8] powerpc: implement crashkernel=auto
+Bugzilla: 523091
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+Since in patch 2/8 we already implement the generic part, this will
+add the rest part for powerpc.
+
+Signed-off-by: WANG Cong <amwang@redhat.com>
+
+
+diff --git a/arch/powerpc/include/asm/kexec.h b/arch/powerpc/include/asm/kexec.h
+index 7e06b43..2c30e92 100644
+--- a/arch/powerpc/include/asm/kexec.h
++++ b/arch/powerpc/include/asm/kexec.h
+@@ -39,6 +39,34 @@ typedef void (*crash_shutdown_t)(void);
+ 
+ #ifdef CONFIG_KEXEC
+ 
++#ifdef CONFIG_KEXEC_AUTO_RESERVE
++
++#if PAGE_SHIFT==12
++#ifndef KEXEC_AUTO_THRESHOLD
++#define KEXEC_AUTO_THRESHOLD (1ULL<<31) /* 2G */
++#endif
++#else
++#ifndef KEXEC_AUTO_THRESHOLD
++#define KEXEC_AUTO_THRESHOLD (1ULL<<33) /* 8G */
++#endif
++#endif /*PAGE_SHIFT == 12 */
++
++#ifndef arch_default_crash_base
++extern
++unsigned long long __init arch_default_crash_base(void);
++#define arch_default_crash_base arch_default_crash_base
++#endif
++
++#ifndef arch_default_crash_size
++extern
++unsigned long long __init arch_default_crash_size(unsigned long long);
++#define arch_default_crash_size arch_default_crash_size
++#endif
++
++#endif
++
++#include <asm-generic/kexec.h>
++
+ /*
+  * This function is responsible for capturing register states if coming
+  * via panic or invoking dump using sysrq-trigger.
+diff --git a/arch/powerpc/kernel/machine_kexec.c b/arch/powerpc/kernel/machine_kexec.c
+index bb3d893..baf1af0 100644
+--- a/arch/powerpc/kernel/machine_kexec.c
++++ b/arch/powerpc/kernel/machine_kexec.c
+@@ -61,6 +61,30 @@ void machine_kexec(struct kimage *image)
+ 	for(;;);
+ }
+ 
++#ifdef CONFIG_KEXEC_AUTO_RESERVE
++unsigned long long __init arch_default_crash_base(void)
++{
++	return KDUMP_KERNELBASE;
++}
++
++unsigned long long __init arch_default_crash_size(unsigned long long total_size)
++{
++	if (total_size < KEXEC_AUTO_THRESHOLD)
++		return 0;
++	if (total_size < (1ULL<<32))
++		return 1ULL<<27;
++	else {
++#ifdef CONFIG_64BIT
++		if (total_size > (1ULL<<37)) /* 128G */
++			return 1ULL<<32; /* 4G */
++		return 1ULL<<ilog2(roundup(total_size/32, 1ULL<<21));
++#else
++		return 1ULL<<28;
++#endif
++	}
++}
++#endif
++
+ void __init reserve_crashkernel(void)
+ {
+ 	unsigned long long crash_size, crash_base;

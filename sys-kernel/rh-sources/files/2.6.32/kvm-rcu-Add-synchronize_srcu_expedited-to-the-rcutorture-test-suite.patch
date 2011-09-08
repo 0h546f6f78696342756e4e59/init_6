@@ -1,0 +1,84 @@
+From: Marcelo Tosatti <mtosatti@redhat.com>
+Date: Thu, 14 Jan 2010 17:12:00 -0500
+Subject: [kvm] rcu: Add synchronize_srcu_expedited() to the rcutorture test suite
+Message-id: <20100114171427.494728610@amt.cnet>
+Patchwork-id: 22544
+O-Subject: [RHEL 6 KVM 12/27] rcu: Add synchronize_srcu_expedited() to the
+	rcutorture test suite
+Bugzilla: 550809
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+commit 804bb8370522a569bd3a732b9de5fbd55e26f155
+Author: Paul E. McKenney <paulmck@linux.vnet.ibm.com>
+Date:   Sun Oct 25 19:03:52 2009 -0700
+
+rcu: Add synchronize_srcu_expedited() to the rcutorture test suite
+
+Adds the "srcu_expedited" torture type, and also renames
+sched_ops_sync to sched_sync_ops for consistency while we are in
+this file.
+
+Signed-off-by: Paul E. McKenney <paulmck@linux.vnet.ibm.com>
+Acked-by: Josh Triplett <josh@joshtriplett.org>
+Reviewed-by: Lai Jiangshan <laijs@cn.fujitsu.com>
+LKML-Reference: <12565226353636-git-send-email->
+Signed-off-by: Ingo Molnar <mingo@elte.hu>
+Bugzilla: 550809
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Gleb Natapov <gleb@redhat.com>
+RH-Acked-by: Avi Kivity <avi@redhat.com>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/kernel/rcutorture.c b/kernel/rcutorture.c
+index 697c0a0..14480e8 100644
+--- a/kernel/rcutorture.c
++++ b/kernel/rcutorture.c
+@@ -547,6 +547,25 @@ static struct rcu_torture_ops srcu_ops = {
+ 	.name		= "srcu"
+ };
+ 
++static void srcu_torture_synchronize_expedited(void)
++{
++	synchronize_srcu_expedited(&srcu_ctl);
++}
++
++static struct rcu_torture_ops srcu_expedited_ops = {
++	.init		= srcu_torture_init,
++	.cleanup	= srcu_torture_cleanup,
++	.readlock	= srcu_torture_read_lock,
++	.read_delay	= srcu_read_delay,
++	.readunlock	= srcu_torture_read_unlock,
++	.completed	= srcu_torture_completed,
++	.deferred_free	= rcu_sync_torture_deferred_free,
++	.sync		= srcu_torture_synchronize_expedited,
++	.cb_barrier	= NULL,
++	.stats		= srcu_torture_stats,
++	.name		= "srcu_expedited"
++};
++
+ /*
+  * Definitions for sched torture testing.
+  */
+@@ -592,7 +611,7 @@ static struct rcu_torture_ops sched_ops = {
+ 	.name		= "sched"
+ };
+ 
+-static struct rcu_torture_ops sched_ops_sync = {
++static struct rcu_torture_ops sched_sync_ops = {
+ 	.init		= rcu_sync_torture_init,
+ 	.cleanup	= NULL,
+ 	.readlock	= sched_torture_read_lock,
+@@ -1098,8 +1117,8 @@ rcu_torture_init(void)
+ 	int firsterr = 0;
+ 	static struct rcu_torture_ops *torture_ops[] =
+ 		{ &rcu_ops, &rcu_sync_ops, &rcu_bh_ops, &rcu_bh_sync_ops,
+-		  &sched_expedited_ops,
+-		  &srcu_ops, &sched_ops, &sched_ops_sync, };
++		  &srcu_ops, &srcu_expedited_ops,
++		  &sched_ops, &sched_sync_ops, &sched_expedited_ops, };
+ 
+ 	mutex_lock(&fullstop_mutex);
+ 

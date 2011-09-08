@@ -1,0 +1,55 @@
+From: Amit Shah <amit.shah@redhat.com>
+Date: Wed, 27 Jan 2010 05:12:01 -0500
+Subject: [virtio] hvc_console: Remove __devinit annotation from hvc_alloc
+Message-id: <1264569149-20151-5-git-send-email-amit.shah@redhat.com>
+Patchwork-id: 22917
+O-Subject: [RHEL6 PATCH 04/32] hvc_console: Remove __devinit annotation from
+	hvc_alloc
+Bugzilla: 543824
+RH-Acked-by: Christoph Hellwig <chellwig@redhat.com>
+RH-Acked-by: Juan Quintela <quintela@redhat.com>
+RH-Acked-by: Marcelo Tosatti <mtosatti@redhat.com>
+
+Virtio consoles can be hotplugged, so hvc_alloc gets called from
+multiple sites: from the initial probe() routine as well as later on
+from workqueue handlers which aren't __devinit code.
+
+So, drop the __devinit annotation for hvc_alloc.
+
+Signed-off-by: Amit Shah <amit.shah@redhat.com>
+Cc: linuxppc-dev@ozlabs.org
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/drivers/char/hvc_console.c b/drivers/char/hvc_console.c
+index 299772f..370c6ba 100644
+--- a/drivers/char/hvc_console.c
++++ b/drivers/char/hvc_console.c
+@@ -748,9 +748,9 @@ static const struct tty_operations hvc_ops = {
+ 	.chars_in_buffer = hvc_chars_in_buffer,
+ };
+ 
+-struct hvc_struct __devinit *hvc_alloc(uint32_t vtermno, int data,
+-				       const struct hv_ops *ops,
+-				       int outbuf_size)
++struct hvc_struct *hvc_alloc(uint32_t vtermno, int data,
++			     const struct hv_ops *ops,
++			     int outbuf_size)
+ {
+ 	struct hvc_struct *hp;
+ 	int i;
+diff --git a/drivers/char/hvc_console.h b/drivers/char/hvc_console.h
+index 52ddf4d..54381eb 100644
+--- a/drivers/char/hvc_console.h
++++ b/drivers/char/hvc_console.h
+@@ -80,8 +80,8 @@ extern int hvc_instantiate(uint32_t vtermno, int index,
+ 			   const struct hv_ops *ops);
+ 
+ /* register a vterm for hvc tty operation (module_init or hotplug add) */
+-extern struct hvc_struct * __devinit hvc_alloc(uint32_t vtermno, int data,
+-				const struct hv_ops *ops, int outbuf_size);
++extern struct hvc_struct * hvc_alloc(uint32_t vtermno, int data,
++				     const struct hv_ops *ops, int outbuf_size);
+ /* remove a vterm from hvc tty operation (module_exit or hotplug remove) */
+ extern int hvc_remove(struct hvc_struct *hp);
+ 

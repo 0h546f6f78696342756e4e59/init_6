@@ -1,0 +1,83 @@
+From: George Beshers <gbeshers@redhat.com>
+Date: Fri, 5 Feb 2010 16:31:48 -0500
+Subject: [uv] x86: Fix RTC latency bug by reading replicated cachelines
+Message-id: <20100205111603.5090.62548.sendpatchset@sgi-xe250-01.lab.bos.redhat.com>
+Patchwork-id: 23149
+O-Subject: [RHEL6 PATCH] x86,
+	UV: Fix RTC latency bug by reading replicated cachelines
+Bugzilla: 562189
+RH-Acked-by: Prarit Bhargava <prarit@redhat.com>
+
+BZi#562189 x86, UV: Fix RTC latency bug by reading replicated cachelines
+First Post
+
+The upstream patch below compiles and builds cleanly against 2.6.32-14
+
+George
+
+
+diff --git a/arch/x86/kernel/uv_time.c b/arch/x86/kernel/uv_time.c
+index 3c84aa0..2b75ef6 100644
+--- a/arch/x86/kernel/uv_time.c
++++ b/arch/x86/kernel/uv_time.c
+@@ -282,10 +282,21 @@ static int uv_rtc_unset_timer(int cpu, int force)
+ 
+ /*
+  * Read the RTC.
++ *
++ * Starting with HUB rev 2.0, the UV RTC register is replicated across all
++ * cachelines of it's own page.  This allows faster simultaneous reads
++ * from a given socket.
+  */
+ static cycle_t uv_read_rtc(struct clocksource *cs)
+ {
+-	return (cycle_t)uv_read_local_mmr(UVH_RTC);
++	unsigned long offset;
++
++	if (uv_get_min_hub_revision_id() == 1)
++		offset = 0;
++	else
++		offset = (uv_blade_processor_id() * L1_CACHE_BYTES) % PAGE_SIZE;
++
++	return (cycle_t)uv_read_local_mmr(UVH_RTC | offset);
+ }
+ 
+ /*
+diff --git a/drivers/char/uv_mmtimer.c b/drivers/char/uv_mmtimer.c
+index 867b67b..c7072ba 100644
+--- a/drivers/char/uv_mmtimer.c
++++ b/drivers/char/uv_mmtimer.c
+@@ -89,13 +89,17 @@ static long uv_mmtimer_ioctl(struct file *file, unsigned int cmd,
+ 	switch (cmd) {
+ 	case MMTIMER_GETOFFSET:	/* offset of the counter */
+ 		/*
+-		 * UV RTC register is on its own page
++		 * Starting with HUB rev 2.0, the UV RTC register is
++		 * replicated across all cachelines of it's own page.
++		 * This allows faster simultaneous reads from a given socket.
++		 *
++		 * The offset returned is in 64 bit units.
+ 		 */
+-		if (PAGE_SIZE <= (1 << 16))
+-			ret = ((UV_LOCAL_MMR_BASE | UVH_RTC) & (PAGE_SIZE-1))
+-				/ 8;
++		if (uv_get_min_hub_revision_id() == 1)
++			ret = 0;
+ 		else
+-			ret = -ENOSYS;
++			ret = ((uv_blade_processor_id() * L1_CACHE_BYTES) %
++					PAGE_SIZE) / 8;
+ 		break;
+ 
+ 	case MMTIMER_GETRES: /* resolution of the clock in 10^-15 s */
+@@ -115,8 +119,8 @@ static long uv_mmtimer_ioctl(struct file *file, unsigned int cmd,
+ 		ret = hweight64(UVH_RTC_REAL_TIME_CLOCK_MASK);
+ 		break;
+ 
+-	case MMTIMER_MMAPAVAIL: /* can we mmap the clock into userspace? */
+-		ret = (PAGE_SIZE <= (1 << 16)) ? 1 : 0;
++	case MMTIMER_MMAPAVAIL:
++		ret = 1;
+ 		break;
+ 
+ 	case MMTIMER_GETCOUNTER:

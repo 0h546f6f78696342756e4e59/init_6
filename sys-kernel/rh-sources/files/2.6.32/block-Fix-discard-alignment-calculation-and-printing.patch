@@ -1,0 +1,59 @@
+From: Mike Snitzer <snitzer@redhat.com>
+Date: Mon, 11 Jan 2010 21:30:52 -0500
+Subject: [block] Fix discard alignment calculation and printing
+Message-id: <1263245455-7547-3-git-send-email-snitzer@redhat.com>
+Patchwork-id: 22413
+O-Subject: [RHEL6 PATCH 2/5] block: Fix discard alignment calculation and
+	printing
+Bugzilla: 554718
+RH-Acked-by: Jeff Moyer <jmoyer@redhat.com>
+
+BZ 549766
+
+backport from linux-2.6-block:
+
+commit dd3d145d49c5816b79acc6761ebbd842bc50b0ee
+Author: Martin K. Petersen <martin.petersen@oracle.com>
+Date:   Mon Jan 11 03:21:48 2010 -0500
+
+    block: Fix discard alignment calculation and printing
+
+    Discard alignment reporting for partitions was incorrect.  Update to
+    match the algorithm used elsewhere.
+
+    The alignment can be negative (misaligned).  Fix format string
+    accordingly.
+
+Signed-off-by: Mike Snitzer <snitzer@redhat.com>
+
+diff --git a/block/genhd.c b/block/genhd.c
+index b11a4ad..d13ba76 100644
+--- a/block/genhd.c
++++ b/block/genhd.c
+@@ -867,7 +867,7 @@ static ssize_t disk_discard_alignment_show(struct device *dev,
+ {
+ 	struct gendisk *disk = dev_to_disk(dev);
+ 
+-	return sprintf(buf, "%u\n", queue_discard_alignment(disk->queue));
++	return sprintf(buf, "%d\n", queue_discard_alignment(disk->queue));
+ }
+ 
+ static DEVICE_ATTR(range, S_IRUGO, disk_range_show, NULL);
+diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
+index fcaf9f4..001c9e6 100644
+--- a/include/linux/blkdev.h
++++ b/include/linux/blkdev.h
+@@ -1156,8 +1156,11 @@ static inline int queue_discard_alignment(struct request_queue *q)
+ static inline int queue_sector_discard_alignment(struct request_queue *q,
+ 						 sector_t sector)
+ {
+-	return ((sector << 9) - q->limits.discard_alignment)
+-		& (q->limits.discard_granularity - 1);
++	struct queue_limits *lim = &q->limits;
++	unsigned int alignment = (sector << 9) & (lim->discard_granularity - 1);
++
++	return (lim->discard_granularity + lim->discard_alignment - alignment)
++		& (lim->discard_granularity - 1);
+ }
+ 
+ static inline unsigned int queue_discard_zeroes_data(struct request_queue *q)

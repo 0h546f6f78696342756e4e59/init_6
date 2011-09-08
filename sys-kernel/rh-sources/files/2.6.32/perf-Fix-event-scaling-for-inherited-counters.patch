@@ -1,0 +1,129 @@
+From: Jason Baron <jbaron@redhat.com>
+Date: Tue, 19 Jan 2010 22:35:35 -0500
+Subject: [perf] Fix event scaling for inherited counters
+Message-id: <859911ddbf32d343657654dcf2bd183fb2ac5cbe.1263939115.git.jbaron@redhat.com>
+Patchwork-id: 22662
+O-Subject: [RHEL6 PATCH 6/9] - add kernel internal interface to perf counters v2
+	- Fix event scaling for inherited counters
+Bugzilla: 525517
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+RH-Acked-by: Dave Anderson <anderson@redhat.com>
+
+commit 59ed446f792cc07d37b1536b9c4664d14e25e425
+
+    perf: Fix event scaling for inherited counters
+
+    Properly account the full hierarchy of counters for both the
+    count (we already did so) and the scale times (new).
+
+    Signed-off-by: Peter Zijlstra <a.p.zijlstra@chello.nl>
+    Cc: Paul Mackerras <paulus@samba.org>
+    LKML-Reference: <20091120212509.153379276@chello.nl>
+    Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index 14e22d6..96a8c01 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -753,7 +753,8 @@ extern struct perf_event *
+ perf_event_create_kernel_counter(struct perf_event_attr *attr,
+ 				int cpu,
+ 				pid_t pid);
+-extern u64 perf_event_read_value(struct perf_event *event);
++extern u64 perf_event_read_value(struct perf_event *event,
++				u64 *enabled, u64 *running);
+ 
+ struct perf_sample_data {
+ 	u64				type;
+diff --git a/kernel/perf_event.c b/kernel/perf_event.c
+index d22e296..64b98a4 100644
+--- a/kernel/perf_event.c
++++ b/kernel/perf_event.c
+@@ -1766,14 +1766,25 @@ static int perf_event_read_size(struct perf_event *event)
+ 	return size;
+ }
+ 
+-u64 perf_event_read_value(struct perf_event *event)
++u64 perf_event_read_value(struct perf_event *event, u64 *enabled, u64 *running)
+ {
+ 	struct perf_event *child;
+ 	u64 total = 0;
+ 
++	*enabled = 0;
++	*running = 0;
++
+ 	total += perf_event_read(event);
+-	list_for_each_entry(child, &event->child_list, child_list)
++	*enabled += event->total_time_enabled +
++			atomic64_read(&event->child_total_time_enabled);
++	*running += event->total_time_running +
++			atomic64_read(&event->child_total_time_running);
++
++	list_for_each_entry(child, &event->child_list, child_list) {
+ 		total += perf_event_read(child);
++		*enabled += child->total_time_enabled;
++		*running += child->total_time_running;
++	}
+ 
+ 	return total;
+ }
+@@ -1785,19 +1796,15 @@ static int perf_event_read_group(struct perf_event *event,
+ 	struct perf_event *leader = event->group_leader, *sub;
+ 	int n = 0, size = 0, ret = 0;
+ 	u64 values[5];
+-	u64 count;
++	u64 count, enabled, running;
+ 
+-	count = perf_event_read_value(leader);
++	count = perf_event_read_value(leader, &enabled, &running);
+ 
+ 	values[n++] = 1 + leader->nr_siblings;
+-	if (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) {
+-		values[n++] = leader->total_time_enabled +
+-			atomic64_read(&leader->child_total_time_enabled);
+-	}
+-	if (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING) {
+-		values[n++] = leader->total_time_running +
+-			atomic64_read(&leader->child_total_time_running);
+-	}
++	if (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED)
++		values[n++] = enabled;
++	if (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING)
++		values[n++] = running;
+ 	values[n++] = count;
+ 	if (read_format & PERF_FORMAT_ID)
+ 		values[n++] = primary_event_id(leader);
+@@ -1812,7 +1819,7 @@ static int perf_event_read_group(struct perf_event *event,
+ 	list_for_each_entry(sub, &leader->sibling_list, group_entry) {
+ 		n = 0;
+ 
+-		values[n++] = perf_event_read_value(sub);
++		values[n++] = perf_event_read_value(sub, &enabled, &running);
+ 		if (read_format & PERF_FORMAT_ID)
+ 			values[n++] = primary_event_id(sub);
+ 
+@@ -1830,18 +1837,15 @@ static int perf_event_read_group(struct perf_event *event,
+ static int perf_event_read_one(struct perf_event *event,
+ 				 u64 read_format, char __user *buf)
+ {
++	u64 enabled, running;
+ 	u64 values[4];
+ 	int n = 0;
+ 
+-	values[n++] = perf_event_read_value(event);
+-	if (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED) {
+-		values[n++] = event->total_time_enabled +
+-			atomic64_read(&event->child_total_time_enabled);
+-	}
+-	if (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING) {
+-		values[n++] = event->total_time_running +
+-			atomic64_read(&event->child_total_time_running);
+-	}
++	values[n++] = perf_event_read_value(event, &enabled, &running);
++	if (read_format & PERF_FORMAT_TOTAL_TIME_ENABLED)
++		values[n++] = enabled;
++	if (read_format & PERF_FORMAT_TOTAL_TIME_RUNNING)
++		values[n++] = running;
+ 	if (read_format & PERF_FORMAT_ID)
+ 		values[n++] = primary_event_id(event);
+ 

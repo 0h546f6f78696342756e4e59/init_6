@@ -1,0 +1,214 @@
+From: Jeff Moyer <jmoyer@redhat.com>
+Date: Tue, 8 Dec 2009 18:58:28 -0500
+Subject: [block] blkio: Implement dynamic io controlling policy registration
+Message-id: <1260298712-12756-56-git-send-email-jmoyer@redhat.com>
+Patchwork-id: 21794
+O-Subject: [RHEL6 PATCH 55/59] blkio: Implement dynamic io controlling policy
+	registration
+Bugzilla: 425895
+RH-Acked-by: Vivek Goyal <vgoyal@redhat.com>
+
+fixes bug 425895
+
+commit 3e2520668970aab5a764044a298e987aafc1f63d
+Author: Vivek Goyal <vgoyal@redhat.com>
+Date:   Fri Dec 4 10:36:42 2009 -0500
+
+    blkio: Implement dynamic io controlling policy registration
+
+    o One of the goals of block IO controller is that it should be able to
+      support mulitple io control policies, some of which be operational at
+      higher level in storage hierarchy.
+
+    o To begin with, we had one io controlling policy implemented by CFQ, and
+      I hard coded the CFQ functions called by blkio. This created issues when
+      CFQ is compiled as module.
+
+    o This patch implements a basic dynamic io controlling policy registration
+      functionality in blkio. This is similar to elevator functionality where
+      ioschedulers register the functions dynamically.
+
+    o Now in future, when more IO controlling policies are implemented, these
+      can dynakically register with block IO controller.
+
+Signed-off-by: Jeff Moyer <jmoyer@redhat.com>
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/block/blk-cgroup.c b/block/blk-cgroup.c
+index 4d4a277..3ad497f 100644
+--- a/block/blk-cgroup.c
++++ b/block/blk-cgroup.c
+@@ -15,7 +15,9 @@
+ #include <linux/kdev_t.h>
+ #include <linux/module.h>
+ #include "blk-cgroup.h"
+-#include "cfq-iosched.h"
++
++static DEFINE_SPINLOCK(blkio_list_lock);
++static LIST_HEAD(blkio_list);
+ 
+ struct blkio_cgroup blkio_root_cgroup = { .weight = 2*BLKIO_WEIGHT_DEFAULT };
+ EXPORT_SYMBOL_GPL(blkio_root_cgroup);
+@@ -138,6 +140,7 @@ blkiocg_weight_write(struct cgroup *cgroup, struct cftype *cftype, u64 val)
+ 	struct blkio_cgroup *blkcg;
+ 	struct blkio_group *blkg;
+ 	struct hlist_node *n;
++	struct blkio_policy_type *blkiop;
+ 
+ 	if (val < BLKIO_WEIGHT_MIN || val > BLKIO_WEIGHT_MAX)
+ 		return -EINVAL;
+@@ -145,8 +148,13 @@ blkiocg_weight_write(struct cgroup *cgroup, struct cftype *cftype, u64 val)
+ 	blkcg = cgroup_to_blkio_cgroup(cgroup);
+ 	spin_lock_irq(&blkcg->lock);
+ 	blkcg->weight = (unsigned int)val;
+-	hlist_for_each_entry(blkg, n, &blkcg->blkg_list, blkcg_node)
+-		cfq_update_blkio_group_weight(blkg, blkcg->weight);
++	hlist_for_each_entry(blkg, n, &blkcg->blkg_list, blkcg_node) {
++		spin_lock(&blkio_list_lock);
++		list_for_each_entry(blkiop, &blkio_list, list)
++			blkiop->ops.blkio_update_group_weight_fn(blkg,
++					blkcg->weight);
++		spin_unlock(&blkio_list_lock);
++	}
+ 	spin_unlock_irq(&blkcg->lock);
+ 	return 0;
+ }
+@@ -224,6 +232,7 @@ static void blkiocg_destroy(struct cgroup_subsys *subsys, struct cgroup *cgroup)
+ 	unsigned long flags;
+ 	struct blkio_group *blkg;
+ 	void *key;
++	struct blkio_policy_type *blkiop;
+ 
+ 	rcu_read_lock();
+ remove_entry:
+@@ -249,7 +258,10 @@ remove_entry:
+ 	 * we have more policies in place, we need some dynamic registration
+ 	 * of callback function.
+ 	 */
+-	cfq_unlink_blkio_group(key, blkg);
++	spin_lock(&blkio_list_lock);
++	list_for_each_entry(blkiop, &blkio_list, list)
++		blkiop->ops.blkio_unlink_group_fn(key, blkg);
++	spin_unlock(&blkio_list_lock);
+ 	goto remove_entry;
+ done:
+ 	free_css_id(&blkio_subsys, &blkcg->css);
+@@ -330,3 +342,19 @@ struct cgroup_subsys blkio_subsys = {
+ 	.subsys_id = blkio_subsys_id,
+ 	.use_id = 1,
+ };
++
++void blkio_policy_register(struct blkio_policy_type *blkiop)
++{
++	spin_lock(&blkio_list_lock);
++	list_add_tail(&blkiop->list, &blkio_list);
++	spin_unlock(&blkio_list_lock);
++}
++EXPORT_SYMBOL_GPL(blkio_policy_register);
++
++void blkio_policy_unregister(struct blkio_policy_type *blkiop)
++{
++	spin_lock(&blkio_list_lock);
++	list_del_init(&blkiop->list);
++	spin_unlock(&blkio_list_lock);
++}
++EXPORT_SYMBOL_GPL(blkio_policy_unregister);
+diff --git a/block/blk-cgroup.h b/block/blk-cgroup.h
+index 4f89b96..4d316df 100644
+--- a/block/blk-cgroup.h
++++ b/block/blk-cgroup.h
+@@ -46,11 +46,35 @@ struct blkio_group {
+ extern bool blkiocg_css_tryget(struct blkio_cgroup *blkcg);
+ extern void blkiocg_css_put(struct blkio_cgroup *blkcg);
+ 
++typedef void (blkio_unlink_group_fn) (void *key, struct blkio_group *blkg);
++typedef void (blkio_update_group_weight_fn) (struct blkio_group *blkg,
++						unsigned int weight);
++
++struct blkio_policy_ops {
++	blkio_unlink_group_fn *blkio_unlink_group_fn;
++	blkio_update_group_weight_fn *blkio_update_group_weight_fn;
++};
++
++struct blkio_policy_type {
++	struct list_head list;
++	struct blkio_policy_ops ops;
++};
++
++/* Blkio controller policy registration */
++extern void blkio_policy_register(struct blkio_policy_type *);
++extern void blkio_policy_unregister(struct blkio_policy_type *);
++
+ #else
+ 
+ struct blkio_group {
+ };
+ 
++struct blkio_policy_type {
++};
++
++static inline void blkio_policy_register(struct blkio_policy_type *blkiop) { }
++static inline void blkio_policy_unregister(struct blkio_policy_type *blkiop) { }
++
+ #endif
+ 
+ #define BLKIO_WEIGHT_MIN	100
+diff --git a/block/cfq-iosched.c b/block/cfq-iosched.c
+index 638d45c..82d3b03 100644
+--- a/block/cfq-iosched.c
++++ b/block/cfq-iosched.c
+@@ -13,7 +13,6 @@
+ #include <linux/ioprio.h>
+ #include <linux/blktrace_api.h>
+ #include "blk-cgroup.h"
+-#include "cfq-iosched.h"
+ 
+ /*
+  * tunables
+@@ -3854,6 +3853,17 @@ static struct elevator_type iosched_cfq = {
+ 	.elevator_owner =	THIS_MODULE,
+ };
+ 
++#ifdef CONFIG_CFQ_GROUP_IOSCHED
++static struct blkio_policy_type blkio_policy_cfq = {
++	.ops = {
++		.blkio_unlink_group_fn =	cfq_unlink_blkio_group,
++		.blkio_update_group_weight_fn =	cfq_update_blkio_group_weight,
++	},
++};
++#else
++static struct blkio_policy_type blkio_policy_cfq;
++#endif
++
+ static int __init cfq_init(void)
+ {
+ 	/*
+@@ -3868,6 +3878,7 @@ static int __init cfq_init(void)
+ 		return -ENOMEM;
+ 
+ 	elv_register(&iosched_cfq);
++	blkio_policy_register(&blkio_policy_cfq);
+ 
+ 	return 0;
+ }
+@@ -3875,6 +3886,7 @@ static int __init cfq_init(void)
+ static void __exit cfq_exit(void)
+ {
+ 	DECLARE_COMPLETION_ONSTACK(all_gone);
++	blkio_policy_unregister(&blkio_policy_cfq);
+ 	elv_unregister(&iosched_cfq);
+ 	ioc_gone = &all_gone;
+ 	/* ioc_gone's update must be visible before reading ioc_count */
+diff --git a/block/cfq-iosched.h b/block/cfq-iosched.h
+deleted file mode 100644
+index ef7b479..0000000
+--- a/block/cfq-iosched.h
++++ /dev/null
+@@ -1,7 +0,0 @@
+-#ifndef CFQ_IOSCHED_H
+-#define CFQ_IOSCHED_H
+-
+-void cfq_unlink_blkio_group(void *, struct blkio_group *);
+-void cfq_update_blkio_group_weight(struct blkio_group *, unsigned int);
+-
+-#endif

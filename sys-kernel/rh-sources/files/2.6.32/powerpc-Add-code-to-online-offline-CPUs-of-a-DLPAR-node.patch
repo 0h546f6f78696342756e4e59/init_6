@@ -1,0 +1,181 @@
+From: Steve Best <sbest@redhat.com>
+Date: Wed, 13 Jan 2010 20:55:37 -0500
+Subject: [powerpc] Add code to online/offline CPUs of a DLPAR node
+Message-id: <20100113204857.9285.66361.sendpatchset@squad5-lp1.lab.bos.redhat.com>
+Patchwork-id: 22501
+O-Subject: [PATCH RHEL6.0 BZ539318 v3 6/8] Add code to online/offline CPUs of a
+	DLPAR node
+Bugzilla: 539318
+RH-Acked-by: David Howells <dhowells@redhat.com>
+
+RHBZ#:
+======
+https://bugzilla.redhat.com/show_bug.cgi?id=539318
+
+Description:
+============
+Patch 6/8: Add code to online/offline CPUs of a DLPAR node
+
+Currently the cpu-allocation/deallocation on pSeries is a
+
+From: Gautham R Shenoy <ego@in.ibm.com>
+
+two step process from the Userspace.
+
+- Set the indicators and update the device tree by writing to the sysfs
+  tunable "probe" during allocation and "release" during deallocation.
+- Online / Offline the CPUs of the allocated/would_be_deallocated node by
+  writing to the sysfs tunable "online".
+
+This patch adds kernel code to online/offline the CPUs soon_after/just_before
+they have been allocated/would_be_deallocated. This way, the userspace tool
+that performs DLPAR operations would only have to deal with one set of sysfs
+tunables namely "probe" and release".
+
+Signed-off-by: Gautham R Shenoy <ego@in.ibm.com>
+Signed-off-by: Nathan Fontenot <nfont@austin.ibm.com>
+Acked-by: Vaidyanathan Srinivasan <svaidy@linux.vnet.ibm.com>
+
+Upstream Patch:
+http://lkml.org/lkml/2009/10/30/10
+
+Brew:
+=====
+Built on all platforms. All patches brewed together.
+https://brewweb.devel.redhat.com/taskinfo?taskID=2191854
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/arch/powerpc/platforms/pseries/dlpar.c b/arch/powerpc/platforms/pseries/dlpar.c
+index 5ae0c68..9ba9cab 100644
+--- a/arch/powerpc/platforms/pseries/dlpar.c
++++ b/arch/powerpc/platforms/pseries/dlpar.c
+@@ -16,6 +16,7 @@
+ #include <linux/proc_fs.h>
+ #include <linux/spinlock.h>
+ #include <linux/cpu.h>
++#include "offline_states.h"
+ 
+ #include <asm/prom.h>
+ #include <asm/machdep.h>
+@@ -291,6 +292,98 @@ int dlpar_detach_node(struct device_node *dn)
+ 	return 0;
+ }
+ 
++int online_node_cpus(struct device_node *dn)
++{
++	int rc = 0;
++	unsigned int cpu;
++	int len, nthreads, i;
++	const u32 *intserv;
++
++	intserv = of_get_property(dn, "ibm,ppc-interrupt-server#s", &len);
++	if (!intserv)
++		return -EINVAL;
++
++	nthreads = len / sizeof(u32);
++
++	cpu_maps_update_begin();
++	for (i = 0; i < nthreads; i++) {
++		for_each_present_cpu(cpu) {
++			if (get_hard_smp_processor_id(cpu) != intserv[i])
++				continue;
++			BUG_ON(get_cpu_current_state(cpu)
++					!= CPU_STATE_OFFLINE);
++			cpu_maps_update_done();
++			rc = cpu_up(cpu);
++			if (rc)
++				goto out;
++			cpu_maps_update_begin();
++
++			break;
++		}
++		if (cpu == num_possible_cpus())
++			printk(KERN_WARNING "Could not find cpu to online "
++			       "with physical id 0x%x\n", intserv[i]);
++	}
++	cpu_maps_update_done();
++
++out:
++	return rc;
++
++}
++
++int offline_node_cpus(struct device_node *dn)
++{
++	int rc = 0;
++	unsigned int cpu;
++	int len, nthreads, i;
++	const u32 *intserv;
++
++	intserv = of_get_property(dn, "ibm,ppc-interrupt-server#s", &len);
++	if (!intserv)
++		return -EINVAL;
++
++	nthreads = len / sizeof(u32);
++
++	cpu_maps_update_begin();
++	for (i = 0; i < nthreads; i++) {
++		for_each_present_cpu(cpu) {
++			if (get_hard_smp_processor_id(cpu) != intserv[i])
++				continue;
++
++			if (get_cpu_current_state(cpu) == CPU_STATE_OFFLINE)
++				break;
++
++			if (get_cpu_current_state(cpu) == CPU_STATE_ONLINE) {
++				cpu_maps_update_done();
++				rc = cpu_down(cpu);
++				if (rc)
++					goto out;
++				cpu_maps_update_begin();
++				break;
++
++			}
++
++			/*
++			 * The cpu is in CPU_STATE_INACTIVE.
++			 * Upgrade it's state to CPU_STATE_OFFLINE.
++			 */
++			set_preferred_offline_state(cpu, CPU_STATE_OFFLINE);
++			BUG_ON(plpar_hcall_norets(H_PROD, intserv[i])
++								!= H_SUCCESS);
++			__cpu_die(cpu);
++			break;
++		}
++		if (cpu == num_possible_cpus())
++			printk(KERN_WARNING "Could not find cpu to offline "
++			       "with physical id 0x%x\n", intserv[i]);
++	}
++	cpu_maps_update_done();
++
++out:
++	return rc;
++
++}
++
+ #define DR_ENTITY_SENSE		9003
+ #define DR_ENTITY_PRESENT	1
+ #define DR_ENTITY_UNUSABLE	2
+@@ -387,6 +480,8 @@ static ssize_t dlpar_cpu_probe(const char *buf, size_t count)
+ 		dlpar_free_cc_nodes(dn);
+ 	}
+ 
++	rc = online_node_cpus(dn);
++
+ 	return rc ? rc : count;
+ }
+ 
+@@ -406,6 +501,12 @@ static ssize_t dlpar_cpu_release(const char *buf, size_t count)
+ 		return -EINVAL;
+ 	}
+ 
++	rc = offline_node_cpus(dn);
++	if (rc) {
++		of_node_put(dn);
++		return -EINVAL;
++	}
++
+ 	rc = dlpar_release_drc(*drc_index);
+ 	if (rc) {
+ 		of_node_put(dn);

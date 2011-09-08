@@ -1,0 +1,100 @@
+From: Jason Baron <jbaron@redhat.com>
+Date: Tue, 19 Jan 2010 22:35:43 -0500
+Subject: [perf] Fix locking for PERF_FORMAT_GROUP
+Message-id: <b68f278179c5f2266d90e076500b3e49540a3ad3.1263939115.git.jbaron@redhat.com>
+Patchwork-id: 22663
+O-Subject: [RHEL6 PATCH 7/9] - add kernel internal interface to perf counters v2
+	- Fix locking for PERF_FORMAT_GROUP
+Bugzilla: 525517
+RH-Acked-by: Larry Woodman <lwoodman@redhat.com>
+RH-Acked-by: Dave Anderson <anderson@redhat.com>
+
+commit 6f10581aeaa5543a3b7a8c7a87a064375ec357f8
+
+    perf: Fix locking for PERF_FORMAT_GROUP
+
+    We should hold event->child_mutex when iterating the inherited
+    counters, we should hold ctx->mutex when iterating siblings.
+
+    Signed-off-by: Peter Zijlstra <a.p.zijlstra@chello.nl>
+    Cc: Paul Mackerras <paulus@samba.org>
+    LKML-Reference: <20091120212509.251030114@chello.nl>
+    Signed-off-by: Ingo Molnar <mingo@elte.hu>
+
+diff --git a/kernel/perf_event.c b/kernel/perf_event.c
+index 64b98a4..10ece90 100644
+--- a/kernel/perf_event.c
++++ b/kernel/perf_event.c
+@@ -1774,6 +1774,7 @@ u64 perf_event_read_value(struct perf_event *event, u64 *enabled, u64 *running)
+ 	*enabled = 0;
+ 	*running = 0;
+ 
++	mutex_lock(&event->child_mutex);
+ 	total += perf_event_read(event);
+ 	*enabled += event->total_time_enabled +
+ 			atomic64_read(&event->child_total_time_enabled);
+@@ -1785,6 +1786,7 @@ u64 perf_event_read_value(struct perf_event *event, u64 *enabled, u64 *running)
+ 		*enabled += child->total_time_enabled;
+ 		*running += child->total_time_running;
+ 	}
++	mutex_unlock(&event->child_mutex);
+ 
+ 	return total;
+ }
+@@ -1794,10 +1796,12 @@ static int perf_event_read_group(struct perf_event *event,
+ 				   u64 read_format, char __user *buf)
+ {
+ 	struct perf_event *leader = event->group_leader, *sub;
+-	int n = 0, size = 0, ret = 0;
++	int n = 0, size = 0, ret = -EFAULT;
++	struct perf_event_context *ctx = leader->ctx;
+ 	u64 values[5];
+ 	u64 count, enabled, running;
+ 
++	mutex_lock(&ctx->mutex);
+ 	count = perf_event_read_value(leader, &enabled, &running);
+ 
+ 	values[n++] = 1 + leader->nr_siblings;
+@@ -1812,9 +1816,9 @@ static int perf_event_read_group(struct perf_event *event,
+ 	size = n * sizeof(u64);
+ 
+ 	if (copy_to_user(buf, values, size))
+-		return -EFAULT;
++		goto unlock;
+ 
+-	ret += size;
++	ret = size;
+ 
+ 	list_for_each_entry(sub, &leader->sibling_list, group_entry) {
+ 		n = 0;
+@@ -1825,11 +1829,15 @@ static int perf_event_read_group(struct perf_event *event,
+ 
+ 		size = n * sizeof(u64);
+ 
+-		if (copy_to_user(buf + size, values, size))
+-			return -EFAULT;
++		if (copy_to_user(buf + size, values, size)) {
++			ret = -EFAULT;
++			goto unlock;
++		}
+ 
+ 		ret += size;
+ 	}
++unlock:
++	mutex_unlock(&ctx->mutex);
+ 
+ 	return ret;
+ }
+@@ -1876,12 +1884,10 @@ perf_read_hw(struct perf_event *event, char __user *buf, size_t count)
+ 		return -ENOSPC;
+ 
+ 	WARN_ON_ONCE(event->ctx->parent_ctx);
+-	mutex_lock(&event->child_mutex);
+ 	if (read_format & PERF_FORMAT_GROUP)
+ 		ret = perf_event_read_group(event, read_format, buf);
+ 	else
+ 		ret = perf_event_read_one(event, read_format, buf);
+-	mutex_unlock(&event->child_mutex);
+ 
+ 	return ret;
+ }

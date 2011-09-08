@@ -1,0 +1,71 @@
+From: Steve Dickson <SteveD@redhat.com>
+Date: Thu, 18 Feb 2010 16:42:12 -0500
+Subject: [nfs] mount.nfs: Unknown error 526
+Message-id: <4B7D6DE4.4070802@RedHat.com>
+Patchwork-id: 23348
+O-Subject: [RHEL6] [PATCH]  Bug 561975 -  mount.nfs: Unknown error 526
+Bugzilla: 561975
+
+The follow patch will revert a patch that causes v4 mounts
+to fail with "Unknown error 526"
+
+Please consider for 6.0
+
+steved.
+
+commit 260c64d23532caf19abb77e696971da05c388489
+Author: J. Bruce Fields <bfields@citi.umich.edu>
+Date:   Mon Feb 8 13:42:26 2010 -0500
+
+    Revert "nfsd4: fix error return when pseudoroot missing"
+
+    Commit f39bde24b275ddc45d fixed the error return from PUTROOTFH in the
+    case where there is no pseudofilesystem.
+
+    This is really a case we shouldn't hit on a correctly configured server:
+    in the absence of a root filehandle, there's no point accepting version
+    4 NFS rpc calls at all.
+
+    But the shared responsibility between kernel and userspace here means
+    the kernel on its own can't eliminate the possiblity of this happening.
+    And we have indeed gotten this wrong in distro's, so new client-side
+    mount code that attempts to negotiate v4 by default first has to work
+    around this case.
+
+    Therefore when commit f39bde24b275ddc45d arrived at roughly the same
+    time as the new v4-default mount code, which explicitly checked only for
+    the previous error, the result was previously fine mounts suddenly
+    failing.
+
+    We'll fix both sides for now: revert the error change, and make the
+    client-side mount workaround more robust.
+
+    Signed-off-by: J. Bruce Fields <bfields@citi.umich.edu>
+
+Signed-off-by: Aristeu Rozanski <arozansk@redhat.com>
+
+diff --git a/fs/nfsd/export.c b/fs/nfsd/export.c
+index ecd9172..7b2147d 100644
+--- a/fs/nfsd/export.c
++++ b/fs/nfsd/export.c
+@@ -1325,19 +1325,11 @@ rqst_exp_parent(struct svc_rqst *rqstp, struct path *path)
+ 
+ static struct svc_export *find_fsidzero_export(struct svc_rqst *rqstp)
+ {
+-	struct svc_export *exp;
+ 	u32 fsidv[2];
+ 
+ 	mk_fsid(FSID_NUM, fsidv, 0, 0, 0, NULL);
+ 
+-	exp = rqst_exp_find(rqstp, FSID_NUM, fsidv);
+-	/*
+-	 * We shouldn't have accepting an nfsv4 request at all if we
+-	 * don't have a pseudoexport!:
+-	 */
+-	if (IS_ERR(exp) && PTR_ERR(exp) == -ENOENT)
+-		exp = ERR_PTR(-ESERVERFAULT);
+-	return exp;
++	return rqst_exp_find(rqstp, FSID_NUM, fsidv);
+ }
+ 
+ /*
