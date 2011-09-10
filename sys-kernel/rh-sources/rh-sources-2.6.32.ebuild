@@ -1171,6 +1171,10 @@ src_unpack() {
 # END OF PATCH APPLICATIONS
 
 	use reiser4 && epatch ${DISTDIR}/reiser4-for-${PV}.patch.bz2
+	use reiser4 && epatch "${FILESDIR}"/4515_reiser4-grsec.patch
+	epatch "${FILESDIR}"/4000_sierra_wireless_usbid_addition.patch
+	epatch "${FILESDIR}"/4305_sqlzma.patch
+	epatch "${FILESDIR}"/4400_logo_larry_the_cow.patch
 
 }
 
