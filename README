@@ -2,6 +2,8 @@ USE AT YOUR OWN RISK.
 
 И не говорите потом что я вас не предупреждал!
 
+I use ~core2 funtoo funtoo.org with FEATURES="mini-manifest" so on gentoo need make manifest -> scripts/generate_manifest
+
 You are supposed to be using ~amd64 or ~x86 if you use this overlay
 Please report any failure or missing dep.
 You can also request to add any ebuild.
