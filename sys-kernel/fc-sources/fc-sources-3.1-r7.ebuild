@@ -197,10 +197,11 @@ src_unpack() {
 
 	echo
 
-echo
-einfo "Apply extra patches" # my
-echo
-epatch "${FILESDIR}"/font-8x16-iso-latin-1.patch
+	echo
+	einfo "Apply extra patches" # my
+	echo
+	epatch "${FILESDIR}"/acpi-ec-add-delay-before-write.patch
+	epatch "${FILESDIR}"/font-8x16-iso-latin-1.patch
 
 # Unfortunately, it has yet not been ported into 3.0 kernel.
 # Check out here for the progress: http://www.kernel.org/pub/linux/kernel/people/edward/reiser4/
