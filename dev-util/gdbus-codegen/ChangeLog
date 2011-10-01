@@ -1,0 +1,9 @@
+# Copyright 1999-2011 Gentoo Foundation
+# Distributed under the terms of the GNU General Public License v2
+# $Header: $
+
+*gdbus-codegen-2.30.0 (27 Sep 2011)
+
+  27 Sep 2011; Nirbheek Chauhan <nirbheek@gentoo.org>
+  +gdbus-codegen-2.30.0.ebuild, +metadata.xml:
+  Move from GNOME overlay for GNOME 3.2. Ebuild by tetromino.
