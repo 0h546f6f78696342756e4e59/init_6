@@ -3,7 +3,6 @@
 # Written by Kasper Sandberg
 # Released under the General Public License v2
 
-#source /sbin/functions.sh
 source /usr/lib64/portage/bin/isolated-functions.sh
 
 cd /usr/src/linux
@@ -71,10 +70,12 @@ ebegin "Beginning installation procedure for \"${FULLVER}\""
 				mount /boot
 			eend $?
 		fi
-		einfo "  Copying bzImage to \"/boot/${FULLVER}-${BUILDNO}\""
+		einfo "  Copying bzImage to \"/boot/vmlinuz-${FULLVER}-${BUILDNO}\""
 			cp arch/${ARCH}/boot/bzImage /boot/vmlinuz-${FULLVER}-${BUILDNO}
 		einfo "  Copying System.map to \"/boot/System.map-${FULLVER}\""
 			cp System.map /boot/System.map-${FULLVER}
+		einfo "  Copying .config to \"/boot/config-${FULLVER}\""
+			cp .config /boot/config-${FULLVER}
 		if [[ ${MODULESUPPORT} != "" ]]; then
 			einfo "  Installing modules to \"/lib/modules/${FULLVER}/\""
 				make modules_install &> /tmp/installkernel/modules_install.log
@@ -83,8 +84,8 @@ ebegin "Beginning installation procedure for \"${FULLVER}\""
 
 	if [[ -e /var/lib/module-rebuild/moduledb && $(cat /var/lib/module-rebuild/moduledb | wc -l) -ge 1 ]]; then
 		ebegin " Looking for external kernel modules that need rebuilding"
-			for EXTKERNMOD in $(sed -e 's/.:.://g' /var/lib/module-rebuild/moduledb) ; do
-				if [[ $(find /boot/${FULLVER}-${BUILDNO} -newer /var/db/pkg/${EXTKERNMOD}/environment.bz2 2>/dev/null) != "" ]]; then
+			for EXTKERNMOD in $(sed -e 's/.:.://g' /var/lib/module-rebuild/moduledb); do
+				if [[ $(find /boot/vmlinuz-${FULLVER}-${BUILDNO} -newer /var/db/pkg/${EXTKERNMOD}/environment.bz2 2>/dev/null) != "" ]]; then
 					ebegin "  Recompiling outdated module \"${EXTKERNMOD}\""
 						emerge --oneshot =${EXTKERNMOD} >> /tmp/installkernel/extmodules.log 2>&1
 					eend $?
@@ -93,10 +94,10 @@ ebegin "Beginning installation procedure for \"${FULLVER}\""
 		eend $?
 	fi
 
-	if [[ -e "/boot/grub/grub.conf.template" ]]; then
+	if [[ -e "/etc/boot.conf" ]]; then
 		ebegin " Grub template found, Editing kernel entry in GRUB"
-			cp /boot/grub/grub.conf.template /boot/grub/grub.conf
-			sed -i s/REPLACEME/${FULLVER}-${BUILDNO}/g /boot/grub/grub.conf
+			boot-update;
 		eend $?
 	fi
+
 eend $?
