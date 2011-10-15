@@ -1,10 +1,12 @@
 # Copyright 1999-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header: /var/cvsroot/gentoo-x86/dev-libs/glib/glib-2.30.0.ebuild,v 1.3 2011/10/06 08:52:18 ssuominen Exp $
+# $Header: /var/cvsroot/gentoo-x86/dev-libs/glib/glib-2.28.8.ebuild,v 1.17 2011/10/05 16:51:48 xarthisius Exp $
 
-EAPI="4"
+EAPI="3"
+GNOME_TARBALL_SUFFIX="xz"
+PYTHON_DEPEND="2"
 
-inherit autotools gnome.org libtool eutils flag-o-matic multilib pax-utils virtualx
+inherit autotools gnome.org libtool eutils multilib flag-o-matic pax-utils python virtualx
 
 DESCRIPTION="The GLib library of C routines"
 HOMEPAGE="http://www.gtk.org/"
@@ -13,30 +15,30 @@ SRC_URI="${SRC_URI}
 
 LICENSE="LGPL-2"
 SLOT="2"
-IUSE="debug doc fam selinux +static-libs systemtap test xattr"
-KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~m68k ~mips ~ppc ~ppc64 ~s390 ~sh
-~sparc ~x86 ~sparc-fbsd ~x86-fbsd ~x86-linux"
+KEYWORDS="alpha amd64 arm ~hppa ia64 m68k ~mips ppc ppc64 s390 sh sparc x86 ~sparc-fbsd ~x86-fbsd ~x86-linux"
+IUSE="debug doc fam +introspection selinux +static-libs test xattr"
 
 RDEPEND="virtual/libiconv
-	virtual/libffi
 	sys-libs/zlib
 	xattr? ( sys-apps/attr )
 	fam? ( virtual/fam )"
 DEPEND="${RDEPEND}
 	>=sys-devel/gettext-0.11
-	>=dev-util/gtk-doc-am-1.15
+	>=dev-util/gtk-doc-am-1.13
 	doc? (
 		>=dev-libs/libxslt-1.0
-		>=dev-util/gtk-doc-1.15
+		>=dev-util/gtk-doc-1.13
 		~app-text/docbook-xml-dtd-4.1.2 )
-	systemtap? ( >=dev-util/systemtap-1.3 )
-	test? (
-		>=dev-util/gdbus-codegen-2.30.0
-		>=sys-apps/dbus-1.2.14 )
+	test? ( >=sys-apps/dbus-1.2.14 )
 	!<dev-util/gtk-doc-1.15-r2"
-PDEPEND="!<gnome-base/gvfs-1.6.4-r990" # Earlier versions do not work with glib
+PDEPEND="introspection? ( dev-libs/gobject-introspection )
+	!<gnome-base/gvfs-1.6.4-r990" # Earlier versions do not work with glib
 
 # XXX: Consider adding test? ( sys-devel/gdb ); assert-msg-test tries to use it
+
+pkg_setup() {
+	python_set_active_version 2
+}
 
 src_prepare() {
 	mv -vf "${WORKDIR}"/pkg-config-*/pkg.m4 "${WORKDIR}"/ || die
@@ -57,12 +59,20 @@ src_prepare() {
 	# Fix gmodule issues on fbsd; bug #184301
 	epatch "${FILESDIR}"/${PN}-2.12.12-fbsd.patch
 
+	# Don't check for python, hence removing the build-time python dep.
+	# We remove the gdb python scripts in src_install due to bug 291328
+	epatch "${FILESDIR}/${PN}-2.25-punt-python-check.patch"
+
 	# Fix test failure when upgrading from 2.22 to 2.24, upstream bug 621368
 	epatch "${FILESDIR}/${PN}-2.24-assert-test-failure.patch"
 
 	# Do not try to remove files on live filesystem, upstream bug #619274
 	sed 's:^\(.*"/desktop-app-info/delete".*\):/*\1*/:' \
 		-i "${S}"/gio/tests/desktop-app-info.c || die "sed failed"
+
+	# Disable failing tests, upstream bug #???
+	epatch "${FILESDIR}/${PN}-2.26.0-disable-locale-sensitive-test.patch"
+	epatch "${FILESDIR}/${PN}-2.26.0-disable-volumemonitor-broken-test.patch"
 
 	if ! use test; then
 		# don't waste time building tests
@@ -77,17 +87,23 @@ src_prepare() {
 			sed -i -e "/desktop-app-info\/fallback/d" gio/tests/desktop-app-info.c || die
 			sed -i -e "/desktop-app-info\/lastused/d" gio/tests/desktop-app-info.c || die
 		fi
+
+		# Disable tests requiring dev-python/dbus-python, bug #349236
+		if ! has_version dev-python/dbus-python ; then
+			ewarn "Some tests will be skipped due dev-python/dbus-python not being present on your system,"
+			ewarn "think on installing it to get these tests run."
+			sed -i -e "/connection\/filter/d" gio/tests/gdbus-connection.c || die
+			sed -i -e "/connection\/large_message/d" gio/tests/gdbus-connection-slow.c || die
+			sed -i -e "/gdbus\/proxy/d" gio/tests/gdbus-proxy.c || die
+			sed -i -e "/gdbus\/bus-watch-name/d" gio/tests/gdbus-names.c || die
+			sed -i -e "/gdbus\/proxy-well-known-name/d" gio/tests/gdbus-proxy-well-known-name.c || die
+			sed -i -e "/gdbus\/introspection-parser/d" gio/tests/gdbus-introspection.c || die
+			sed -i -e "/gdbus\/method-calls-in-thread/d" gio/tests/gdbus-threading.c || die
+		fi
 	fi
-
-	# gdbus-codegen is a separate package
-	epatch "${FILESDIR}/${PN}-2.29.18-external-gdbus-codegen.patch"
-
-	# disable pyc compiling
-	ln -sfn $(type -P true) py-compile
 
 	# Needed for the punt-python-check patch, disabling timeout test
 	# Also needed to prevent croscompile failures, see bug #267603
-	# Also needed for the no-gdbus-codegen patch
 	AT_M4DIR="${WORKDIR}" eautoreconf
 
 	[[ ${CHOST} == *-freebsd* ]] && elibtoolize
@@ -100,8 +116,6 @@ src_configure() {
 	if ! has_version dev-util/pkgconfig; then
 		export DBUS1_CFLAGS="-I/usr/include/dbus-1.0 -I/usr/$(get_libdir)/dbus-1.0/include"
 		export DBUS1_LIBS="-ldbus-1"
-		export LIBFFI_CFLAGS="-I$(echo /usr/$(get_libdir)/libffi-*/include)"
-		export LIBFFI_LIBS="-lffi"
 	fi
 
 	local myconf
@@ -120,11 +134,11 @@ src_configure() {
 		$(use_enable fam) \
 		$(use_enable selinux) \
 		$(use_enable static-libs static) \
-		$(use_enable systemtap dtrace) \
-		$(use_enable systemtap systemtap) \
 		--enable-regex \
 		--with-pcre=internal \
-		--with-threads=posix
+		--with-threads=posix \
+		--disable-dtrace \
+		--disable-systemtap
 }
 
 src_install() {
@@ -174,12 +188,14 @@ src_test() {
 
 pkg_preinst() {
 	# Only give the introspection message if:
-	# * The user has gobject-introspection
+	# * The user has it enabled
 	# * Has glib already installed
 	# * Previous version was different from new version
-	if has_version "dev-libs/gobject-introspection" && ! has_version "=${CATEGORY}/${PF}"; then
-		ewarn "You must rebuild gobject-introspection so that the installed"
-		ewarn "typelibs and girs are regenerated for the new APIs in glib"
+	if use introspection && has_version "${CATEGORY}/${PN}"; then
+		if ! has_version "=${CATEGORY}/${PF}"; then
+			ewarn "You must rebuild gobject-introspection so that the installed"
+			ewarn "typelibs and girs are regenerated for the new APIs in glib"
+		fi
 	fi
 }
 
@@ -188,13 +204,5 @@ pkg_postinst() {
 	if has_version dev-libs/dbus-glib; then
 		ewarn "If you experience a breakage after updating dev-libs/glib try"
 		ewarn "rebuilding dev-libs/dbus-glib"
-	fi
-
-	if has_version '<x11-libs/gtk+-3.0.12:3'; then
-		# To have a clear upgrade path for gtk+-3.0.x users, have to resort to
-		# a warning instead of a blocker
-		ewarn
-		ewarn "Using <gtk+-3.0.12:3 with ${P} results in frequent crashes."
-		ewarn "You should upgrade to a newer version of gtk+:3 immediately."
 	fi
 }
