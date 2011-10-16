@@ -1,6 +1,6 @@
 # Copyright 1999-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header: /var/cvsroot/gentoo-x86/dev-libs/glib/glib-1.2.10-r5.ebuild,v 1.54 2011/06/05 13:12:30 pacho Exp $
+# $Header: $
 
 inherit autotools libtool flag-o-matic eutils portability
 

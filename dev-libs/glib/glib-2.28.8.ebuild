@@ -1,6 +1,6 @@
 # Copyright 1999-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Header: /var/cvsroot/gentoo-x86/dev-libs/glib/glib-2.28.8.ebuild,v 1.17 2011/10/05 16:51:48 xarthisius Exp $
+# $Header: $
 
 EAPI="3"
 GNOME_TARBALL_SUFFIX="xz"
