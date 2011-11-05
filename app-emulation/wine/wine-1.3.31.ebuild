@@ -113,6 +113,10 @@ src_unpack() {
 src_prepare() {
 	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
 	epatch "${FILESDIR}"/${PN}-disables-DS3DMODE_NORMAL.patch
+	# wine pulsaudio
+#	epatch "${FILESDIR}"/${PN}pulse-0.40.patch
+#	epatch "${FILESDIR}"/${PN}pulse-configure.ac-1.3.22.patch
+#	epatch "${FILESDIR}"/${PN}pulse-winecfg-1.3.11.patch
 	epatch_user #282735
 	sed -i '/^UPDATE_DESKTOP_DATABASE/s:=.*:=true:' tools/Makefile.in || die
 	sed -i '/^MimeType/d' tools/wine.desktop || die #117785
