@@ -9,15 +9,15 @@ ETYPE="sources"
 CKV=`date +%F`
 K_SECURITY_UNSUPPORTED="1"
 
-inherit kernel-2 git
+inherit kernel-2 git-2
 detect_version
 
 K_NOUSENAME="yes"
 K_NOSETEXTRAVERSION="yes"
 K_SECURITY_UNSUPPORTED="1"
 
-EGIT_REPO_URI="git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux-2.6.git"
-EGIT_PROJECT="linux-2.6"
+EGIT_REPO_URI="git://github.com/torvalds/linux.git"
+EGIT_PROJECT="linux"
 
 DESCRIPTION="Full sources for the Linux kernel"
 HOMEPAGE="http://www.kernel.org"
