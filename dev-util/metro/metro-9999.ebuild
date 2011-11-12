@@ -4,7 +4,7 @@
 
 EAPI="2"
 
-inherit git
+inherit git-2
 
 
 DESCRIPTION="release metatool used for creating Gentoo and Funtoo releases"
