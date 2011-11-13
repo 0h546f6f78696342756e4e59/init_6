@@ -6,24 +6,24 @@ EAPI="2"
 
 inherit eutils multilib versionator linux-mod flag-o-matic nvidia-driver
 
-#X86_NV_PACKAGE="NVIDIA-Linux-x86-${PV}"
+X86_NV_PACKAGE="NVIDIA-Linux-x86-${PV}"
 AMD64_NV_PACKAGE="NVIDIA-Linux-x86_64-${PV}"
-#X86_FBSD_NV_PACKAGE="NVIDIA-FreeBSD-x86-${PV}"
+X86_FBSD_NV_PACKAGE="NVIDIA-FreeBSD-x86-${PV}"
 
 DESCRIPTION="NVIDIA X11 driver and GLX libraries"
 HOMEPAGE="http://www.nvidia.com/"
-SRC_URI="
+SRC_URI="x86? ( ftp://download.nvidia.com/XFree86/Linux-x86/${PV}/${X86_NV_PACKAGE}.run )
 	 amd64? ( ftp://download.nvidia.com/XFree86/Linux-x86_64/${PV}/${AMD64_NV_PACKAGE}.run )
-"
+	 x86-fbsd? ( ftp://download.nvidia.com/XFree86/FreeBSD-x86/${PV}/${X86_FBSD_NV_PACKAGE}.tar.gz )"
 
 LICENSE="NVIDIA"
 SLOT="0"
-KEYWORDS="-* ~amd64"
+KEYWORDS="-* ~amd64 ~x86 ~x86-fbsd"
 IUSE="acpi custom-cflags gtk multilib kernel_linux"
 RESTRICT="strip"
 EMULTILIB_PKG="true"
 
-COMMON="<x11-base/xorg-server-1.10.99
+COMMON="<x11-base/xorg-server-1.11.99
 	kernel_linux? ( >=sys-libs/glibc-2.6.1 )
 	multilib? ( app-emulation/emul-linux-x86-xlibs )
 	>=app-admin/eselect-opengl-1.0.9
@@ -209,7 +209,7 @@ pkg_setup() {
 		linux-mod_pkg_setup
 		MODULE_NAMES="nvidia(video:${S}/kernel)"
 		BUILD_PARAMS="IGNORE_CC_MISMATCH=yes V=1 SYSSRC=${KV_DIR} \
-		SYSOUT=${KV_OUT_DIR} HOST_CC=$(tc-getBUILD_CC)"
+		SYSOUT=${KV_OUT_DIR} CC=$(tc-getBUILD_CC)"
 		mtrr_check
 		lockdep_check
 	fi
@@ -280,7 +280,6 @@ src_prepare() {
 			-e 's:-Wsign-compare::g' \
 			"${NV_SRC}"/Makefile.kbuild
 
-		# Add support for the 'x86' unified kernel arch in conftest.sh
 		epatch "${FILESDIR}"/256.35-unified-arch.patch
 
 		# If you set this then it's your own fault when stuff breaks :)
@@ -333,21 +332,30 @@ src_install() {
 	# NVIDIA kernel <-> userspace driver config lib
 	dolib.so ${NV_LIB}/libnvidia-cfg.so.${NV_SOVER} || \
 		die "failed to install libnvidia-cfg"
-	dosym /usr/$(get_libdir)/libnvidia-cfg.so.${NV_SOVER} \
+	dosym libnvidia-cfg.so.${NV_SOVER} \
+		/usr/$(get_libdir)/libnvidia-cfg.so.1 || \
+		die "failed to create libnvidia-cfg.so symlink"
+	dosym libnvidia-cfg.so.1 \
 		/usr/$(get_libdir)/libnvidia-cfg.so || \
 		die "failed to create libnvidia-cfg.so symlink"
 
 	# NVIDIA monitoring library
 	dolib.so ${NV_LIB}/libnvidia-ml.so.${NV_SOVER} || \
 		die "failed to install libnvidia-ml"
-	dosym /usr/$(get_libdir)/libnvidia-ml.so.${NV_SOVER} \
+	dosym libnvidia-ml.so.${NV_SOVER} \
+		/usr/$(get_libdir)/libnvidia-ml.so.1 || \
+		die "failed to create libnvidia-ml.so symlink"
+	dosym libnvidia-ml.so.1 \
 		/usr/$(get_libdir)/libnvidia-ml.so || \
 		die "failed to create libnvidia-ml.so symlink"
 
 	# NVIDIA video decode <-> CUDA
 	dolib.so ${NV_LIB}/libnvcuvid.so.${NV_SOVER} || \
 		die "failed to install libnvcuvid.so"
-	dosym /usr/$(get_libdir)/libnvcuvid.so.${NV_SOVER} \
+	dosym libnvcuvid.so.${NV_SOVER} \
+		/usr/$(get_libdir)/libnvcuvid.so.1 || \
+		die "failed to create libnvcuvid.so symlink"
+	dosym libnvcuvid.so.1 \
 		/usr/$(get_libdir)/libnvcuvid.so || \
 		die "failed to create libnvcuvid.so symlink"
 
@@ -359,7 +367,7 @@ src_install() {
 	insinto /usr/$(get_libdir)/opengl/nvidia/extensions
 	doins ${NV_X11_EXT}/libglx.so.${NV_SOVER} || \
 		die "failed to install libglx.so"
-	dosym /usr/$(get_libdir)/opengl/nvidia/extensions/libglx.so.${NV_SOVER} \
+	dosym libglx.so.${NV_SOVER} \
 		/usr/$(get_libdir)/opengl/nvidia/extensions/libglx.so || \
 		die "failed to create libglx.so symlink"
 
@@ -368,8 +376,14 @@ src_install() {
 		die "failed to install libXvMCNVIDIA.so"
 	dolib.so ${NV_X11}/libXvMCNVIDIA.so.${NV_SOVER} || \
 		die "failed to install libXvMCNVIDIA.so"
-	dosym libXvMCNVIDIA.so.${NV_SOVER} /usr/$(get_libdir)/libXvMCNVIDIA.so || \
+	dosym libXvMCNVIDIA.so.${NV_SOVER} \
+		/usr/$(get_libdir)/libXvMCNVIDIA.so.1 || \
 		die "failed to create libXvMCNVIDIA.so symlink"
+	dosym libXvMCNVIDIA.so.1 /usr/$(get_libdir)/libXvMCNVIDIA.so || \
+		die "failed to create libXvMCNVIDIA.so symlink"
+	dosym libXvMCNVIDIA.so.${NV_SOVER} \
+		/usr/$(get_libdir)/libXvMCNVIDIA_dynamic.so.1 || \
+		die "failed to create libXvMCNVIDIA_dynamic.so symlink"
 
 	# OpenCL ICD for NVIDIA
 	if use kernel_linux; then
