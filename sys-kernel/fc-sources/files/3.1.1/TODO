@@ -1,25 +1,11 @@
 **** Queued for 3.2 ***********************************************************************************
 
-* linux-2.6-debug-taint-vm.patch
-* epoll-fix-spurious-lockdep-warnings.patch
-* hvcs_pi_buf_alloc.patch
 * acpi-ensure-thermal-limits-match-cpu-freq.patch
-* rcu-avoid-just-onlined-cpu-resched.patch
-* rcutree-avoid-false-quiescent-states.patch
 * revert-efi-rtclock.patch
 * block-stray-block-put-after-teardown.patch
-* crypto-register-cryptd-first.patch
 * efi-dont-map-boot-services-on-32bit.patch
-* powerpc-Fix-deadlock-in-icswx-code.patch
-* udlfb-bind-framebuffer-to-interface.patch
-* ums-realtek-driver-uses-stack-memory-for-DMA.patch
-* usb-add-quirk-for-logitech-webcams.patch
-* add-macbookair41-keyboard.patch
-* ucvideo-fix-crash-when-linking-entities.patch
-* mmc-Always-check-for-lower-base-frequency-quirk-for-.patch (also CC'd stable)
-* 000[12]-mm-*
-* x86-efi-Calling-__pa-with-an-ioremap-address-is-invalid.patch (also CC'd to
- stable)
+* usb-add-quirk-for-logitech-webcams.patch (reworked, sent upstream)
+* epoll-limit-paths.patch (in linux-next via -mm tree)
 
 **** Other stuff that should go upstream (in decreasing likelyhood) ************************************
 
@@ -113,9 +99,3 @@
 ***********************************************************************************
 
 Spec file/config todos/cleanups
-
-* Remove all of the RHEL stuff.  It isn't maintained in fedora at all and is
-just cruft
-
-* Drop all the with_firmware stuff in the spec.  All releases should be using
-the linux-firmware package by now

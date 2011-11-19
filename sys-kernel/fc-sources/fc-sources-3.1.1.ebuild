@@ -56,6 +56,8 @@ src_unpack() {
 
 ### BRANCH APPLY ###
 
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-makefile-after_link.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/taint-vbox.patch
 
 # Architecture patches
@@ -93,9 +95,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-video-dos.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-debug-infinite-loop.patch
 	epatch "${FILESDIR}"/"${PVR}"/acpi-ensure-thermal-limits-match-cpu-freq.patch
-
-# Various low-impact patches to aid debugging.
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-debug-taint-vm.patch
+	epatch "${FILESDIR}"/"${PVR}"/acpi-sony-nonvs-blacklist.patch
 
 #
 # PCI
@@ -119,6 +119,7 @@ src_unpack() {
 
 # stop floppy.ko from autoloading during udev...
 	epatch "${FILESDIR}"/"${PVR}"/die-floppy-die.patch
+	epatch "${FILESDIR}"/"${PVR}"/floppy-Remove-_hlt-related-functions.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6.30-no-pcspkr-modalias.patch
 
@@ -138,7 +139,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-crash-driver.patch
 
 # Hack e1000e to work on Montevina SDV
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-e1000-ich9-montevina.patch
+#	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-e1000-ich9-montevina.patch # Failed
 
 # crypto/
 
@@ -148,29 +149,23 @@ src_unpack() {
 # DRM core
 
 # Nouveau DRM
-	epatch "${FILESDIR}"/"${PVR}"/drm-nouveau-updates.patch
 
 # Intel DRM
 	epatch "${FILESDIR}"/"${PVR}"/drm-intel-make-lvds-work.patch
 	epatch "${FILESDIR}"/"${PVR}"/drm-i915-sdvo-lvds-is-digital.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
 
 # silence the ACPI blacklist code
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-acpi-blacklist.patch
+	epatch "${FILESDIR}"/"${PVR}"/quite-apm.patch
 
 # Patches headed upstream
-	epatch "${FILESDIR}"/"${PVR}"/rcutree-avoid-false-quiescent-states.patch
-
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/add-appleir-usb-driver.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/udlfb-bind-framebuffer-to-interface.patch
-	epatch "${FILESDIR}"/"${PVR}"/rcu-avoid-just-onlined-cpu-resched.patch
+#	epatch "${FILESDIR}"/"${PVR}"/epoll-limit-paths.patch # Failed
 	epatch "${FILESDIR}"/"${PVR}"/block-stray-block-put-after-teardown.patch
 	epatch "${FILESDIR}"/"${PVR}"/usb-add-quirk-for-logitech-webcams.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/x86-efi-Calling-__pa-with-an-ioremap-address-is-invalid.patch
 
 # rhbz#605888
 	epatch "${FILESDIR}"/"${PVR}"/dmar-disable-when-ricoh-multifunction.patch
@@ -178,13 +173,27 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/revert-efi-rtclock.patch
 	epatch "${FILESDIR}"/"${PVR}"/efi-dont-map-boot-services-on-32bit.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/hvcs_pi_buf_alloc.patch
+#rhbz 751165
+	epatch "${FILESDIR}"/"${PVR}"/ip6_tunnel-copy-parms.name-after-register_netdevice.patch
 
-#rhbz #735946
-	epatch "${FILESDIR}"/"${PVR}"/0001-mm-vmscan-Limit-direct-reclaim-for-higher-order-allo.patch
-	epatch "${FILESDIR}"/"${PVR}"/0002-mm-Abort-reclaim-compaction-if-compaction-can-procee.patch
+# utrace.
+#	epatch "${FILESDIR}"/"${PVR}"/utrace.patch # Failed
 
-# END OF PATCH APPLICATIONS
+#rhbz 750402
+	epatch "${FILESDIR}"/"${PVR}"/oom-fix-integer-overflow-of-points.patch
+
+# Add msi irq ennumeration in sysfs for devices
+	epatch "${FILESDIR}"/"${PVR}"/sysfs-msi-irq-per-device.patch
+
+# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
+#	epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch # Failed
+
+	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch
+
+#rhbz 753236
+	epatch "${FILESDIR}"/"${PVR}"/nfsv4-include-bitmap-in-nfsv4_get_acl_data.patch
+
+### END OF PATCH APPLICATIONS ###
 
 	echo
 	einfo "Apply extra patches" # my
