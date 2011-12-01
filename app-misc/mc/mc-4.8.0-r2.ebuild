@@ -39,7 +39,9 @@ DEPEND="${RDEPEND}
 
 S=${WORKDIR}/${MY_P}
 
-PATCHES=("${FILESDIR}/${PN}"-4.8.0-fix-nls.patch)
+PATCHES=("${FILESDIR}/${PN}"-4.8.0-fix-nls.patch
+	"${FILESDIR}/${PN}"-4.8.0-fix-ftp-spaces.patch
+	)
 
 src_configure() {
 	local myscreen=ncurses
@@ -66,7 +68,7 @@ src_install() {
 	dodoc AUTHORS README NEWS
 
 	# fix bug #334383
-	if [[ ${EUID} == 0 ]] ; then
+	if use kernel_linux && [[ ${EUID} == 0 ]] ; then
 		fowners root:tty /usr/libexec/mc/cons.saver ||
 			die "setting cons.saver's owner failed"
 		fperms g+s /usr/libexec/mc/cons.saver ||
