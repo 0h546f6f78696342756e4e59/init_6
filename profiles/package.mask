@@ -6,4 +6,4 @@
 
 # Andrey Ovcharov <sudormrfhalt@gmail.com>
 # kernel mainline
-=sys-kernel/fc-sources-3.2-r1
+#=sys-kernel/fc-sources-3.2-r1

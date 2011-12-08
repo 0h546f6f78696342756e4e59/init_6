@@ -8,19 +8,17 @@ inherit eutils flag-o-matic multilib
 
 if [[ ${PV} == "9999" ]] ; then
 	EGIT_REPO_URI="git://source.winehq.org/git/wine.git"
-	inherit git-2 autotools
+	inherit git-2
 	SRC_URI=""
 	#KEYWORDS=""
 else
-	AUTOTOOLS_AUTO_DEPEND="no"
-	inherit autotools
 	MY_P="${PN}-${PV/_/-}"
 	SRC_URI="mirror://sourceforge/${PN}/${MY_P}.tar.bz2"
 	KEYWORDS="-* ~amd64 ~x86 ~x86-fbsd"
 	S=${WORKDIR}/${MY_P}
 fi
 
-GV="1.3"
+GV="1.4"
 DESCRIPTION="free implementation of Windows(tm) on Unix"
 HOMEPAGE="http://www.winehq.org/"
 SRC_URI="${SRC_URI}
@@ -112,11 +110,6 @@ src_unpack() {
 
 src_prepare() {
 	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
-	epatch "${FILESDIR}"/${PN}-disables-DS3DMODE_NORMAL.patch
-	# WinePulse – PulseAudio for Wine http://art.ified.ca/?page_id=40
-	#epatch "${FILESDIR}"/${PN}pulse-0.40.patch
-	#epatch "${FILESDIR}"/${PN}pulse-configure.ac-1.3.22.patch
-	#epatch "${FILESDIR}"/${PN}pulse-winecfg-1.3.11.patch
 	epatch_user #282735
 	sed -i '/^UPDATE_DESKTOP_DATABASE/s:=.*:=true:' tools/Makefile.in || die
 	sed -i '/^MimeType/d' tools/wine.desktop || die #117785
