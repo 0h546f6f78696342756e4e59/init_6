@@ -111,6 +111,15 @@ src_unpack() {
 src_prepare() {
 	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
 	epatch_user #282735
+
+	epatch "${FILESDIR}"/${PN}-imagemagick-6.5.patch
+
+	# add udisks support
+	# https://bugzilla.redhat.com/show_bug.cgi?id=712755
+	# http://bugs.winehq.org/show_bug.cgi?id=21713
+	# http://source.winehq.org/patches/data/77534
+#	epatch "${FILESDIR}"/${PN}-udisks1.patch
+
 	sed -i '/^UPDATE_DESKTOP_DATABASE/s:=.*:=true:' tools/Makefile.in || die
 	sed -i '/^MimeType/d' tools/wine.desktop || die #117785
 }
