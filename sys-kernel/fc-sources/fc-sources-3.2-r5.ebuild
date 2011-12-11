@@ -12,7 +12,7 @@ K_SECURITY_UNSUPPORTED="1"
 #CKV="${PVR/-r/-git}"
 # only use this if it's not an _rc/_pre release
 #[ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
-CKV="3.2-rc4"
+CKV="3.2-rc5"
 
 ETYPE="sources"
 
@@ -194,7 +194,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/nfsv4-include-bitmap-in-nfsv4_get_acl_data.patch
 
 #rhbz 755154
-	epatch "${FILESDIR}"/"${PVR}"/rtlwifi-fix-lps_lock-deadlock.patch
+#	epatch "${FILESDIR}"/"${PVR}"/rtlwifi-fix-lps_lock-deadlock.patch # Failed
 
 # END OF PATCH APPLICATIONS
 
