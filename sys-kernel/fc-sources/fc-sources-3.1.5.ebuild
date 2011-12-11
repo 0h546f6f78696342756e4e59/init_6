@@ -2,8 +2,6 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
-EAPI="2"
-
 K_NOUSENAME="yes"
 K_NOSETEXTRAVERSION="1"
 K_DEBLOB_AVAILABLE="0"
