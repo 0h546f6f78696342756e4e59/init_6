@@ -1,0 +1,40 @@
+# Copyright 1999-2011 Gentoo Foundation
+# Distributed under the terms of the GNU General Public License v2
+# $Header: $
+
+*cd-plugins-thirdparty-2.4-r1 (24 Oct 2011)
+
+  24 Oct 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  +cd-plugins-thirdparty-2.4-r1.ebuild:
+  Bump to EAPI=4 as python.eclass does now support this to use REQUIRED_USE.
+
+  10 Oct 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  +cd-plugins-thirdparty-2.4.ebuild:
+  Version bump to 2.4.
+
+  10 Oct 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  cd-plugins-thirdparty-2.3.ebuild:
+  Versionate upstream's tarballs.
+
+*cd-plugins-thirdparty-2.4 (10 Oct 2011)
+
+  10 Oct 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  +cd-plugins-thirdparty-2.4.ebuild:
+  Version bump to 2.4.
+
+*cd-plugins-thirdparty-2.3 (06 Oct 2011)
+
+  06 Oct 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  +cd-plugins-thirdparty-2.3.ebuild, +metadata.xml:
+  Pkg move x11-misc/cairo-dock-plugins-thirdparty ->
+  x11-plugins/cd-plugins-thirdparty.
+
+  26 Sep 2011; Dustin Polke <dustin.polke@uni-siegen.de> metadata.xml:
+  Drop <herd>no-herd</herd> from metadata.xml and add me as maintainer if
+  missing.
+
+*cairo-dock-plugins-thirdparty-2.3 (16 Sep 2011)
+
+  16 Sep 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  +cairo-dock-plugins-thirdparty-2.3.ebuild, +metadata.xml:
+  Initial import; ebuild by me.

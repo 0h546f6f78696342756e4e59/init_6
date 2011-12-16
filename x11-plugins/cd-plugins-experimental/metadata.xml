@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<use>
+		<flag name="disks">Enables the Disks applet.</flag>
+		<flag name="doncky">Enables the Doncky applet.</flag>
+		<flag name="kde">Enables the new integration in <pkg>kde-base/kde-meta</pkg> desktop.</flag>
+		<flag name="network-monitor">Enables the Network-Monitor applet.</flag>
+		<flag name="scoobydo">Enables the Scooby-Do applet.</flag>
+	</use>
+	<longdescription>cd-plugins-experimental offers official unstable plugins for cairo-dock.</longdescription>
+	<maintainer>
+		<email>dustin.polke@uni-siegen.de</email>
+		<name>Dustin Polke</name>
+	</maintainer>
+</pkgmetadata>

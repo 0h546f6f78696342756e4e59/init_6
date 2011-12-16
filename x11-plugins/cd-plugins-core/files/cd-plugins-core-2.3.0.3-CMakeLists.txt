@@ -1,0 +1,319 @@
+########### requirements ###############
+
+cmake_minimum_required (VERSION 2.6)
+find_package (PkgConfig)
+include (CheckLibraryExists)
+include (CheckIncludeFiles)
+include (CheckFunctionExists)
+include (CheckSymbolExists)
+
+########### project ###############
+
+project ("cairo-dock-plugins")
+set (VERSION "2.3.0~3")
+
+add_definitions (-std=c99 -Wstrict-prototypes -Wextra -Wwrite-strings -Wuninitialized -Werror-implicit-function-declaration) #-Wunreachable-code -Wno-unused-parameter -Wall
+add_definitions (-DGL_GLEXT_PROTOTYPES="1")
+
+############ sources tarball #############
+
+set (CPACK_SOURCE_GENERATOR "TGZ")
+set (CPACK_SOURCE_PACKAGE_FILE_NAME "${CMAKE_PROJECT_NAME}-${VERSION}")
+set (CPACK_SOURCE_IGNORE_FILES 
+	"/build/;/.bzr/;bzrignore$;/misc/;~$;${CPACK_SOURCE_IGNORE_FILES}")
+include (CPack)
+
+add_custom_target( dist
+	COMMAND ${CMAKE_MAKE_PROGRAM} package_source)
+add_custom_target(dist-bzr
+	COMMAND bzr export ${CMAKE_PROJECT_NAME}-${VERSION}.tar.gz
+	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+########### global variables ###############
+
+if( WIN32 )
+	message(FATAL_ERROR "Cairo-Dock requires an air-conditioned room. Please close Windows!")
+endif( WIN32 )
+
+set (PACKAGE ${CMAKE_PROJECT_NAME})
+set (GETTEXT_PACKAGE ${PACKAGE})
+
+# get plug-ins install dir
+execute_process(
+    COMMAND pkg-config cairo-dock --variable=pluginsdir		# /usr/lib/cairo-dock
+    OUTPUT_VARIABLE pluginsdir)
+STRING (REGEX REPLACE "\n" "" pluginsdir ${pluginsdir})  # la commande rajoute un retour chariot ...
+# get plug-ins data dir
+execute_process(
+    COMMAND pkg-config cairo-dock --variable=pluginsdatadir	# /usr/share/cairo-dock/plug-ins
+    OUTPUT_VARIABLE pluginsdatadir)
+STRING (REGEX REPLACE "\n" "" pluginsdatadir ${pluginsdatadir})
+# check that version matches with the core
+execute_process(
+    COMMAND pkg-config --modversion cairo-dock			# 2.2.0-3
+    OUTPUT_VARIABLE dock_version)
+STRING (REGEX REPLACE "\n" "" dock_version ${dock_version})
+if (NOT "${dock_version}" STREQUAL "${VERSION}")		# Version
+	MESSAGE (FATAL_ERROR "warning : version mismatch with the core : " ${VERSION} <> ${dock_version})
+endif()
+
+#if( CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT "${FORCE_LIB64}" STREQUAL "")  # 64bits and force install in lib64
+#	set (libname "lib64")
+#else()
+#	set (libname "lib${LIB_SUFFIX}")
+#endif()
+#set (libdir "${CMAKE_INSTALL_PREFIX}/${libname}/cairo-dock")	# /usr/lib
+
+# check that installation dir matches with the core
+GET_FILENAME_COMPONENT(libdir "${pluginsdir}/.." ABSOLUTE)  # /usr/lib
+GET_FILENAME_COMPONENT(prefix "${pluginsdir}/../.." ABSOLUTE)  # /usr
+if (NOT "${CMAKE_INSTALL_PREFIX}" STREQUAL "${prefix}")
+	message (STATUS "Warning : plug-ins should be installed in the same directory as the core, that is to say in ${pluginsdir}")
+	set (CMAKE_INSTALL_PREFIX "${prefix}")
+	#set (libdir "${CMAKE_INSTALL_PREFIX}/${libname}/cairo-dock")
+endif()
+
+# set internationalisation
+set (GETTEXT_PLUGINS "cairo-dock-plugins")
+set (localedir "${CMAKE_INSTALL_PREFIX}/share/locale")
+set (gaugesdir "${CMAKE_INSTALL_PREFIX}/share/cairo-dock/gauges")
+
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake_modules/")  # additionnal FindPackage files
+
+########### dependancies ###############
+
+message ("")
+message (STATUS "=====================")
+message (STATUS "Check dependencies...")
+message (STATUS "=====================")
+message ("")
+
+pkg_check_modules ("PACKAGE" REQUIRED "gtk+-2.0" "gthread-2.0" "cairo" "librsvg-2.0" "dbus-1" "dbus-glib-1" "libxml-2.0" "gtkglext-1.0" "cairo-dock")
+
+#############    GLIB    #################
+pkg_check_modules (GLIB glib-2.0)
+	STRING (REGEX REPLACE "\\..*" "" GLIB_MAJOR "${GLIB_VERSION}") # 2.28.3 => 2
+	STRING (REGEX REPLACE "[0-9]*\\.([^ ]+)" "\\1" GLIB_MINOR "${GLIB_VERSION}")  # 2.28.3 => 2.28
+	STRING (REGEX REPLACE "\\.[0-9]*" "" GLIB_MINOR "${GLIB_MINOR}") # 2.28 => 28
+	STRING (REGEX REPLACE ".*\\." "" GLIB_NANO "${GLIB_VERSION}") # 2.28.3 => 3
+	STRING (REGEX REPLACE "-.*" "" GLIB_NANO "${GLIB_NANO}")
+
+############# ANIMATED ICONS #################
+set (GETTEXT_ANIMATED_ICONS ${GETTEXT_PLUGINS})
+set (VERSION_ANIMATED_ICONS "1.0.10")
+set (PACKAGE_ANIMATED_ICONS "cd-Animated-icons")
+set (animated_iconsdatadir "${pluginsdatadir}/Animated-icons")
+configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Animated-icons/data/Animated-icons.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Animated-icons/data/Animated-icons.conf)
+add_subdirectory (Animated-icons)
+
+############# DBUS #################
+if (WITH_PYTHON-INTERFACE)
+	find_program (PYTHON_EXECUTABLE python)
+	EXECUTE_PROCESS(COMMAND ${PYTHON_EXECUTABLE} -c "import sys; print sys.version" OUTPUT_VARIABLE PYTHON_VERSION)
+	if ("${PYTHON_VERSION}" STREQUAL "") 
+		message (FATAL_ERROR "Could not find Python!") 
+	endif() 
+	STRING (REGEX REPLACE "\n" "" PYTHON_VERSION ${PYTHON_VERSION})
+	message (STATUS "Python Version: ${PYTHON_VERSION}") 
+	GET_FILENAME_COMPONENT(DEBIAN_VERSION /etc/debian_version ABSOLUTE) 
+	if (EXISTS ${DEBIAN_VERSION}) 
+		message (STATUS "  will use '--install-layout deb' with 'python setup.py install'") 
+		set (DEBIAN_INSTALL_LAYOUT "--install-layout deb")
+	endif()
+	set (PYTHON_FOUND "TRUE")
+	set (with_python "yes")
+else()
+	set (with_python "no")
+endif()
+
+# find_package(Ruby) found libs of ruby-dev but we only need a directory where we can install ruby libs.
+if (WITH_RUBY-INTERFACE)
+	find_program (RUBY_EXECUTABLE ruby)
+	EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print Config::CONFIG['rubylibdir']"
+		OUTPUT_VARIABLE RUBY_LIB_DIR)
+	message (STATUS "RUBY_LIBRARY: ${RUBY_LIB_DIR}")
+	if ("${RUBY_LIB_DIR}" STREQUAL "" OR "${RUBY_LIB_DIR}" STREQUAL "nil")
+		message (FATAL_ERROR "Could not find ruby libs!")
+	endif()
+	string (REGEX REPLACE "lib/ruby/[0-9].[0-9]" "" RUBY_LIB_DIR_INSTALL "${RUBY_LIB_DIR}")
+	string (REGEX REPLACE "${RUBY_LIB_DIR_INSTALL}" "" RUBY_LIB_DIR_INSTALL "${RUBY_LIB_DIR}")
+	set (RUBY_LIB_DIR "${CMAKE_INSTALL_PREFIX}/${RUBY_LIB_DIR_INSTALL}")
+	message (STATUS "  will be installed in: ${RUBY_LIB_DIR}")
+	set (RUBY_FOUND "TRUE")
+	set (with_ruby "yes")
+else()
+	set (with_ruby "no")
+endif()
+
+#find_package (Mono)
+if (WITH_MONO-INTERFACE)
+	find_program (GMCS_EXECUTABLE gmcs)
+	if ("${GMCS_EXECUTABLE}" STREQUAL "" OR NOT EXISTS ${GMCS_EXECUTABLE})
+		message (FATAL_ERROR "Could not find Mono compiler gmcs!")
+	endif()
+	pkg_check_modules (MONO_PACKAGE glib-sharp-2.0 ndesk-dbus-1.0 ndesk-dbus-glib-1.0)
+	if ("${MONO_PACKAGE_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find glib-sharp-2.0, ndesk-dbus-1.0 or ndesk-dbus-glib-1.0!")
+	endif()
+	set (MONO_FOUND "TRUE")
+	set (with_mono "yes")
+else()
+	set (with_mono "no")
+endif()
+
+# Valac is only riquired to convert vala files to C files.
+#  So we can directly use produced files (c, h, vapi) without using valac.
+if (WITH_VALA-INTERFACE)
+	set (with_vala "yes")
+	
+	find_program (VALAC_EXE valac)
+	message (STATUS "VALAC_EXE: ${VALAC_EXE}")
+
+	if (NOT "${VALAC_EXE}" STREQUAL "VALAC_EXE-NOTFOUND") # now it works with 0.10 and 0.11 (= next 0.12)
+		execute_process(COMMAND ${VALAC_EXE} "--version"
+			OUTPUT_VARIABLE "VALA_VERSION")
+		string(REPLACE "Vala" "" "VALA_VERSION" ${VALA_VERSION})
+		string(STRIP ${VALA_VERSION} "VALA_VERSION")
+		message (STATUS "VALA_VERSION: ${VALA_VERSION}")
+
+		STRING (REGEX REPLACE "\\..*" "" VALA_MAJOR "${VALA_VERSION}")
+		# message (STATUS "VALA_MAJOR : ${VALA_MAJOR}")
+	
+		STRING (REGEX REPLACE "[0-9]*\\.([^ ]+)" "\\1" VALA_MINOR "${VALA_VERSION}")  # 0.1.7 => 1.7
+		STRING (REGEX REPLACE "\\.[0-9]*" "" VALA_MINOR "${VALA_MINOR}")
+		# message (STATUS "VALA_MINOR : ${VALA_MINOR}")
+
+		STRING (REGEX REPLACE ".*\\." "" VALA_NANO "${VALA_VERSION}")
+		STRING (REGEX REPLACE "-.*" "" VALA_NANO "${VALA_NANO}")
+		# message (STATUS "VALA_NANO  : ${VALA_NANO}")
+
+		if (${VALA_MAJOR} GREATER 0 OR ${VALA_MINOR} GREATER 9)  # vala > 0.10
+			message (STATUS " Vala compiler OK (>= 0.10).")
+			set (VALAC_FOUND "TRUE")
+			set (with_valac "yes")
+		else()
+			set (with_valac "no")
+			message (STATUS "Vala compiler is too old (0.10 required), won't build Valac interface.")
+		endif()
+	else()
+		set (with_valac "no")
+	endif()
+else()
+	set (with_vala "no")
+	set (with_valac "no")
+endif()
+
+set (GETTEXT_DBUS ${GETTEXT_PLUGINS})
+set (VERSION_DBUS "1.2.1")
+set (PACKAGE_DBUS "cd-Dbus")
+set (dbusdatadir "${pluginsdatadir}/Dbus")
+configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Dbus/data/Dbus.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Dbus/data/Dbus.conf)
+add_subdirectory (Dbus)
+
+############# DESKLET_RENDERING #################
+set (GETTEXT_DESKLET_RENDERING ${GETTEXT_PLUGINS})
+set (VERSION_DESKLET_RENDERING "1.5.6")
+set (PACKAGE_DESKLET_RENDERING "cd-desklet-rendering")
+set (desklet_renderingdatadir "${pluginsdatadir}/desklet-rendering")
+configure_file (${CMAKE_CURRENT_SOURCE_DIR}/desklet-rendering/data/desklet-rendering.conf.in ${CMAKE_CURRENT_BINARY_DIR}/desklet-rendering/data/desklet-rendering.conf)
+add_subdirectory (desklet-rendering)
+
+############# DIALOG_RENDERING #################
+set (GETTEXT_DIALOG_RENDERING ${GETTEXT_PLUGINS})
+set (VERSION_DIALOG_RENDERING "0.5.1")
+set (PACKAGE_DIALOG_RENDERING "cd-dialog-rendering")
+set (dialog_renderingdatadir "${pluginsdatadir}/dialog-rendering")
+configure_file (${CMAKE_CURRENT_SOURCE_DIR}/dialog-rendering/data/dialog-rendering.conf.in ${CMAKE_CURRENT_BINARY_DIR}/dialog-rendering/data/dialog-rendering.conf)
+add_subdirectory (dialog-rendering)
+
+############# DOCK RENDERING #################
+set (GETTEXT_RENDERING ${GETTEXT_PLUGINS})
+set (VERSION_RENDERING "1.5.9")
+set (PACKAGE_RENDERING "cd-rendering")
+set (renderingdatadir "${pluginsdatadir}/rendering")
+configure_file (${CMAKE_CURRENT_SOURCE_DIR}/dock-rendering/data/rendering.conf.in ${CMAKE_CURRENT_BINARY_DIR}/dock-rendering/data/rendering.conf)
+add_subdirectory (dock-rendering)
+
+############# DROP INDICATOR #################
+set (GETTEXT_DROP_INDICATOR ${GETTEXT_PLUGINS})
+set (VERSION_DROP_INDICATOR "1.1.4")
+set (PACKAGE_DROP_INDICATOR "cd-drop_indicator")
+set (drop_indicatordatadir "${pluginsdatadir}/drop-indicator")
+configure_file (${CMAKE_CURRENT_SOURCE_DIR}/drop-indicator/data/drop_indicator.conf.in ${CMAKE_CURRENT_BINARY_DIR}/drop-indicator/data/drop_indicator.conf)
+add_subdirectory (drop-indicator)
+
+############# GVFS-INTEGRATION #################
+if (ENABLE_GNOME-INTEGRATION OR ENABLE_XFCE-INTEGRATION)
+	pkg_check_modules ("LIBGIO" "gio-2.0")
+	add_subdirectory (gvfs-integration)
+endif()
+
+############# GNOME-INTEGRATION #################
+if (ENABLE_GNOME-INTEGRATION)
+	pkg_check_modules (GNOME_INTEGRATION gio-2.0)
+	if ("${GNOME_INTEGRATION_FOUND}" STREQUAL "")
+		message (ERROR_FATAL "Could not find gio!")
+	endif()
+	set (VERSION_GNOME_INTEGRATION "1.0.3")
+	set (PACKAGE_GNOME_INTEGRATION "cd_gnome-integration")
+	set (with_gnome_integration "yes")
+	set (gnome_integrationdatadir "${pluginsdatadir}/gnome-integration")
+	add_subdirectory ("gnome-integration")
+else()
+	set (with_gnome_integration "no")
+endif()
+
+############# ICON EFFECT #################
+set (GETTEXT_ICON_EFFECTS ${GETTEXT_PLUGINS})
+set (VERSION_ICON_EFFECTS "1.2.4")
+set (PACKAGE_ICON_EFFECTS "cd-icon-effect")
+set (icon_effectsdatadir "${pluginsdatadir}/icon-effect")
+configure_file (${CMAKE_CURRENT_SOURCE_DIR}/icon-effect/data/icon-effect.conf.in ${CMAKE_CURRENT_BINARY_DIR}/icon-effect/data/icon-effect.conf)
+add_subdirectory (icon-effect)
+
+############# ILLUSION #################
+set (GETTEXT_ILLUSION ${GETTEXT_PLUGINS})
+set (VERSION_ILLUSION "1.0.7")
+set (PACKAGE_ILLUSION "cd-illusion")
+set (illusiondatadir "${pluginsdatadir}/illusion")
+configure_file (${CMAKE_CURRENT_SOURCE_DIR}/illusion/data/illusion.conf.in ${CMAKE_CURRENT_BINARY_DIR}/illusion/data/illusion.conf)
+add_subdirectory (illusion)
+
+############# XFCE-INTEGRATION #################
+if (ENABLE_XFCE-INTEGRATION)
+	pkg_check_modules (XFCE_INTEGRATION_THUNAR thunar-vfs-1)
+#	pkg_check_modules (XFCE_INTEGRATION_GVFS gio-2.0)
+#	if ("${XFCE_INTEGRATION_THUNAR_FOUND}" STREQUAL "" AND "${XFCE_INTEGRATION_GVFS_FOUND}" STREQUAL "")
+	if ("${XFCE_INTEGRATION_THUNAR_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find thunar-vfs!")
+	endif()
+	set (VERSION_XFCE_INTEGRATION "1.0.3")
+	set (PACKAGE_XFCE_INTEGRATION "cd_xfce-integration")
+	set (with_xfce_integration "yes")
+	set (xfce_integrationdatadir "${pluginsdatadir}/xfce-integration")
+	add_subdirectory ("xfce-integration")
+else()
+	set (with_xfce_integration "no")
+endif()
+
+message ("")
+message (STATUS "===============")
+message (STATUS "Language build:")
+message (STATUS "===============")
+message ("")
+add_subdirectory (po)
+
+message ("")
+message (STATUS "===============")
+message (STATUS "Plug-ins build:")
+message (STATUS "===============")
+message ("")
+message (STATUS "Stable:")
+message (STATUS " - with Gnome support:             ${with_gnome_integration}")
+message (STATUS " - with XFCE support:              ${with_xfce_integration}")
+message (STATUS " - with Python interface:          ${with_python}")
+message (STATUS " - with Ruby interface:            ${with_ruby}")
+message (STATUS " - with Mono interface:            ${with_mono}")
+message (STATUS " - with Vala interface:            ${with_vala}")
+message (STATUS " - with Vala Translator (valac) :  ${with_valac}")
+message ("")

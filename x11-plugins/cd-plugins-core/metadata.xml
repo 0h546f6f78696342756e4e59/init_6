@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<use>
+		<flag name="gnome">Enables the integration in <pkg>gnome-base/gnome</pkg> desktop.</flag>
+		<flag name="mono">Enables Mono interface in Cairo-Dock.</flag>
+		<flag name="python">Enables Python interface in Cairo-Dock.</flag>
+		<flag name="ruby">Enables Ruby interface in Cairo-Dock.</flag>
+		<flag name="vala">Enables Vala interface in Cairo-Dock.</flag>
+		<flag name="xfce">Enables the integration in <pkg>xfce-base/xfce4</pkg> desktop.</flag>
+	</use>
+	<longdescription>cd-plugins-core offers recommended official plugins for cairo-dock.</longdescription>
+	<maintainer>
+		<email>dustin.polke@uni-siegen.de</email>
+		<name>Dustin Polke</name>
+	</maintainer>
+</pkgmetadata>
+
+

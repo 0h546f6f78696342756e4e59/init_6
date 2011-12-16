@@ -1,0 +1,398 @@
+########### requirements ###############
+
+cmake_minimum_required (VERSION 2.6)
+find_package (PkgConfig)
+include (CheckLibraryExists)
+include (CheckIncludeFiles)
+include (CheckFunctionExists)
+include (CheckSymbolExists)
+
+########### project ###############
+
+project ("cairo-dock-plugins")
+set (VERSION "@CD_VER@")
+
+add_definitions (-std=c99 -Wextra -Wwrite-strings -Wuninitialized -Werror-implicit-function-declaration) # removed for stable versions: -Wstrict-prototypes #-Wunreachable-code -Wno-unused-parameter -Wall
+add_definitions (-DGL_GLEXT_PROTOTYPES="1")
+
+############ sources tarball #############
+
+set (CPACK_SOURCE_GENERATOR "TGZ")
+set (CPACK_SOURCE_PACKAGE_FILE_NAME "${CMAKE_PROJECT_NAME}-${VERSION}")
+set (CPACK_SOURCE_IGNORE_FILES
+	"/build/;/.bzr/;bzrignore$;/misc/;~$;${CPACK_SOURCE_IGNORE_FILES}")
+include (CPack)
+
+add_custom_target(dist
+	COMMAND ${CMAKE_MAKE_PROGRAM} package_source)
+add_custom_target(dist-bzr
+	COMMAND bzr export ${CMAKE_PROJECT_NAME}-${VERSION}.tar.gz
+	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+########### global variables ###############
+
+if( WIN32 )
+	message(FATAL_ERROR "Cairo-Dock requires an air-conditioned room. Please close Windows!")
+endif( WIN32 )
+
+set (PACKAGE ${CMAKE_PROJECT_NAME})
+set (GETTEXT_PACKAGE ${PACKAGE})
+
+# get plug-ins install dir
+execute_process(
+    COMMAND pkg-config gldi --variable=pluginsdir		# /usr/lib/cairo-dock
+    OUTPUT_VARIABLE pluginsdir)
+STRING (REGEX REPLACE "\n" "" pluginsdir ${pluginsdir})  # la commande rajoute un retour chariot ...
+# get plug-ins data dir
+execute_process(
+    COMMAND pkg-config gldi --variable=pluginsdatadir	# /usr/share/cairo-dock/plug-ins
+    OUTPUT_VARIABLE pluginsdatadir)
+STRING (REGEX REPLACE "\n" "" pluginsdatadir ${pluginsdatadir})
+# check that version matches with the core
+execute_process(
+    COMMAND pkg-config --modversion gldi			# 2.2.0-3
+    OUTPUT_VARIABLE dock_version)
+STRING (REGEX REPLACE "\n" "" dock_version ${dock_version})
+if (NOT "${dock_version}" STREQUAL "${VERSION}")		# Version
+	if ("${PACKAGEMENT}" STREQUAL "")
+		MESSAGE (FATAL_ERROR "Error : version mismatch with the core : " ${VERSION} <> ${dock_version})
+	else ()
+		MESSAGE (WARNING "Warning : version mismatch with the core : " ${VERSION} <> ${dock_version})
+	endif ()
+endif()
+
+#if( CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT "${FORCE_LIB64}" STREQUAL "")  # 64bits and force install in lib64
+#	set (libname "lib64")
+#else()
+#	set (libname "lib${LIB_SUFFIX}")
+#endif()
+#set (libdir "${CMAKE_INSTALL_PREFIX}/${libname}/cairo-dock")	# /usr/lib
+
+# check that installation dir matches with the core
+GET_FILENAME_COMPONENT(libdir "${pluginsdir}/.." ABSOLUTE)  # /usr/lib
+GET_FILENAME_COMPONENT(prefix "${pluginsdir}/../.." ABSOLUTE)  # /usr
+if (NOT "${CMAKE_INSTALL_PREFIX}" STREQUAL "${prefix}")
+	message (STATUS "It seems that the current CMAKE_INSTALL_PREFIX flag is not the same that you have used with the core.")
+	message (STATUS " It will be replaced by this value: ${prefix}")
+	message (WARNING "Plug-ins should be installed in the same directory as the core, that is to say in ${pluginsdir}")
+	set (CMAKE_INSTALL_PREFIX "${prefix}")
+	#set (libdir "${CMAKE_INSTALL_PREFIX}/${libname}/cairo-dock")
+endif()
+
+# set internationalisation
+set (GETTEXT_PLUGINS "cairo-dock-plugins")
+set (localedir "${CMAKE_INSTALL_PREFIX}/share/locale")
+set (gaugesdir "${CMAKE_INSTALL_PREFIX}/share/cairo-dock/gauges")
+
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake_modules/")  # additionnal FindPackage files
+
+########### dependencies ###############
+
+message ("")
+message (STATUS "=====================")
+message (STATUS "Check dependencies...")
+message (STATUS "=====================")
+message ("")
+
+pkg_check_modules ("PACKAGE" REQUIRED "gtk+-2.0" "gthread-2.0" "cairo" "librsvg-2.0" "dbus-1" "dbus-glib-1" "libxml-2.0" "gtkglext-1.0")
+pkg_check_modules ("GLDI" REQUIRED "gldi")  # we don't want to link with gldi
+set (PACKAGE_INCLUDE_DIRS "${GLDI_INCLUDE_DIRS}")
+#message (STATUS "PACKAGE: ${PACKAGE_INCLUDE_DIRS}")
+
+#############    GLIB    #################
+pkg_check_modules (GLIB glib-2.0)
+	STRING (REGEX REPLACE "\\..*" "" GLIB_MAJOR "${GLIB_VERSION}") # 2.28.3 => 2
+	STRING (REGEX REPLACE "[0-9]*\\.([^ ]+)" "\\1" GLIB_MINOR "${GLIB_VERSION}")  # 2.28.3 => 2.28
+	STRING (REGEX REPLACE "\\.[0-9]*" "" GLIB_MINOR "${GLIB_MINOR}") # 2.28 => 28
+	STRING (REGEX REPLACE ".*\\." "" GLIB_NANO "${GLIB_VERSION}") # 2.28.3 => 3
+	STRING (REGEX REPLACE "-.*" "" GLIB_NANO "${GLIB_NANO}")
+
+############# COMPOSITE_MANAGER #################
+if (ENABLE_COMPOSITE-MANAGER-PLUGIN)
+	message (STATUS "> Composite Manager:")
+	set (GETTEXT_COMPOSITE_MANAGER ${GETTEXT_PLUGINS})
+	set (VERSION_COMPOSITE_MANAGER "1.0.0")
+	set (PACKAGE_COMPOSITE_MANAGER "cd-Composite-Manager")
+	set (composite_managerdatadir "${pluginsdatadir}/Composite-Manager")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Composite-Manager/data/Composite-Manager.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Composite-Manager/data/Composite-Manager.conf)
+	add_subdirectory (Composite-Manager)
+	set (with_composite_manager "yes")
+else()	
+	set (with_composite_manager "no")
+endif()
+
+############# DND2SHARE #################
+if (ENABLE_DND2SHARE-PLUGIN)
+	message (STATUS "> DND2Share:")
+	set (GETTEXT_DND2SHARE ${GETTEXT_PLUGINS})
+	set (VERSION_DND2SHARE "1.0.6")
+	set (PACKAGE_DND2SHARE "cd-dnd2share")
+	set (dnd2sharedatadir "${pluginsdatadir}/dnd2share")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/dnd2share/data/dnd2share.conf.in ${CMAKE_CURRENT_BINARY_DIR}/dnd2share/data/dnd2share.conf)
+	add_subdirectory (dnd2share)
+	set (with_dnd2share "yes")
+else()	
+	set (with_dnd2share "no")
+endif()
+
+############# FOLDERS #################
+if (ENABLE_FOLDERS-PLUGIN)
+	message (STATUS "> Folders:")
+	set (GETTEXT_FOLDERS ${GETTEXT_PLUGINS})
+	set (VERSION_FOLDERS "0.2.2")
+	set (PACKAGE_FOLDERS "cd-Folders")
+	set (foldersdatadir "${pluginsdatadir}/Folders")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Folders/data/Folders.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Folders/data/Folders.conf)
+	add_subdirectory (Folders)
+	set (with_folders "yes")
+else()
+	set (with_folders "no")
+endif()
+
+############# IMPULSE #################
+if (ENABLE_IMPULSE-PLUGIN)
+	message (STATUS "> Impulse:")
+	pkg_check_modules (IMPULSE_PACKAGES libpulse fftw3)
+	if ("${IMPULSE_PACKAGES_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find libpulse!")
+	endif()
+	set (GETTEXT_IMPULSE ${GETTEXT_PLUGINS})
+	set (VERSION_IMPULSE "0.0.3")
+	set (PACKAGE_IMPULSE "cd-Impulse")
+	set (with_impulse "yes")
+	set (impulsedatadir "${pluginsdatadir}/Impulse")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Impulse/data/Impulse.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Impulse/data/Impulse.conf)
+	add_subdirectory (Impulse)
+else()
+	set (with_impulse "no")
+endif()
+
+############# KEYBOARD_INDICATOR #################
+if (ENABLE_KEYBOARD-INDICATOR-PLUGIN)
+	message (STATUS "> Keyboard-Indicator:")
+	pkg_check_modules (KEYBOARD_INDICATOR_PACKAGE libxklavier)
+	if ("${KEYBOARD_INDICATOR_PACKAGE_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find libxklavier!")
+	endif()
+	set (GETTEXT_KEYBOARD_INDICATOR ${GETTEXT_PLUGINS})
+	set (VERSION_KEYBOARD_INDICATOR "1.1.4")
+	set (PACKAGE_KEYBOARD_INDICATOR "cd-keyboard-indicator")
+	set (with_keyboard_indicator "yes")
+	set (keyboard_indicatordatadir "${pluginsdatadir}/keyboard-indicator")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/keyboard-indicator/data/keyboard-indicator.conf.in ${CMAKE_CURRENT_BINARY_DIR}/keyboard-indicator/data/keyboard-indicator.conf)
+	add_subdirectory ("keyboard-indicator")
+else()
+	set (with_keyboard_indicator "no")
+endif()
+
+############# MAIL #################
+if (ENABLE_MAIL-PLUGIN)
+	message (STATUS "> Mail:")
+	# find the compilation flags
+	find_program (LIBETPAN_CONFIG_EXECUTABLE libetpan-config)
+	execute_process(
+		COMMAND libetpan-config --cflags
+		OUTPUT_VARIABLE MAIL_PACKAGE_CFLAGS)
+	if (NOT "${MAIL_PACKAGE_CFLAGS}" STREQUAL "") # if we don't want to use it, we don't want to have an error
+		STRING (REGEX MATCHALL "-I[^ ]+ " TMP_VARIABLE "${MAIL_PACKAGE_CFLAGS}") # first extract the "-I" options
+		STRING (REGEX REPLACE ";" "" TMP_VARIABLE "${TMP_VARIABLE}")
+		STRING (REGEX REPLACE " $" "" TMP_VARIABLE "${TMP_VARIABLE}")
+		STRING (REGEX REPLACE "-I([^ ]+)" "\\1" MAIL_PACKAGE_INCLUDE_DIRS "${TMP_VARIABLE}")  # then remove the "-I" string
+	endif()
+	# find the link flags
+	execute_process(
+		COMMAND libetpan-config --libs
+		OUTPUT_VARIABLE MAIL_PACKAGE_LIBS)
+	if (NOT "${MAIL_PACKAGE_LIBS}" STREQUAL "")
+		#   find the link libraries
+		STRING (REGEX MATCHALL "-l[^ ]+ " TMP_VARIABLE "${MAIL_PACKAGE_LIBS}") # extract the "-l" options
+		STRING (REGEX REPLACE ";" "" TMP_VARIABLE "${TMP_VARIABLE}")
+		STRING (REGEX REPLACE " $" "" MAIL_PACKAGE_LIBRARIES "${TMP_VARIABLE}")
+		#   find the link directories
+		STRING (REGEX MATCHALL "-L[^ ]+ " TMP_VARIABLE "${MAIL_PACKAGE_LIBS}") # extract the "-L" options
+		STRING (REGEX REPLACE ";" "" TMP_VARIABLE "${TMP_VARIABLE}")
+		STRING (REGEX REPLACE " $" "" TMP_VARIABLE "${TMP_VARIABLE}")
+		STRING (REGEX REPLACE "-L([^ ]+)" "\\1" MAIL_PACKAGE_LIBRARY_DIRS "${TMP_VARIABLE}")  # then remove the "-L" string
+	endif()
+	if ("${MAIL_PACKAGE_LIBS}" STREQUAL "")
+		message (FATAL_ERROR "Could not find libetpan!")
+	endif()
+	message (STATUS "  libetpan found. Using the following options:")
+	message (STATUS "   Include directories: ${MAIL_PACKAGE_INCLUDE_DIRS}")
+	message (STATUS "   Link directories: ${MAIL_PACKAGE_LIBRARY_DIRS}")
+	message (STATUS "   Link libraries: ${MAIL_PACKAGE_LIBRARIES}")
+	set (GETTEXT_MAIL ${GETTEXT_PLUGINS})
+	set (VERSION_MAIL "1.0.9")
+	set (PACKAGE_MAIL "cd-mail")
+	set (maildatadir "${pluginsdatadir}/mail")
+	set (with_mail "yes")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/mail/data/mail.conf.in ${CMAKE_CURRENT_BINARY_DIR}/mail/data/mail.conf)
+	add_subdirectory ("mail")
+else()
+	set (with_mail "no")
+endif()
+
+############# MUSICPLAYER #################
+if (ENABLE_MUSICPLAYER-PLUGIN)
+	message (STATUS "> MusicPlayer:")
+	set (GETTEXT_MUSICPLAYER ${GETTEXT_PLUGINS})
+	set (VERSION_MUSICPLAYER "1.1.0")
+	set (PACKAGE_MUSICPLAYER "cd-musicPlayer")
+	set (musicplayerdatadir "${pluginsdatadir}/musicPlayer")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/musicPlayer/data/musicPlayer.conf.in ${CMAKE_CURRENT_BINARY_DIR}/musicPlayer/data/musicPlayer.conf)
+	add_subdirectory (musicPlayer)
+	set (with_musicplayer "yes")
+else()
+	set (with_musicplayer "no")
+endif()
+
+############# RECENT-EVENTS #################
+if (ENABLE_RECENT-EVENTS-PLUGIN)
+	message (STATUS "> Recent-Events:")
+	pkg_check_modules (RECENT_EVENTS zeitgeist-1.0)
+	if ("${RECENT_EVENTS_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find libzeitgeist!")
+	endif()
+	set (GETTEXT_RECENT_EVENTS ${GETTEXT_PLUGINS})
+	set (VERSION_RECENT_EVENTS "1.0.0")
+	set (PACKAGE_RECENT_EVENTS "cd-Recent-Events")
+	set (with_recent_events "yes")
+	set (recent_eventsdatadir "${pluginsdatadir}/Recent-Events")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Recent-Events/data/Recent-Events.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Recent-Events/data/Recent-Events.conf)
+	add_subdirectory ("Recent-Events")
+else()
+	set (with_recent_events "no")
+endif()
+
+############# REMOTE_CONTROL #################
+if (ENABLE_REMOTE-CONTROL-PLUGIN)
+	message (STATUS "> Remote Control:")
+	set (GETTEXT_REMOTE_CONTROL ${GETTEXT_PLUGINS})
+	set (VERSION_REMOTE_CONTROL "0.0.2")
+	set (PACKAGE_REMOTE_CONTROL "cd-Remote-Control")
+	set (remote_controldatadir "${pluginsdatadir}/Remote-Control")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Remote-Control/data/Remote-Control.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Remote-Control/data/Remote-Control.conf)
+	add_subdirectory (Remote-Control)
+	set (with_remote_control "yes")
+else()
+	set (with_remote_control "no")
+endif()
+
+############# RSSREADER #################
+if (ENABLE_RSSREADER-PLUGIN)
+	message (STATUS "> RSSreader:")
+	set (GETTEXT_RSS_READER ${GETTEXT_PLUGINS})
+	set (VERSION_RSS_READER "1.0.4")
+	set (PACKAGE_RSS_READER "cd-rssreader")
+	set (rss_readerdatadir "${pluginsdatadir}/RSSreader")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/RSSreader/data/RSSreader.conf.in ${CMAKE_CURRENT_BINARY_DIR}/RSSreader/data/RSSreader.conf)
+	add_subdirectory (RSSreader)
+	set (with_rssreader "yes")
+else()
+	set (with_rssreader "no")
+endif()
+
+############# STACK #################
+if (ENABLE_STACK-PLUGIN)
+	message (STATUS "> Stack:")
+	set (GETTEXT_STACK ${GETTEXT_PLUGINS})
+	set (VERSION_STACK "0.3.2")
+	set (PACKAGE_STACK "cd-stack")
+	set (stackdatadir "${pluginsdatadir}/stack")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/stack/data/stack.conf.in ${CMAKE_CURRENT_BINARY_DIR}/stack/data/stack.conf)
+	add_subdirectory (stack)
+	set (with_stack "yes")
+else()
+	set (with_stack "no")
+endif()
+
+############# STATUS NOTIFIER #################
+if (ENABLE_STATUS-NOTIFIER-PLUGIN)
+	message (STATUS "> Status Notifier:")
+	pkg_check_modules (DBUSMENU_GTK dbusmenu-gtk)
+	if ("${DBUSMENU_GTK_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find Status-Notifier libs!")
+	endif()
+	set (GETTEXT_STATUS_NOTIFIER ${GETTEXT_PLUGINS})
+	set (VERSION_STATUS_NOTIFIER "0.1.4")
+	set (PACKAGE_STATUS_NOTIFIER "cd-status-notifier")
+	set (with_status_notifier "yes")
+	set (status_notifierdatadir "${pluginsdatadir}/Status-Notifier")
+	set (INDICATOR_OLD_NAMES 0)
+	set (INDICATOR_APPLICATIONADDED_HAS_HINT 1)
+	message (STATUS "  ApplicationAdded signal has 'Hint' = ${INDICATOR_APPLICATIONADDED_HAS_HINT}")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Status-Notifier/data/Status-Notifier.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Status-Notifier/data/Status-Notifier.conf)
+	add_subdirectory (Status-Notifier)
+	set (with_status_notifier "yes")
+else()
+	set (with_status_notifier "no")
+endif()
+
+############# SYSTEM MONITOR #################
+if (ENABLE_SYSTEM-MONITOR-PLUGIN)
+	message (STATUS "> System Monitor:")
+	find_package (Sensors)
+	if (NOT "${SENSORS_FOUND}" STREQUAL "TRUE")
+		message (FATAL_ERROR "Could not find libsensors!")
+	endif()
+	set (with_sensors "yes")
+	set (GETTEXT_SYSTEM_MONITOR ${GETTEXT_PLUGINS})
+	set (VERSION_SYSTEM_MONITOR "1.0.9")
+	set (PACKAGE_SYSTEM_MONITOR "cd-system-monitor")
+	set (system_monitordatadir "${pluginsdatadir}/System-monitor")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/System-Monitor/data/System-Monitor.conf.in ${CMAKE_CURRENT_BINARY_DIR}/System-Monitor/data/System-Monitor.conf)
+	add_subdirectory (System-Monitor)
+else()
+	set (with_sensors "no")
+endif()
+
+############# SYSTRAY #################
+if (ENABLE_SYSTRAY-PLUGIN)
+	message (STATUS "> Systray:")
+	set (GETTEXT_SYSTRAY ${GETTEXT_PLUGINS})
+	set (VERSION_SYSTRAY "0.2.3")
+	set (PACKAGE_SYSTRAY "cd-systray")
+	set (systraydatadir "${pluginsdatadir}/systray")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/systray/data/systray.conf.in ${CMAKE_CURRENT_BINARY_DIR}/systray/data/systray.conf)
+	add_subdirectory (systray)
+	set (with_systray "yes")
+else()
+	set (with_systray "no")
+endif()
+
+############# TOMBOY #################
+if (ENABLE_TOMBOY-PLUGIN)
+	message (STATUS "> Tomboy:")
+	set (GETTEXT_TOMBOY ${GETTEXT_PLUGINS})
+	set (VERSION_TOMBOY "1.3.2")
+	set (PACKAGE_TOMBOY "cd-tomboy")
+	set (tomboydatadir "${pluginsdatadir}/tomboy")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/tomboy/data/tomboy.conf.in ${CMAKE_CURRENT_BINARY_DIR}/tomboy/data/tomboy.conf)
+	add_subdirectory (tomboy)
+	set (with_tomboy "yes")
+else()
+	set (with_tomboy "no")
+endif()
+
+message ("")
+message (STATUS "===============")
+message (STATUS "Plug-ins build:")
+message (STATUS "===============")
+message ("")
+message (STATUS "Good:")
+message (STATUS " - with Composite Manager applet:  ${with_composite_manager}")
+message (STATUS " - with DND2Share applet:          ${with_dnd2share}")
+message (STATUS " - with Folders applet:            ${with_folders}")
+message (STATUS " - with Keyboard Indicator applet: ${with_keyboard_indicator}")
+message (STATUS " - with Impulse applet:            ${with_impulse}")
+message (STATUS " - with Mail applet:               ${with_mail}")
+message (STATUS " - with Musicplayer applet:        ${with_musicplayer}")
+message (STATUS " - with Recent Events applet:      ${with_recent_events}")
+message (STATUS " - with Remote Control applet:     ${with_remote_control}")
+message (STATUS " - with RSS Reader applet:         ${with_rssreader}")
+message (STATUS " - with Stack applet:              ${with_stack}")
+message (STATUS " - with Status Notifier applet:    ${with_status_notifier}")
+message (STATUS " - with System Monitor applet:     ${with_sensors}")
+message (STATUS " - with Systray applet:            ${with_systray}")
+message (STATUS " - with Tomboy applet:             ${with_tomboy}")
+message ("")

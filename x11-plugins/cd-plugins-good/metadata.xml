@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<use>
+		<flag name="compiz">Enables the Composite-Manager applet.</flag>
+		<flag name="dnd2share">Enables the DND2Share applet.</flag>
+		<flag name="folders">Enables the Folders applet.</flag>
+		<flag name="lm_sensors">Enables the System Monitor applet.</flag>
+		<flag name="mail">Enables Mail Checker applet.</flag>
+		<flag name="musicplayer">Enables the MusicPlayer applet.</flag>
+		<flag name="pulseaudio">Enables the Impulse applet.</flag>
+		<flag name="recent-events">Enables the Recent Events applet.</flag>
+		<flag name="remote-control">Enables the Remote-Control applet.</flag>
+		<flag name="rssreader">Enables the RSS Reader applet.</flag>
+		<flag name="stack">Enables the Stack applet.</flag>
+		<flag name="status-notifier">Enables the Status Notifier applet.</flag>
+		<flag name="systray">Enables the Systray applet.</flag>
+		<flag name="tomboy">Enables the Tomboy applet.</flag>
+		<flag name="xklavier">Enables Keyboard Indicator applet.</flag>
+	</use>
+	<longdescription>cd-plugins-good offers official plugins with minor flaws for cairo-dock.</longdescription>
+	<maintainer>
+		<email>dustin.polke@uni-siegen.de</email>
+		<name>Dustin Polke</name>
+	</maintainer>
+</pkgmetadata>

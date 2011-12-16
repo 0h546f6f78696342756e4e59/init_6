@@ -1,0 +1,428 @@
+########### requirements ###############
+
+cmake_minimum_required (VERSION 2.6)
+find_package (PkgConfig)
+include (CheckLibraryExists)
+include (CheckIncludeFiles)
+include (CheckFunctionExists)
+include (CheckSymbolExists)
+
+########### project ###############
+
+project ("cairo-dock-plugins")
+set (VERSION "2.3.0~3")
+
+add_definitions (-std=c99 -Wstrict-prototypes -Wextra -Wwrite-strings -Wuninitialized -Werror-implicit-function-declaration) #-Wunreachable-code -Wno-unused-parameter -Wall
+add_definitions (-DGL_GLEXT_PROTOTYPES="1")
+
+############ sources tarball #############
+
+set (CPACK_SOURCE_GENERATOR "TGZ")
+set (CPACK_SOURCE_PACKAGE_FILE_NAME "${CMAKE_PROJECT_NAME}-${VERSION}")
+set (CPACK_SOURCE_IGNORE_FILES 
+	"/build/;/.bzr/;bzrignore$;/misc/;~$;${CPACK_SOURCE_IGNORE_FILES}")
+include (CPack)
+
+add_custom_target( dist
+	COMMAND ${CMAKE_MAKE_PROGRAM} package_source)
+add_custom_target(dist-bzr
+	COMMAND bzr export ${CMAKE_PROJECT_NAME}-${VERSION}.tar.gz
+	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+########### global variables ###############
+
+if( WIN32 )
+	message(FATAL_ERROR "Cairo-Dock requires an air-conditioned room. Please close Windows!")
+endif( WIN32 )
+
+set (PACKAGE ${CMAKE_PROJECT_NAME})
+set (GETTEXT_PACKAGE ${PACKAGE})
+
+# get plug-ins install dir
+execute_process(
+    COMMAND pkg-config cairo-dock --variable=pluginsdir		# /usr/lib/cairo-dock
+    OUTPUT_VARIABLE pluginsdir)
+STRING (REGEX REPLACE "\n" "" pluginsdir ${pluginsdir})  # la commande rajoute un retour chariot ...
+# get plug-ins data dir
+execute_process(
+    COMMAND pkg-config cairo-dock --variable=pluginsdatadir	# /usr/share/cairo-dock/plug-ins
+    OUTPUT_VARIABLE pluginsdatadir)
+STRING (REGEX REPLACE "\n" "" pluginsdatadir ${pluginsdatadir})
+# check that version matches with the core
+execute_process(
+    COMMAND pkg-config --modversion cairo-dock			# 2.2.0-3
+    OUTPUT_VARIABLE dock_version)
+STRING (REGEX REPLACE "\n" "" dock_version ${dock_version})
+if (NOT "${dock_version}" STREQUAL "${VERSION}")		# Version
+	MESSAGE (FATAL_ERROR "warning : version mismatch with the core : " ${VERSION} <> ${dock_version})
+endif()
+
+#if( CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT "${FORCE_LIB64}" STREQUAL "")  # 64bits and force install in lib64
+#	set (libname "lib64")
+#else()
+#	set (libname "lib${LIB_SUFFIX}")
+#endif()
+#set (libdir "${CMAKE_INSTALL_PREFIX}/${libname}/cairo-dock")	# /usr/lib
+
+# check that installation dir matches with the core
+GET_FILENAME_COMPONENT(libdir "${pluginsdir}/.." ABSOLUTE)  # /usr/lib
+GET_FILENAME_COMPONENT(prefix "${pluginsdir}/../.." ABSOLUTE)  # /usr
+if (NOT "${CMAKE_INSTALL_PREFIX}" STREQUAL "${prefix}")
+	message (STATUS "Warning : plug-ins should be installed in the same directory as the core, that is to say in ${pluginsdir}")
+	set (CMAKE_INSTALL_PREFIX "${prefix}")
+	#set (libdir "${CMAKE_INSTALL_PREFIX}/${libname}/cairo-dock")
+endif()
+
+# set internationalisation
+set (GETTEXT_PLUGINS "cairo-dock-plugins")
+set (localedir "${CMAKE_INSTALL_PREFIX}/share/locale")
+set (gaugesdir "${CMAKE_INSTALL_PREFIX}/share/cairo-dock/gauges")
+
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake_modules/")  # additionnal FindPackage files
+
+########### dependancies ###############
+
+message ("")
+message (STATUS "=====================")
+message (STATUS "Check dependencies...")
+message (STATUS "=====================")
+message ("")
+
+pkg_check_modules ("PACKAGE" REQUIRED "gtk+-2.0" "gthread-2.0" "cairo" "librsvg-2.0" "dbus-1" "dbus-glib-1" "libxml-2.0" "gtkglext-1.0" "cairo-dock")
+
+#############    GLIB    #################
+pkg_check_modules (GLIB glib-2.0)
+	STRING (REGEX REPLACE "\\..*" "" GLIB_MAJOR "${GLIB_VERSION}") # 2.28.3 => 2
+	STRING (REGEX REPLACE "[0-9]*\\.([^ ]+)" "\\1" GLIB_MINOR "${GLIB_VERSION}")  # 2.28.3 => 2.28
+	STRING (REGEX REPLACE "\\.[0-9]*" "" GLIB_MINOR "${GLIB_MINOR}") # 2.28 => 28
+	STRING (REGEX REPLACE ".*\\." "" GLIB_NANO "${GLIB_VERSION}") # 2.28.3 => 3
+	STRING (REGEX REPLACE "-.*" "" GLIB_NANO "${GLIB_NANO}")
+
+############# ALSA_MIXER #################
+if (ENABLE_ALSA-MIXER-PLUGIN)
+	pkg_check_modules (ALSA_MIXER_PACKAGE alsa)
+	if ("${ALSA_MIXER_PACKAGE_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find alsa!")
+	endif()
+	set (GETTEXT_ALSA_MIXER ${GETTEXT_PLUGINS})
+	set (VERSION_ALSA_MIXER "1.0.12")
+	set (PACKAGE_ALSA_MIXER "cd-AlsaMixer")
+	set (with_alsa "yes")
+	set (alsa_mixerdatadir "${pluginsdatadir}/AlsaMixer")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/alsaMixer/data/AlsaMixer.conf.in ${CMAKE_CURRENT_BINARY_DIR}/alsaMixer/data/AlsaMixer.conf)
+	add_subdirectory ("alsaMixer")
+else()
+	set (with_alsa "no")
+endif()
+
+############# CAIRO_PENGUIN #################
+if (ENABLE_CAIRO-PENGUIN-PLUGIN)
+	set (GETTEXT_CAIRO_PENGUIN ${GETTEXT_PLUGINS})
+	set (VERSION_CAIRO_PENGUIN "1.1.8")
+	set (PACKAGE_CAIRO_PENGUIN "cd-Cairo-Penguin")
+	set (cairo_penguinuserdirname "Cairo-Penguin")
+	set (cairo_penguindatadir "${pluginsdatadir}/Cairo-Penguin")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Cairo-Penguin/data/Cairo-Penguin.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Cairo-Penguin/data/Cairo-Penguin.conf)
+	add_subdirectory (Cairo-Penguin)
+endif()
+
+############# CLIPPER #################
+if (ENABLE_CLIPPER-PLUGIN)
+	set (GETTEXT_CLIPPER ${GETTEXT_PLUGINS})
+	set (VERSION_CLIPPER "1.1.4")
+	set (PACKAGE_CLIPPER "cd-Clipper")
+	set (Clipperdatadir "${pluginsdatadir}/Clipper")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Clipper/data/Clipper.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Clipper/data/Clipper.conf)
+	add_subdirectory (Clipper)
+endif()
+
+############# CLOCK #################
+if (ENABLE_CLOCK-PLUGIN)
+	if (WITH_ICAL-SUPPORT)
+		pkg_check_modules ("LIBICAL_PACKAGE" "libical")
+		if ("${LIBICAL_PACKAGE_FOUND}" STREQUAL "")
+			message (FATAL_ERROR "Could not find libical!")
+		endif()
+		set (with_ical "yes")
+	else()
+		set (with_ical "no")
+	endif()
+	set (GETTEXT_CLOCK ${GETTEXT_PLUGINS})
+	set (VERSION_CLOCK "2.1.2")
+	set (PACKAGE_CLOCK "cd-clock")
+	set (clockuserdirname "clock")
+	set (clockdatadir "${pluginsdatadir}/clock")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/clock/data/clock.conf.in ${CMAKE_CURRENT_BINARY_DIR}/clock/data/clock.conf)
+	add_subdirectory (clock)
+endif()
+
+############# COMPIZ_ICON #################
+if (ENABLE_COMPIZ-ICON-PLUGIN)
+	set (GETTEXT_COMPIZ_ICON ${GETTEXT_PLUGINS})
+	set (VERSION_COMPIZ_ICON "1.1.6")
+	set (PACKAGE_COMPIZ_ICON "cd-compiz-icon")
+	set (compiz_icondatadir "${pluginsdatadir}/compiz-icon")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/compiz-icon/data/compiz-icon.conf.in ${CMAKE_CURRENT_BINARY_DIR}/compiz-icon/data/compiz-icon.conf)
+	add_subdirectory (compiz-icon)
+endif()
+
+############# DUSTBIN #################
+if (ENABLE_DUSTBIN-PLUGIN)
+	set (GETTEXT_DUSTBIN ${GETTEXT_PLUGINS})
+	set (VERSION_DUSTBIN "2.3.1")
+	set (PACKAGE_DUSTBIN "cd-dustbin")
+	set (dustbinuserdirname "dustbin")
+	set (dustbindatadir "${pluginsdatadir}/dustbin")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/dustbin/data/dustbin.conf.in ${CMAKE_CURRENT_BINARY_DIR}/dustbin/data/dustbin.conf)
+	add_subdirectory (dustbin)
+endif()
+
+############# GMENU #################
+if (ENABLE_GMENU-PLUGIN)
+	pkg_check_modules (GMENU_PACKAGE libgnome-menu)
+	if ("${GMENU_PACKAGE_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find libgnome-menu!")
+	endif()
+	set (GETTEXT_GMENU ${GETTEXT_PLUGINS})
+	set (VERSION_GMENU "1.1.6")
+	set (PACKAGE_GMENU "cd-GMenu")
+	set (with_gmenu "yes")
+	set (gmenudatadir "${pluginsdatadir}/GMenu")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/GMenu/data/GMenu.conf.in ${CMAKE_CURRENT_BINARY_DIR}/GMenu/data/GMenu.conf)
+	add_subdirectory ("GMenu")
+else()
+	set (with_gmenu "no")
+endif()
+
+if (ENABLE_KDE-INTEGRATION)
+############# GVFS-INTEGRATION #################
+	pkg_check_modules ("LIBGIO" "gio-2.0")
+	add_subdirectory (gvfs-integration)
+
+############# KDE-INTEGRATION #################
+	pkg_check_modules (KDE_INTEGRATION gio-2.0)
+	if ("${KDE_INTEGRATION_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find libs for kde support!")
+	endif()
+	set (VERSION_KDE_INTEGRATION "0.0.2")
+	set (PACKAGE_KDE_INTEGRATION "cd_kde-integration")
+	set (with_kde_integration "yes")
+	set (kde_integrationdatadir "${pluginsdatadir}/kde-integration")
+	add_subdirectory ("kde-integration")
+else()
+	set (with_kde_integration "no")
+endif()
+
+############# LOGOUT #################
+if (ENABLE_LOGOUT-PLUGIN)
+	set (GETTEXT_LOGOUT ${GETTEXT_PLUGINS})
+	set (VERSION_LOGOUT "1.2.10")
+	set (PACKAGE_LOGOUT "cd-logout")
+	set (logoutdatadir "${pluginsdatadir}/logout")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/logout/data/logout.conf.in ${CMAKE_CURRENT_BINARY_DIR}/logout/data/logout.conf)
+	add_subdirectory (logout)
+endif()
+
+############# MOTION BLUR #################
+if (ENABLE_MOTION-BLUR-PLUGIN)
+	set (GETTEXT_MOTION_BLUR ${GETTEXT_PLUGINS})
+	set (VERSION_MOTION_BLUR "1.0.4")
+	set (PACKAGE_MOTION_BLUR "cd-motion_blur")
+	set (motion_blurdatadir "${pluginsdatadir}/motion-blur")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/motion-blur/data/motion_blur.conf.in ${CMAKE_CURRENT_BINARY_DIR}/motion-blur/data/motion_blur.conf)
+	add_subdirectory (motion-blur)
+endif()
+
+############# POWERMANAGER #################
+if (ENABLE_POWERMANAGER-PLUGIN)
+	set (GETTEXT_POWERMANAGER ${GETTEXT_PLUGINS})
+	set (VERSION_POWERMANAGER "1.3.4")
+	set (PACKAGE_POWERMANAGER "cd-powermanager")
+	set (powermanagerdatadir "${pluginsdatadir}/powermanager")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/powermanager/data/powermanager.conf.in ${CMAKE_CURRENT_BINARY_DIR}/powermanager/data/powermanager.conf)
+	add_subdirectory (powermanager)
+endif()
+
+############# QUICK BROWSER #################
+if (ENABLE_QUICK-BROWSER-PLUGIN)
+	set (GETTEXT_QUICK_BROWSER ${GETTEXT_PLUGINS})
+	set (VERSION_QUICK_BROWSER "1.0.8")
+	set (PACKAGE_QUICK_BROWSER "cd-quick-browser")
+	set (quick_browserdatadir "${pluginsdatadir}/quick_browser")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/quick-browser/data/quick-browser.conf.in ${CMAKE_CURRENT_BINARY_DIR}/quick-browser/data/quick-browser.conf)
+	add_subdirectory (quick-browser)
+endif()
+
+############# SHORTCUTS #################
+if (ENABLE_SHORTCUTS-PLUGIN)
+	set (GETTEXT_SHORTCUTS ${GETTEXT_PLUGINS})
+	set (VERSION_SHORTCUTS "1.3.1")
+	set (PACKAGE_SHORTCUTS "cd-shortcuts")
+	set (shortcutsdatadir "${pluginsdatadir}/shortcuts")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/shortcuts/data/shortcuts.conf.in ${CMAKE_CURRENT_BINARY_DIR}/shortcuts/data/shortcuts.conf)
+	add_subdirectory (shortcuts)
+endif()
+
+############# SHOW DESKTOP #################
+if (ENABLE_SHOW-DESKTOP-PLUGIN)
+	if (WITH_XRANDR-SUPPORT)
+		pkg_check_modules (SHOW_DESKTOP_XRANDR xrandr)
+		if ("${SHOW_DESKTOP_XRANDR_FOUND}" STREQUAL "")
+			message (FATAL_ERROR "Could not find xrandr!")
+		endif()
+		set (with_xrandr "yes")
+	else()
+		set (with_xrandr "no")
+	endif()
+	set (GETTEXT_SHOW_DESKTOP ${GETTEXT_PLUGINS})
+	set (VERSION_SHOW_DESKTOP "1.2.4")
+	set (PACKAGE_SHOW_DESKTOP "cd-showDesktop")
+	set (show_desktopdatadir "${pluginsdatadir}/showDesktop")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/showDesktop/data/showDesktop.conf.in ${CMAKE_CURRENT_BINARY_DIR}/showDesktop/data/showDesktop.conf)
+	add_subdirectory (showDesktop)
+endif()
+
+############# SHOW MOUSE #################
+if (ENABLE_SHOW-MOUSE-PLUGIN)
+	set (GETTEXT_SHOW_MOUSE ${GETTEXT_PLUGINS})
+	set (VERSION_SHOW_MOUSE "1.0.4")
+	set (PACKAGE_SHOW_MOUSE "cd-show_mouse")
+	set (show_mousedatadir "${pluginsdatadir}/show_mouse")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/show-mouse/data/show_mouse.conf.in ${CMAKE_CURRENT_BINARY_DIR}/show-mouse/data/show_mouse.conf)
+	add_subdirectory (show-mouse)
+endif()
+
+############# SLIDER #################
+if (ENABLE_SLIDER-PLUGIN)
+	if (WITH_EXIF-SUPPORT)
+		pkg_check_modules (EXIF libexif)
+		if ("${EXIF_FOUND}" STREQUAL "")
+			message (FATAL_ERROR "Could not find libexif!")
+		endif()
+		set (with_exif "yes")
+	else()
+		set (with_exif "no")
+	endif()
+	set (GETTEXT_SLIDER ${GETTEXT_PLUGINS})
+	set (VERSION_SLIDER "2.0.8")
+	set (PACKAGE_SLIDER "cd-slider")
+	set (sliderdatadir "${pluginsdatadir}/slider")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/slider/data/slider.conf.in ${CMAKE_CURRENT_BINARY_DIR}/slider/data/slider.conf)
+	add_subdirectory (slider)
+endif()
+
+############# SWITCHER #################
+if (ENABLE_SWITCHER-PLUGIN)
+	set (GETTEXT_SWITCHER ${GETTEXT_PLUGINS})
+	set (VERSION_SWITCHER "2.1.6")
+	set (PACKAGE_SWITCHER "cd-switcher")
+	set (switcherdatadir "${pluginsdatadir}/switcher")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/switcher/data/switcher.conf.in ${CMAKE_CURRENT_BINARY_DIR}/switcher/data/switcher.conf)
+	add_subdirectory (switcher)
+endif()
+
+############# TERMINAL #################
+if (ENABLE_TERMINAL-PLUGIN)
+	pkg_check_modules (TERMINAL_PACKAGE vte)
+	if ("${TERMINAL_PACKAGE_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find libvte!")
+	endif()
+	set (GETTEXT_TERMINAL ${GETTEXT_PLUGINS})
+	set (VERSION_TERMINAL "1.0.10")
+	set (PACKAGE_TERMINAL "cd-terminal")
+	set (with_terminal "yes")
+	set (terminaldatadir "${pluginsdatadir}/terminal")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/terminal/data/terminal.conf.in ${CMAKE_CURRENT_BINARY_DIR}/terminal/data/terminal.conf)
+	add_subdirectory (terminal)
+else()
+	set (with_terminal "no")
+endif()
+
+############# TOONS #################
+if (ENABLE_TOONS-PLUGIN)
+	set (GETTEXT_TOONS ${GETTEXT_PLUGINS})
+	set (VERSION_TOONS "1.0.8")
+	set (PACKAGE_TOONS "cd-Toons")
+	set (toonsdatadir "${pluginsdatadir}/Toons")
+	set (toonsuserdirname "Toons")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Toons/data/Toons.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Toons/data/Toons.conf)
+	add_subdirectory (Toons)
+endif()
+
+############# WEATHER #################
+if (ENABLE_WEATHER-PLUGIN)
+	set (GETTEXT_WEATHER ${GETTEXT_PLUGINS})
+	set (VERSION_WEATHER "1.2.10")
+	set (PACKAGE_WEATHER "cd-weather")
+	set (weatherdatadir "${pluginsdatadir}/weather")
+	set (weatheruserdirname "weather")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/weather/data/weather.conf.in ${CMAKE_CURRENT_BINARY_DIR}/weather/data/weather.conf)
+	add_subdirectory (weather)
+endif()
+
+############# WEBLETS #################
+if (ENABLE_WEBLETS-PLUGIN)
+	pkg_check_modules (WEBKIT webkit-1.0)
+	if ("${WEBKIT_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find webkit-1.0!")
+	endif()
+	set (GETTEXT_WEBLETS ${GETTEXT_PLUGINS})
+	set (VERSION_WEBLETS "0.0.10")
+	set (PACKAGE_WEBLETS "cd-weblets")
+	set (webletsdatadir "${pluginsdatadir}/weblets")
+	set (with_weblets "yes")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/weblets/data/weblets.conf.in ${CMAKE_CURRENT_BINARY_DIR}/weblets/data/weblets.conf)
+	add_subdirectory ("weblets")
+else()
+	set (with_weblets "no")
+endif()
+
+############# XGAMMA #################
+if (ENABLE_XGAMMA-PLUGIN)
+	pkg_check_modules (XGAMMA_PACKAGE x11 xxf86vm)
+	if ("${XGAMMA_PACKAGE_FOUND}" STREQUAL "")
+		message (FATAL_ERROR "Could not find xxf86vm!")
+	endif()
+	set (GETTEXT_XGAMMA ${GETTEXT_PLUGINS})
+	set (VERSION_XGAMMA "1.2.0")
+	set (PACKAGE_XGAMMA "cd-Xgamma")
+	set (with_xgamma "yes")
+	set (xgammadatadir "${pluginsdatadir}/Xgamma")
+	configure_file (${CMAKE_CURRENT_SOURCE_DIR}/Xgamma/data/Xgamma.conf.in ${CMAKE_CURRENT_BINARY_DIR}/Xgamma/data/Xgamma.conf)
+	add_subdirectory ("Xgamma")
+else()
+	set (with_xgamma "no")
+endif()
+
+message ("")
+message (STATUS "===============")
+message (STATUS "Plug-ins build:")
+message (STATUS "===============")
+message ("")
+message (STATUS "Stable:")
+message (STATUS " - with KDE support:                   ${with_kde_integration}")
+message (STATUS " - with Alsa-Mixer applet:             ${with_alsa}")
+message (STATUS " - with Cairo-Penguin applet:          ${enable-penguin-plugin}")
+message (STATUS " - with Clipper applet:                ${enable-clipper-plugin}")
+message (STATUS " - with Clock applet:                  ${enable-clock-plugin}")
+message (STATUS "     - with iCal support:              ${with_ical}")
+message (STATUS " - with Compiz-Icon applet:            ${enable-compiz_icon-plugin}")
+message (STATUS " - with Dustbin applet:                ${enable-dustbin-plugin}")
+message (STATUS " - with GMenu applet:                  ${with_gmenu}")
+message (STATUS " - with Logout applet:                 ${enable-logout-plugin}")
+message (STATUS " - with Motion-Blur applet:            ${enable-motion_blur-plugin}")
+message (STATUS " - with Powermanager applet:           ${enable-powermanager-plugin}")
+message (STATUS " - with Quick-Browser applet:          ${enable-quick_browser-plugin}")
+message (STATUS " - with Shortcuts applet:              ${enable-shortcuts-plugin}")
+message (STATUS " - with Show-Desktop applet:           ${enable-show_desktop-plugin}")
+message (STATUS "     - with Screen Resolution support: ${with_xrandr}")
+message (STATUS " - with Show-Mouse applet:             ${enable-show_mouse-plugin}")
+message (STATUS " - with Slider applet:                 ${enable-slider-plugin}")
+message (STATUS "     - with Image Rotation support:    ${with_exif}")
+message (STATUS " - with Switcher applet:               ${enable-switcher-plugin}")
+message (STATUS " - with Terminal applet:               ${with_terminal}")
+message (STATUS " - with Toons applet:                  ${enable-toons-plugin}")
+message (STATUS " - with Weather applet:                ${enable-weather-plugin}")
+message (STATUS " - with Weblets applet:                ${with_weblets}")
+message (STATUS " - with XGamma applet:                 ${with_xgamma}")
+message ("")

@@ -1,0 +1,22 @@
+--- CMakeLists.txt
++++ CMakeLists.txt
+@@ -13,9 +13,6 @@
+ set (VERSION "2.3.0~3")
+ 
+ add_definitions (-std=c99 -Wstrict-prototypes -Wextra -Wwrite-strings -Wuninitialized -Werror-implicit-function-declaration) #-Wunreachable-code -Wno-unused-parameter -Wall 
+-if (NOT ${CMAKE_BUILD_TYPE})
+-	add_definitions (-O3)
+-endif()
+ add_definitions (-DGL_GLEXT_PROTOTYPES="1")
+ add_definitions (-DCAIRO_DOCK_DEFAULT_ICON_NAME="default-icon.svg")
+ add_definitions (-DCAIRO_DOCK_ICON="cairo-dock.svg")
+@@ -60,6 +60,9 @@
+ set (includedir ${prefix}/include)
+ set (bindir ${prefix}/bin)
+ 
++set (CMAKE_SKIP_BUILD_RPATH TRUE)
++set (CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
++
+ ########### dependencies ###############
+ 
+ pkg_check_modules ("PACKAGE" REQUIRED "gtk+-2.0" "gthread-2.0" "cairo" "librsvg-2.0" "dbus-1" "dbus-glib-1" "libxml-2.0" "gtkglext-1.0" "xrender" "libcurl")

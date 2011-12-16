@@ -1,0 +1,57 @@
+--- Dbus/interfaces/python/CMakeLists.txt.orig
++++ Dbus/interfaces/python/CMakeLists.txt
+@@ -1,13 +1,13 @@
+ 
+ ########### install files ###############
+-
+-if (NOT "${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+-	# copy *.py to current binary dir (cleaner)
+-	execute_process(COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/setup.py" "${CMAKE_CURRENT_SOURCE_DIR}/CDApplet.py" "${CMAKE_CURRENT_SOURCE_DIR}/CairoDock.py" ${CMAKE_CURRENT_BINARY_DIR})
+-	exec_program("${PYTHON_EXECUTABLE}" "${CMAKE_CURRENT_BINARY_DIR}" ARGS "setup.py" "-q" "build")
+-endif()
+-# Run a custom script with 'make install' 
+-add_custom_target(python_pyc ALL)
+-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/PythonInstall.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/PythonInstall.cmake)
+-set_target_properties(python_pyc PROPERTIES POST_INSTALL_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/PythonInstall.cmake)
+-# execute_process(COMMAND python setup.py install ${DEBIAN_INSTALL_LAYOUT})
++### handle python stuff in ebuild
++#if (NOT "${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
++#	# copy *.py to current binary dir (cleaner)
++#	execute_process(COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/setup.py" "${CMAKE_CURRENT_SOURCE_DIR}/CDApplet.py" "${CMAKE_CURRENT_SOURCE_DIR}/CairoDock.py" ${CMAKE_CURRENT_BINARY_DIR})
++#	exec_program("${PYTHON_EXECUTABLE}" "${CMAKE_CURRENT_BINARY_DIR}" ARGS "setup.py" "-q" "build")
++#endif()
++## Run a custom script with 'make install' 
++#add_custom_target(python_pyc ALL)
++#configure_file(${CMAKE_CURRENT_SOURCE_DIR}/PythonInstall.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/PythonInstall.cmake)
++#set_target_properties(python_pyc PROPERTIES POST_INSTALL_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/PythonInstall.cmake)
++## execute_process(COMMAND python setup.py install ${DEBIAN_INSTALL_LAYOUT})
+--- Dbus/interfaces/bash/CMakeLists.txt.orig
++++ Dbus/interfaces/bash/CMakeLists.txt
+@@ -1,16 +1,16 @@
+ 
+ ########### install files ###############
+-
+-# the python script goes with other python scripts.
+-if (NOT "${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+-	# copy *.py to current binary dir (cleaner)
+-	execute_process(COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/setup.py" "${CMAKE_CURRENT_SOURCE_DIR}/CDBashApplet.py" ${CMAKE_CURRENT_BINARY_DIR})
+-	exec_program("${PYTHON_EXECUTABLE}" "${CMAKE_CURRENT_BINARY_DIR}" ARGS "setup.py" "-q" "build")
+-endif()
+-# Run a custom script with 'make install' 
+-add_custom_target(bash_pyc ALL)
+-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/BashInstall.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/BashInstall.cmake)
+-set_target_properties(bash_pyc PROPERTIES POST_INSTALL_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/BashInstall.cmake)
++### handle python stuff in ebuild
++## the python script goes with other python scripts.
++#if (NOT "${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
++#	# copy *.py to current binary dir (cleaner)
++#	execute_process(COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/setup.py" "${CMAKE_CURRENT_SOURCE_DIR}/CDBashApplet.py" ${CMAKE_CURRENT_BINARY_DIR})
++#	exec_program("${PYTHON_EXECUTABLE}" "${CMAKE_CURRENT_BINARY_DIR}" ARGS "setup.py" "-q" "build")
++#endif()
++## Run a custom script with 'make install' 
++#add_custom_target(bash_pyc ALL)
++#configure_file(${CMAKE_CURRENT_SOURCE_DIR}/BashInstall.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/BashInstall.cmake)
++#set_target_properties(bash_pyc PROPERTIES POST_INSTALL_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/BashInstall.cmake)
+ 
+ # and the bash functions goes into the data dir of the applet (didn't find a better place).
+ install (FILES ${CMAKE_CURRENT_SOURCE_DIR}/CDBashApplet.sh

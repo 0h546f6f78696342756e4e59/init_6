@@ -1,0 +1,17 @@
+--- wifi/data/wifi
++++ wifi/data/wifi
+@@ -1,6 +1,6 @@
+ #!/bin/bash
+ 
+-# Compiz check for Cairo-Dock
++# Wifi check for Cairo-Dock
+ #
+ # Copyright : (C) 2009 by Rémy Robertson
+ # E-mail    : fabounet@glx-dock.org
+@@ -17,4 +17,5 @@
+ # GNU General Public License for more details.
+ # http://www.gnu.org/licenses/licenses.html#GPL
+ 
+-iwconfig 2>/dev/null
++/sbin/iwconfig 2>/dev/null
++echo "Wifi"

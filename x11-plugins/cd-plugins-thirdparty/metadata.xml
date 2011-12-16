@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<use>
+		<flag name="pidgin">Installs Pidgin plugin for <pkg>x11-misc/cairo-dock</pkg>.</flag>
+		<flag name="xchat">Installs XChat plugin for <pkg>x11-misc/cairo-dock</pkg>.</flag>
+	</use>
+	<longdescription>
+		cd-plugins-thirdparty offers third-party plugins for <pkg>x11-misc/cairo-dock</pkg>.
+	</longdescription>
+	<maintainer>
+		<email>dustin.polke@uni-siegen.de</email>
+		<name>Dustin Polke</name>
+	</maintainer>
+</pkgmetadata>

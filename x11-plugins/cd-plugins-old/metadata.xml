@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<use>
+		<flag name="netspeed">Enables the Netspeed applet.</flag>
+		<flag name="wifi">Enables the Wifi applet.</flag>
+	</use>
+	<longdescription>cd-plugins-old offers official plugins for cairo-dock, which will be removed in the near future.</longdescription>
+	<maintainer>
+		<email>dustin.polke@uni-siegen.de</email>
+		<name>Dustin Polke</name>
+	</maintainer>
+</pkgmetadata>

@@ -15,7 +15,7 @@ SRC_URI="http://www.midnight-commander.org/downloads/${MY_P}.tar.xz"
 LICENSE="GPL-3"
 SLOT="0"
 KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~mips ~ppc ~ppc64 ~s390 ~sh ~sparc ~x86 ~x86-fbsd ~x86-interix ~amd64-linux ~ppc-macos ~x64-macos ~x86-macos ~sparc-solaris ~sparc64-solaris ~x86-solaris"
-IUSE="+edit gpm mclib +ncurses nls samba slang test X"
+IUSE="+edit gpm +ncurses nls samba slang test X"
 
 REQUIRED_USE="^^ ( ncurses slang )"
 
@@ -39,10 +39,6 @@ DEPEND="${RDEPEND}
 
 S=${WORKDIR}/${MY_P}
 
-PATCHES=("${FILESDIR}/${PN}"-4.8.0-fix-nls.patch
-	"${FILESDIR}/${PN}"-4.8.0-fix-ftp-spaces.patch
-	)
-
 src_configure() {
 	local myscreen=ncurses
 	use slang && myscreen=slang
@@ -59,13 +55,12 @@ src_configure() {
 		$(use_with gpm gpm-mouse) \
 		--with-screen=${myscreen} \
 		$(use_with edit) \
-		$(use_enable mclib) \
 		$(use_enable test tests)
 }
 
 src_install() {
 	emake DESTDIR="${D}" install || die
-	dodoc AUTHORS README NEWS
+	dodoc AUTHORS README
 
 	# fix bug #334383
 	if use kernel_linux && [[ ${EUID} == 0 ]] ; then

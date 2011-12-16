@@ -1,0 +1,55 @@
+# Copyright 1999-2011 Gentoo Foundation
+# Distributed under the terms of the GNU General Public License v2
+# $Header: $
+
+  11 Oct 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  -cairo-dock-2.2.0_p4.ebuild, -files/cairo-dock-2.2.0_p4-CMakeLists.patch:
+  Drop old.
+
+*cairo-dock-2.4.0.2 (06 Oct 2011)
+
+  06 Oct 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  +cairo-dock-2.4.0.2.ebuild, +files/cairo-dock-2.4.0.2-CMakeLists.patch:
+  Version bump.
+
+  26 Sep 2011; Dustin Polke <dustin.polke@uni-siegen.de> metadata.xml:
+  Drop <herd>no-herd</herd> from metadata.xml and add me as maintainer if
+  missing.
+
+*cairo-dock-2.3.0.3 (15 Sep 2011)
+
+  15 Sep 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  +cairo-dock-2.3.0.3.ebuild, +files/cairo-dock-2.3.0.3-CMakeLists.patch,
+  metadata.xml:
+  Version bump; update metadata; switch over to use cairo-dock.eclass.
+
+  22 Feb 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  cairo-dock-2.2.0_p4.ebuild:
+  Pin gtk/gnome deps to slot 2.
+
+  13 Feb 2011; Dustin Polke <dustin.polke@uni-siegen.de>
+  -cairo-dock-2.1.3_p8.ebuild, -cairo-dock-2.1.3_p9.ebuild,
+  cairo-dock-2.2.0_p4.ebuild, metadata.xml:
+  Drop glitz support which has been dropped by cairo upstream and bump to
+  EAPI3; drop old.
+
+*cairo-dock-2.2.0_p4 (20 Dec 2010)
+
+  20 Dec 2010; Dustin Polke <dustin.polke@uni-siegen.de>
+  +cairo-dock-2.2.0_p4.ebuild, +files/cairo-dock-2.2.0_p4-CMakeLists.patch,
+  metadata.xml:
+  Version bump to 2.2.0-4. Conversion from autotools to CMAKE.
+
+*cairo-dock-2.1.3_p9 (23 Apr 2010)
+
+  23 Apr 2010; Dustin Polke <dustin.polke@uni-siegen.de>
+  -cairo-dock-2.1.3_p7.ebuild, +cairo-dock-2.1.3_p9.ebuild:
+  Version bump, drop old.
+
+*cairo-dock-2.1.3_p8 (14 Apr 2010)
+*cairo-dock-2.1.3_p7 (14 Apr 2010)
+
+  14 Apr 2010; Dustin Polke <dustin.polke@uni-siegen.de>
+  +cairo-dock-2.1.3_p7.ebuild, +cairo-dock-2.1.3_p8.ebuild:
+  Initial commit, almost complete rewrite of ebuild in desktop-effects
+  overlay.
