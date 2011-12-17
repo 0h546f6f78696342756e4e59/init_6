@@ -155,7 +155,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/fix_xen_guest_on_old_EC2.patch
 
 # DRM core
-
+	epatch "${FILESDIR}"/"${PVR}"/drm-edid-try-harder-to-fix-up-broken-headers.patch
 # Nouveau DRM
 	epatch "${FILESDIR}"/"${PVR}"/drm-nouveau-updates.patch
 	epatch "${FILESDIR}"/"${PVR}"/drm-nouveau-gf108.patch
