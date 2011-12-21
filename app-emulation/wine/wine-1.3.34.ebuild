@@ -112,6 +112,10 @@ src_prepare() {
 	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
 	epatch_user #282735
 
+	# Fix EAX sound in GTA San Andreas
+	# http://bugs.winehq.org/show_bug.cgi?id=14896
+	epatch "${FILESDIR}"/${PN}-disables-DS3DMODE_NORMAL.patch
+
 	epatch "${FILESDIR}"/${PN}-imagemagick-6.5.patch
 
 	# add udisks support
@@ -119,6 +123,15 @@ src_prepare() {
 	# http://bugs.winehq.org/show_bug.cgi?id=21713
 	# http://source.winehq.org/patches/data/77534
 #	epatch "${FILESDIR}"/${PN}-udisks1.patch
+
+	# Wine doublebuffer patch - http://bugs2.winehq.org/attachment.cgi?id=27310
+	# Need for Crysis
+	epatch "${FILESDIR}"/${PN}-doublebuffer.patch
+
+	# WinePulse – PulseAudio for Wine http://art.ified.ca/?page_id=40
+	#epatch "${FILESDIR}"/${PN}pulse-0.40.patch
+	#epatch "${FILESDIR}"/${PN}pulse-configure.ac-1.3.22.patch
+	#epatch "${FILESDIR}"/${PN}pulse-winecfg-1.3.11.patch
 
 	sed -i '/^UPDATE_DESKTOP_DATABASE/s:=.*:=true:' tools/Makefile.in || die
 	sed -i '/^MimeType/d' tools/wine.desktop || die #117785
