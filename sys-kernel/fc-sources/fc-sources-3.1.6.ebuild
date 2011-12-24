@@ -7,11 +7,6 @@ K_NOSETEXTRAVERSION="1"
 K_DEBLOB_AVAILABLE="0"
 K_SECURITY_UNSUPPORTED="1"
 
-#CKV="${PVR/-r/-git}"
-# only use this if it's not an _rc/_pre release
-#[ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
-CKV="3.2-rc6"
-
 ETYPE="sources"
 
 inherit kernel-2 eutils
@@ -27,7 +22,7 @@ KEYWORDS="~amd64 ~x86"
 HOMEPAGE="http://fedoraproject.org/ http://download.fedora.redhat.com/pub/fedora/ http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable"
 # The compat-wireless version
 cwversion=3.2-rc6-3
-SRC_URI="${KERNEL_URI} ${ARCH_URI} http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.2/compat-wireless-${cwversion}.tar.bz2"
+SRC_URI="${KERNEL_URI} http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.2/compat-wireless-${cwversion}.tar.bz2"
 
 KV_FULL="${PVR}-fc"
 EXTRAVERSION="${RELEASE}-fc"
@@ -64,12 +59,8 @@ src_unpack() {
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-makefile-after_link.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/taint-vbox.patch
-
 # Architecture patches
 # x86(-64)
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
 
 #
 # ARM
@@ -77,11 +68,20 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/arm-omap-dt-compat.patch
 	epatch "${FILESDIR}"/"${PVR}"/arm-smsc-support-reading-mac-address-from-device-tree.patch
 
+	epatch "${FILESDIR}"/"${PVR}"/taint-vbox.patch
+#
+# NX Emulation
+#
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
+
 #
 # bugfixes to drivers and filesystems
 #
 
 # ext4
+#rhbz 753346
+	epatch "${FILESDIR}"/"${PVR}"/jbd-jbd2-validate-sb-s_first-in-journal_get_superblo.patch
 
 # xfs
 
@@ -91,7 +91,7 @@ src_unpack() {
 # eCryptfs
 
 # NFSv4
-	epatch "${FILESDIR}"/"${PVR}"/linux-3.1-keys-remove-special-keyring.patch
+	epatch "${FILESDIR}"/"${PVR}"/nfsv4-include-bitmap-in-nfsv4_get_acl_data.patch
 
 # USB
 
@@ -103,6 +103,9 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-debug-infinite-loop.patch
 	epatch "${FILESDIR}"/"${PVR}"/acpi-ensure-thermal-limits-match-cpu-freq.patch
 	epatch "${FILESDIR}"/"${PVR}"/acpi-sony-nonvs-blacklist.patch
+
+# Various low-impact patches to aid debugging.
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-debug-taint-vm.patch
 
 #
 # PCI
@@ -120,13 +123,14 @@ src_unpack() {
 
 # Networking
 
+
 # Misc fixes
 # The input layer spews crap no-one cares about.
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-input-kill-stupid-messages.patch
 
 # stop floppy.ko from autoloading during udev...
 	epatch "${FILESDIR}"/"${PVR}"/die-floppy-die.patch
-	epatch "${FILESDIR}"/"${PVR}"/floppy-Remove-_hlt-related-functions.patch
+	epatch "${FILESDIR}"/"${PVR}"/floppy-drop-disable_hlt-warning.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6.30-no-pcspkr-modalias.patch
 
@@ -138,9 +142,6 @@ src_unpack() {
 
 # Make fbcon not show the penguins with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
-
-# modpost: add option to allow external modules to avoid taint
-	epatch "${FILESDIR}"/"${PVR}"/modpost-add-option-to-allow-external-modules-to-avoi.patch
 
 # Changes to upstream defaults.
 
@@ -160,19 +161,37 @@ src_unpack() {
 #	epatch "${FILESDIR}"/"${PVR}"/drm-edid-try-harder-to-fix-up-broken-headers.patch
 
 # Nouveau DRM
+	epatch "${FILESDIR}"/"${PVR}"/drm-nouveau-updates.patch
+	epatch "${FILESDIR}"/"${PVR}"/drm-nouveau-gf108.patch
 
 # Intel DRM
+	epatch "${FILESDIR}"/"${PVR}"/drm-i915-fbc-stfu.patch
+	epatch "${FILESDIR}"/"${PVR}"/drm-i915-sdvo-lvds-is-digital.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/drm-lower-severity-radeon-lockup.diff
+
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
 
 # silence the ACPI blacklist code
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-acpi-blacklist.patch
 	epatch "${FILESDIR}"/"${PVR}"/quite-apm.patch
 
+# Platform fixes not sent for -stable
+#	epatch "${FILESDIR}"/"${PVR}"/samsung-laptop-brightness-fixes-3.2.patch # Failed
+	epatch "${FILESDIR}"/"${PVR}"/asus-laptop-3.2-backport.patch
+
 # Patches headed upstream
+	epatch "${FILESDIR}"/"${PVR}"/rcutree-avoid-false-quiescent-states.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
 
+	epatch "${FILESDIR}"/"${PVR}"/add-appleir-usb-driver.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/udlfb-bind-framebuffer-to-interface.patch
 	epatch "${FILESDIR}"/"${PVR}"/epoll-limit-paths.patch
+	epatch "${FILESDIR}"/"${PVR}"/rcu-avoid-just-onlined-cpu-resched.patch
 	epatch "${FILESDIR}"/"${PVR}"/block-stray-block-put-after-teardown.patch
+	epatch "${FILESDIR}"/"${PVR}"/HID-wacom-Set-input-bits-before-registration.patch
 
 # rhbz#605888
 	epatch "${FILESDIR}"/"${PVR}"/dmar-disable-when-ricoh-multifunction.patch
@@ -180,28 +199,72 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/revert-efi-rtclock.patch
 	epatch "${FILESDIR}"/"${PVR}"/efi-dont-map-boot-services-on-32bit.patch
 
+	epatch "${FILESDIR}"/"${PVR}"/hvcs_pi_buf_alloc.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/media-dib0700-correct-error-message.patch
+
 # utrace.
 #	epatch "${FILESDIR}"/"${PVR}"/utrace.patch # Failed
 
-# Add msi irq ennumeration in sysfs for devices
+#rhbz #735946
+	epatch "${FILESDIR}"/"${PVR}"/0001-mm-vmscan-Limit-direct-reclaim-for-higher-order-allo.patch
+	epatch "${FILESDIR}"/"${PVR}"/0002-mm-Abort-reclaim-compaction-if-compaction-can-procee.patch
+	epatch "${FILESDIR}"/"${PVR}"/mm-do-not-stall-in-synchronous-compaction-for-THP-allocations.patch
+
+#rhbz 748691
+	epatch "${FILESDIR}"/"${PVR}"/be2net-non-member-vlan-pkts-not-received-in-promisco.patch
+	epatch "${FILESDIR}"/"${PVR}"/benet-remove-bogus-unlikely-on-vlan-check.patch
+
+#rhbz 736815
+	epatch "${FILESDIR}"/"${PVR}"/x86-code-dump-fix-truncation.patch
+
+#rhbz 750402
+	epatch "${FILESDIR}"/"${PVR}"/oom-fix-integer-overflow-of-points.patch
+
+#rhbz 728607
+#	epatch "${FILESDIR}"/"${PVR}"/elantech.patch # Failed
+
+#rhbz 748210
+	epatch "${FILESDIR}"/"${PVR}"/ideapad-Check-if-acpi-already-handle-backlight.patch
+
+#rhbz 752176
 	epatch "${FILESDIR}"/"${PVR}"/sysfs-msi-irq-per-device.patch
 
+#backport brcm80211 from 3.2-rc1
+	epatch "${FILESDIR}"/"${PVR}"/brcm80211.patch
 # Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
 	epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
 
+# rhbz 754907
+	epatch "${FILESDIR}"/"${PVR}"/cciss-fix-irqf-shared.patch
+	epatch "${FILESDIR}"/"${PVR}"/hpsa-add-irqf-shared.patch
+
+#rhbz 731365
+	epatch "${FILESDIR}"/"${PVR}"/mac80211_offchannel_rework_revert.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch
 
-#rhbz 753236
-	epatch "${FILESDIR}"/"${PVR}"/nfsv4-include-bitmap-in-nfsv4_get_acl_data.patch
-
-#rhbz 590880
-#	epatch "${FILESDIR}"/"${PVR}"/alps.patch # Failed
+#rhbz #757839
+	epatch "${FILESDIR}"/"${PVR}"/net-sky2-88e8059-fix-link-speed.patch
 
 #rhbz 717735
 #	epatch "${FILESDIR}"/"${PVR}"/nfs-client-freezer.patch # Failed
 
+#rhbz 590880
+#	epatch "${FILESDIR}"/"${PVR}"/alps.patch # Failed
 
-# END OF PATCH APPLICATIONS
+#rhbz 767173
+	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-allow-to-switch-to-HT40-if-not-associated.patch
+
+#rhbz 741117
+	epatch "${FILESDIR}"/"${PVR}"/b44-Use-dev_kfree_skb_irq-in-b44_tx.patch
+
+#rhbz 746097
+	epatch "${FILESDIR}"/"${PVR}"/tpm_tis-delay-after-aborting-cmd.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/route-cache-garbage-collector.patch
+
+### END OF PATCH APPLICATIONS ###
 
 	echo
 	einfo "Apply compat-wireless patches"
@@ -210,7 +273,18 @@ src_unpack() {
 	cd compat-wireless-${cwversion}
 
 	epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
-	epatch "${FILESDIR}"/"${PVR}"/compat-wireless-integrated-build.patch
+	epatch "${FILESDIR}"/"${PVR}"/compat-wireless-change-CONFIG_IWLAGN-CONFIG_IWLWIFI.patch
+
+# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
+	epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
+
+# Apply some iwlwifi regression fixes not in the 3.2-rc6 wireless snapshot
+	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-do-not-set-the-sequence-control-bit-is-not-n.patch
+	epatch "${FILESDIR}"/"${PVR}"/ath9k-fix-max-phy-rate-at-rate-control-init.patch
+	epatch "${FILESDIR}"/"${PVR}"/mwifiex-avoid-double-list_del-in-command-cancel-path.patch
+	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-tx_sync-only-on-PAN-context.patch
+	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-allow-to-switch-to-HT40-if-not-associated.patch
+	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-update-SCD-BC-table-for-all-SCD-queues.patch
 
 	cd ..
 
@@ -219,6 +293,7 @@ src_unpack() {
 	echo
 	epatch "${FILESDIR}"/acpi-ec-add-delay-before-write.patch
 	epatch "${FILESDIR}"/font-8x16-iso-latin-1.patch
+
 	echo
 
 # Unfortunately, it has yet not been ported into 3.0 kernel.
