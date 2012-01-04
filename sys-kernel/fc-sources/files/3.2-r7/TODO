@@ -8,6 +8,7 @@
 
 **** Queued for 3.3 ***********************************************************************************
 drm-edid-try-harder-to-fix-up-broken-headers.patch
+Bluetooth-Add-support-for-BCM20702A0-0a5c-21e3.patch
 
 **** Other stuff that should go upstream (in decreasing likelyhood) ************************************
 
@@ -103,3 +104,7 @@ Spec file/config todos/cleanups
   - Allow for comments in the mod-extra.list file.
   - Don't fail the build if a module is listed but not built (maybe).
   - See if it can be tied into Kconfig instead of module names.
+
+* investigate gzip modules. Everything should support this now?
+  Looks like about 70M savings per kernel installed.
+

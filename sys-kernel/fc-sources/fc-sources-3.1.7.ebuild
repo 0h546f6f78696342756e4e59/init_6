@@ -1,4 +1,4 @@
-# Copyright 1999-2011 Gentoo Foundation
+# Copyright 1999-2012 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
@@ -15,13 +15,12 @@ detect_arch
 
 DESCRIPTION="Fedora Core Linux patchset for the ${KV_MAJOR}.${KV_MINOR} linux kernel tree"
 RESTRICT="nomirror"
-IUSE=""
-DEPEND="!net-wireless/athload" # compat-wireless
+IUSE="backports"
+DEPEND="!net-wireless/athload" # compat-wireless backports
 UNIPATCH_STRICTORDER="yes"
 KEYWORDS="~amd64 ~x86"
 HOMEPAGE="http://fedoraproject.org/ http://download.fedora.redhat.com/pub/fedora/ http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable"
-# The compat-wireless version
-cwversion=3.2-rc6-3
+cwversion=3.2-rc6-3 # The compat-wireless version
 SRC_URI="${KERNEL_URI} http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.2/compat-wireless-${cwversion}.tar.bz2"
 
 KV_FULL="${PVR}-fc"
@@ -230,10 +229,12 @@ src_unpack() {
 #rhbz 752176
 	epatch "${FILESDIR}"/"${PVR}"/sysfs-msi-irq-per-device.patch
 
-#backport brcm80211 from 3.2-rc1
-	epatch "${FILESDIR}"/"${PVR}"/brcm80211.patch
-# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
-	epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
+	if use backports; then
+		#backport brcm80211 from 3.2-rc1
+			epatch "${FILESDIR}"/"${PVR}"/brcm80211.patch
+		# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
+			epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
+	fi
 
 # rhbz 754907
 	epatch "${FILESDIR}"/"${PVR}"/cciss-fix-irqf-shared.patch
@@ -243,6 +244,8 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/mac80211_offchannel_rework_revert.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch
+
+#	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch # Failed
 
 #rhbz #757839
 	epatch "${FILESDIR}"/"${PVR}"/net-sky2-88e8059-fix-link-speed.patch
@@ -262,31 +265,48 @@ src_unpack() {
 #rhbz 746097
 	epatch "${FILESDIR}"/"${PVR}"/tpm_tis-delay-after-aborting-cmd.patch
 
+#rhbz 771006
+	epatch "${FILESDIR}"/"${PVR}"/thp-reduce-khugepaged-freezing-latency.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/route-cache-garbage-collector.patch
+
+#rhbz 771387
+	epatch "${FILESDIR}"/"${PVR}"/KVM-x86-Prevent-starting-PIT-timers-in-the-absence-of.patch
+
+#rhbz 770233
+	epatch "${FILESDIR}"/"${PVR}"/Bluetooth-Add-support-for-BCM20702A0.patch
+
+#rhbz 771678
+	epatch "${FILESDIR}"/"${PVR}"/KVM-fix-device-assignment-permissions.patch
+
+# END OF PATCH APPLICATIONS
+
 
 ### END OF PATCH APPLICATIONS ###
 
-	echo
-	einfo "Apply compat-wireless patches"
-	echo
-	unpack compat-wireless-${cwversion}.tar.bz2
-	cd compat-wireless-${cwversion}
+	if use backports; then
+		echo
+		einfo "Apply compat-wireless patches"
+		echo
+		unpack compat-wireless-${cwversion}.tar.bz2
+		cd compat-wireless-${cwversion}
 
-	epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
-	epatch "${FILESDIR}"/"${PVR}"/compat-wireless-change-CONFIG_IWLAGN-CONFIG_IWLWIFI.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-change-CONFIG_IWLAGN-CONFIG_IWLWIFI.patch
 
-# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
-	epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
+		# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
+		epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
 
-# Apply some iwlwifi regression fixes not in the 3.2-rc6 wireless snapshot
-	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-do-not-set-the-sequence-control-bit-is-not-n.patch
-	epatch "${FILESDIR}"/"${PVR}"/ath9k-fix-max-phy-rate-at-rate-control-init.patch
-	epatch "${FILESDIR}"/"${PVR}"/mwifiex-avoid-double-list_del-in-command-cancel-path.patch
-	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-tx_sync-only-on-PAN-context.patch
-	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-allow-to-switch-to-HT40-if-not-associated.patch
-	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-update-SCD-BC-table-for-all-SCD-queues.patch
+		# Apply some iwlwifi regression fixes not in the 3.2-rc6 wireless snapshot
+		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-do-not-set-the-sequence-control-bit-is-not-n.patch
+		epatch "${FILESDIR}"/"${PVR}"/ath9k-fix-max-phy-rate-at-rate-control-init.patch
+		epatch "${FILESDIR}"/"${PVR}"/mwifiex-avoid-double-list_del-in-command-cancel-path.patch
+		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-tx_sync-only-on-PAN-context.patch
+		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-allow-to-switch-to-HT40-if-not-associated.patch
+		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-update-SCD-BC-table-for-all-SCD-queues.patch
 
-	cd ..
+		cd ..
+	fi
 
 	echo
 	einfo "Apply extra patches" # my

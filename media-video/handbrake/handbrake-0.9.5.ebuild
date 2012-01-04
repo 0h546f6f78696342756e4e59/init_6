@@ -1,4 +1,4 @@
-# Copyright 1999-2011 Gentoo Foundation
+# Copyright 1999-2012 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
@@ -38,8 +38,7 @@ DEPEND="=sys-devel/automake-1.10*
 	$RDEPEND"
 
 src_prepare() {
-	epatch "${FILESDIR}/${P}-dbus-glib.patch"
-	epatch "${FILESDIR}/${P}-libnotify-0.7.patch"
+	epatch "${FILESDIR}/${PV}-backport-lib-fixes.patch"
 	cd gtk
 	eautoreconf
 }
