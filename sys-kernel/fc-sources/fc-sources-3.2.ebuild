@@ -7,10 +7,10 @@ K_NOSETEXTRAVERSION="1"
 K_DEBLOB_AVAILABLE="0"
 K_SECURITY_UNSUPPORTED="1"
 
-#CKV="${PVR/-r/-git}"
+CKV="${PVR/-r/-git}"
 # only use this if it's not an _rc/_pre release
-#[ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
-CKV="3.2-rc7"
+[ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
+#CKV="3.2-rc7"
 
 ETYPE="sources"
 

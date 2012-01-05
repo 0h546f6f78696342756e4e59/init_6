@@ -247,6 +247,8 @@ src_unpack() {
 
 #	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch # Failed
 
+	epatch "${FILESDIR}"/"${PVR}"/dell-mmconfig-quirk.patch
+
 #rhbz #757839
 	epatch "${FILESDIR}"/"${PVR}"/net-sky2-88e8059-fix-link-speed.patch
 
@@ -278,6 +280,9 @@ src_unpack() {
 
 #rhbz 771678
 	epatch "${FILESDIR}"/"${PVR}"/KVM-fix-device-assignment-permissions.patch
+
+#rhbz 771058
+	epatch "${FILESDIR}"/"${PVR}"/msi-irq-sysfs-warning.patch
 
 # END OF PATCH APPLICATIONS
 

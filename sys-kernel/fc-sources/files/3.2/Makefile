@@ -93,8 +93,6 @@ debug:
 	@perl -pi -e 's/# CONFIG_DEBUG_ATOMIC_SLEEP is not set/CONFIG_DEBUG_ATOMIC_SLEEP=y/' config-nodebug
 	@perl -pi -e 's/# CONFIG_DETECT_HUNG_TASK is not set/CONFIG_DETECT_HUNG_TASK=y/' config-nodebug
 
-	@perl -pi -e 's/# CONFIG_DEBUG_SET_MODULE_RONX is not set/CONFIG_DEBUG_SET_MODULE_RONX=y/' config-nodebug
-
 	@# just in case we're going from extremedebug -> debug
 	@perl -pi -e 's/CONFIG_DEBUG_PAGEALLOC=y/# CONFIG_DEBUG_PAGEALLOC is not set/' config-nodebug
 
@@ -102,6 +100,7 @@ debug:
 
 	@perl -pi -e 's/^%define debugbuildsenabled 1/%define debugbuildsenabled 0/' kernel.spec
 	@perl -pi -e 's/^%define rawhide_skip_docs 0/%define rawhide_skip_docs 1/' kernel.spec
+	@rpmdev-bumpspec -c "Reenable debugging options." kernel.spec
 
 nodebuginfo:
 	@perl -pi -e 's/^%define with_debuginfo %\{\?_without_debuginfo: 0\} %\{\?\!_without_debuginfo: 1\}/%define with_debuginfo %\{\?_without_debuginfo: 0\} %\{\?\!_without_debuginfo: 0\}/' kernel.spec
@@ -110,6 +109,7 @@ nodebug: release
 release: config-release
 	@perl -pi -e 's/^%define debugbuildsenabled 0/%define debugbuildsenabled 1/' kernel.spec
 	@perl -pi -e 's/^%define rawhide_skip_docs 1/%define rawhide_skip_docs 0/' kernel.spec
+	@rpmdev-bumpspec -c "Disable debugging options." kernel.spec
 
 include Makefile.release
 
