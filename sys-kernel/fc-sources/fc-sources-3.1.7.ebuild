@@ -298,6 +298,7 @@ src_unpack() {
 
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-change-CONFIG_IWLAGN-CONFIG_IWLWIFI.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-pr_fmt-warning-avoidance.patch
 
 		# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
 		epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch

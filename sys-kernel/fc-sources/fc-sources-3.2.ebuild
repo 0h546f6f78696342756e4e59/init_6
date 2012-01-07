@@ -217,6 +217,7 @@ src_unpack() {
 		cd compat-wireless-${cwversion}
 
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-pr_fmt-warning-avoidance.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-integrated-build.patch
 
 		cd ..
