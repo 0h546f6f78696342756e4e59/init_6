@@ -270,8 +270,6 @@ src_unpack() {
 #rhbz 771006
 	epatch "${FILESDIR}"/"${PVR}"/thp-reduce-khugepaged-freezing-latency.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/route-cache-garbage-collector.patch
-
 #rhbz 771387
 	epatch "${FILESDIR}"/"${PVR}"/KVM-x86-Prevent-starting-PIT-timers-in-the-absence-of.patch
 
