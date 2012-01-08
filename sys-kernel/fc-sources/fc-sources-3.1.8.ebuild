@@ -217,9 +217,6 @@ src_unpack() {
 #rhbz 736815
 	epatch "${FILESDIR}"/"${PVR}"/x86-code-dump-fix-truncation.patch
 
-#rhbz 750402
-	epatch "${FILESDIR}"/"${PVR}"/oom-fix-integer-overflow-of-points.patch
-
 #rhbz 728607
 #	epatch "${FILESDIR}"/"${PVR}"/elantech.patch # Failed
 
@@ -259,7 +256,7 @@ src_unpack() {
 #	epatch "${FILESDIR}"/"${PVR}"/alps.patch # Failed
 
 #rhbz 767173
-	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-allow-to-switch-to-HT40-if-not-associated.patch
+#	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-allow-to-switch-to-HT40-if-not-associated.patch # Failed
 
 #rhbz 741117
 	epatch "${FILESDIR}"/"${PVR}"/b44-Use-dev_kfree_skb_irq-in-b44_tx.patch
