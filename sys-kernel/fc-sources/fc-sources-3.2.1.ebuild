@@ -10,7 +10,7 @@ K_SECURITY_UNSUPPORTED="1"
 CKV="${PVR/-r/-git}"
 # only use this if it's not an _rc/_pre release
 [ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
-#CKV="3.2-rc7"
+#CKV="3.2.1"
 
 ETYPE="sources"
 
@@ -25,8 +25,8 @@ DEPEND="!net-wireless/athload" # compat-wireless
 UNIPATCH_STRICTORDER="yes"
 KEYWORDS="~amd64 ~x86"
 HOMEPAGE="http://fedoraproject.org/ http://download.fedora.redhat.com/pub/fedora/ http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable"
-cwversion=3.2-rc6-3 # The compat-wireless version
-SRC_URI="${KERNEL_URI} ${ARCH_URI} http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.2/compat-wireless-${cwversion}.tar.bz2"
+cwversion="2012-01-09" # The compat-wireless version
+SRC_URI="${KERNEL_URI} ${ARCH_URI} http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.2/compat-wireless-${cwversion}.tar.bz2 http://www.orbit-lab.org/kernel/compat-wireless-2.6/2012/01/compat-wireless-${cwversion}.tar.bz2"
 
 KV_FULL="${PVR}-fc"
 EXTRAVERSION="${RELEASE}-fc"
@@ -138,10 +138,10 @@ src_unpack() {
 # Make fbcon not show the penguins with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
 
-	if use backports; then
-		# modpost: add option to allow external modules to avoid taint
-			epatch "${FILESDIR}"/"${PVR}"/modpost-add-option-to-allow-external-modules-to-avoi.patch
-	fi
+if use backports; then
+# modpost: add option to allow external modules to avoid taint
+	epatch "${FILESDIR}"/"${PVR}"/modpost-add-option-to-allow-external-modules-to-avoi.patch
+fi
 
 # Changes to upstream defaults.
 
@@ -187,10 +187,10 @@ src_unpack() {
 # Add msi irq ennumeration in sysfs for devices
 	epatch "${FILESDIR}"/"${PVR}"/sysfs-msi-irq-per-device.patch
 
-	if use backports; then
-	# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
-		epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
-	fi
+if use backports; then
+# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
+	epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
+fi
 
 	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch
 
@@ -206,6 +206,19 @@ src_unpack() {
 #rhbz 770233
 	epatch "${FILESDIR}"/"${PVR}"/Bluetooth-Add-support-for-BCM20702A0-0a5c-21e3.patch
 
+	epatch "${FILESDIR}"/"${PVR}"/ext4-Support-check-none-nocheck-mount-options.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/ext4-Fix-error-handling-on-inode-bitmap-corruption.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-rx-key-NULL-ptr-deref-in-promiscuous-mode.patch
+
+#rhbz 773392
+	epatch "${FILESDIR}"/"${PVR}"/KVM-x86-extend-struct-x86_emulate_ops-with-get_cpuid.patch
+	epatch "${FILESDIR}"/"${PVR}"/KVM-x86-fix-missing-checks-in-syscall-emulation.patch
+
+#rhbz 728740
+	epatch "${FILESDIR}"/"${PVR}"/rtl8192cu-Fix-WARNING-on-suspend-resume.patch
+
 
 # END OF PATCH APPLICATIONS
 
@@ -219,6 +232,7 @@ src_unpack() {
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-pr_fmt-warning-avoidance.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-integrated-build.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-rtl8192cu-Fix-WARNING-on-suspend-resume.patch_command
 
 		cd ..
 	fi
@@ -227,6 +241,7 @@ src_unpack() {
 	echo
 	epatch "${FILESDIR}"/acpi-ec-add-delay-before-write.patch
 	epatch "${FILESDIR}"/font-8x16-iso-latin-1.patch
+	epatch "${FILESDIR}"/gentoo-larry-logo.patch
 	echo
 
 # Unfortunately, it has yet not been ported into 3.0 kernel.

@@ -49,12 +49,17 @@ src_prepare() {
 	# Patch from upstream git master; user theme extension ID changed in 3.2.2
 	epatch "${FILESDIR}/${PN}-3.2.2-user-theme-ext-id.patch"
 
-	# Now window resizable
+	# From upstream git master; fix gnome-shell-3.2.1-r2 compat (bug #398385)
+	epatch "${FILESDIR}/${PN}-3.2.2-gnome-shell-3.2.1-r2.patch"
+
+	# From upstream git master; more useful error on missing schemas
+	epatch "${FILESDIR}/${PN}-3.2.2-missing-schemas-error.patch"
+
+	# Now main window is resizable
 	epatch "${FILESDIR}/${PN}-3.2.2-resizable-window.patch"
 
 	# disable pyc compiling
-	mv py-compile py-compile.orig
-	ln -s $(type -P true) py-compile
+	echo > py-compile
 
 	gnome2_src_prepare
 }

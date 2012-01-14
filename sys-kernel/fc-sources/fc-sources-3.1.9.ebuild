@@ -20,7 +20,7 @@ DEPEND="!net-wireless/athload" # compat-wireless backports
 UNIPATCH_STRICTORDER="yes"
 KEYWORDS="~amd64 ~x86"
 HOMEPAGE="http://fedoraproject.org/ http://download.fedora.redhat.com/pub/fedora/ http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable"
-cwversion=3.2-rc6-3 # The compat-wireless version
+cwversion="3.2-1" # The compat-wireless version
 SRC_URI="${KERNEL_URI} http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.2/compat-wireless-${cwversion}.tar.bz2"
 
 KV_FULL="${PVR}-fc"
@@ -226,12 +226,12 @@ src_unpack() {
 #rhbz 752176
 	epatch "${FILESDIR}"/"${PVR}"/sysfs-msi-irq-per-device.patch
 
-	if use backports; then
-		#backport brcm80211 from 3.2-rc1
-			epatch "${FILESDIR}"/"${PVR}"/brcm80211.patch
-		# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
-			epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
-	fi
+if use backports; then
+#backport brcm80211 from 3.2-rc1
+	epatch "${FILESDIR}"/"${PVR}"/brcm80211.patch
+# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
+	epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
+fi
 
 # rhbz 754907
 	epatch "${FILESDIR}"/"${PVR}"/cciss-fix-irqf-shared.patch
@@ -242,8 +242,7 @@ src_unpack() {
 
 	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch
 
-#	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch # Failed
-
+#	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch
 	epatch "${FILESDIR}"/"${PVR}"/dell-mmconfig-quirk.patch
 
 #rhbz #757839
@@ -254,9 +253,6 @@ src_unpack() {
 
 #rhbz 590880
 #	epatch "${FILESDIR}"/"${PVR}"/alps.patch # Failed
-
-#rhbz 767173
-#	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-allow-to-switch-to-HT40-if-not-associated.patch # Failed
 
 #rhbz 741117
 	epatch "${FILESDIR}"/"${PVR}"/b44-Use-dev_kfree_skb_irq-in-b44_tx.patch
@@ -279,8 +275,18 @@ src_unpack() {
 #rhbz 771058
 	epatch "${FILESDIR}"/"${PVR}"/msi-irq-sysfs-warning.patch
 
-# END OF PATCH APPLICATIONS
+	epatch "${FILESDIR}"/"${PVR}"/ext4-Support-check-none-nocheck-mount-options.patch
 
+	epatch "${FILESDIR}"/"${PVR}"/ext4-Fix-error-handling-on-inode-bitmap-corruption.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-rx-key-NULL-ptr-deref-in-promiscuous-mode.patch
+
+#rhbz 773392
+	epatch "${FILESDIR}"/"${PVR}"/KVM-x86-extend-struct-x86_emulate_ops-with-get_cpuid.patch
+	epatch "${FILESDIR}"/"${PVR}"/KVM-x86-fix-missing-checks-in-syscall-emulation.patch
+
+#rhbz 728740
+	epatch "${FILESDIR}"/"${PVR}"/rtl8192cu-Fix-WARNING-on-suspend-resume.patch
 
 ### END OF PATCH APPLICATIONS ###
 
@@ -294,17 +300,10 @@ src_unpack() {
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-change-CONFIG_IWLAGN-CONFIG_IWLWIFI.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-pr_fmt-warning-avoidance.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-rtl8192cu-Fix-WARNING-on-suspend-resume.patch
 
-		# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
+	# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
 		epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
-
-		# Apply some iwlwifi regression fixes not in the 3.2-rc6 wireless snapshot
-		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-do-not-set-the-sequence-control-bit-is-not-n.patch
-		epatch "${FILESDIR}"/"${PVR}"/ath9k-fix-max-phy-rate-at-rate-control-init.patch
-		epatch "${FILESDIR}"/"${PVR}"/mwifiex-avoid-double-list_del-in-command-cancel-path.patch
-		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-tx_sync-only-on-PAN-context.patch
-		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-allow-to-switch-to-HT40-if-not-associated.patch
-		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-update-SCD-BC-table-for-all-SCD-queues.patch
 
 		cd ..
 	fi
@@ -314,6 +313,7 @@ src_unpack() {
 	echo
 	epatch "${FILESDIR}"/acpi-ec-add-delay-before-write.patch
 	epatch "${FILESDIR}"/font-8x16-iso-latin-1.patch
+	epatch "${FILESDIR}"/gentoo-larry-logo.patch
 
 	echo
 
