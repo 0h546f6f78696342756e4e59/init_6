@@ -4,24 +4,19 @@
 
 EAPI="2"
 
-#ESVN_REPO_URI="svn://svn.handbrake.fr/HandBrake/trunk"
 EGIT_REPO_URI="git://github.com/HandBrake/HandBrake.git"
 EGIT_PROJECT="HandBrake"
 
-#inherit subversion gnome2-utils
 inherit git-2 gnome2-utils
 
 DESCRIPTION="Open-source DVD to MPEG-4 converter"
 HOMEPAGE="http://handbrake.fr/"
-
-ESVN_REPO_URI="svn://svn.handbrake.fr/HandBrake/trunk"
 
 LICENSE="GPL-2"
 SLOT="0"
 KEYWORDS="~amd64 ~x86"
 
 IUSE="css doc gtk"
-#			sys-apps/hal
 RDEPEND="sys-libs/zlib
 	css? ( media-libs/libdvdcss )
 	gtk? (	>=x11-libs/gtk+-2.8
@@ -56,7 +51,7 @@ src_configure() {
 }
 
 src_compile() {
-	WANT_AUTOMAKE=1.9 emake -C build || die "failed compiling ${PN}"
+	emake -C build || die "failed compiling ${PN}"
 }
 
 src_install() {
