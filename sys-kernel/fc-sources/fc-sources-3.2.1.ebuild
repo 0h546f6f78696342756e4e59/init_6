@@ -25,7 +25,7 @@ DEPEND="!net-wireless/athload" # compat-wireless
 UNIPATCH_STRICTORDER="yes"
 KEYWORDS="~amd64 ~x86"
 HOMEPAGE="http://fedoraproject.org/ http://download.fedora.redhat.com/pub/fedora/ http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable"
-cwversion="2012-01-09" # The compat-wireless version
+cwversion="3.2-1" # The compat-wireless version
 SRC_URI="${KERNEL_URI} ${ARCH_URI} http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.2/compat-wireless-${cwversion}.tar.bz2 http://www.orbit-lab.org/kernel/compat-wireless-2.6/2012/01/compat-wireless-${cwversion}.tar.bz2"
 
 KV_FULL="${PVR}-fc"
@@ -63,12 +63,8 @@ src_unpack() {
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-makefile-after_link.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/taint-vbox.patch
-
 # Architecture patches
 # x86(-64)
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
 
 #
 # ARM
@@ -76,11 +72,20 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/arm-omap-dt-compat.patch
 	epatch "${FILESDIR}"/"${PVR}"/arm-smsc-support-reading-mac-address-from-device-tree.patch
 
+	epatch "${FILESDIR}"/"${PVR}"/taint-vbox.patch
+#
+# NX Emulation
+#
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
+
 #
 # bugfixes to drivers and filesystems
 #
 
 # ext4
+#rhbz 753346
+	epatch "${FILESDIR}"/"${PVR}"/jbd-jbd2-validate-sb-s_first-in-journal_get_superblo.patch
 
 # xfs
 
@@ -90,7 +95,6 @@ src_unpack() {
 # eCryptfs
 
 # NFSv4
-	epatch "${FILESDIR}"/"${PVR}"/linux-3.1-keys-remove-special-keyring.patch
 
 # USB
 
@@ -119,13 +123,14 @@ src_unpack() {
 
 # Networking
 
+
 # Misc fixes
 # The input layer spews crap no-one cares about.
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-input-kill-stupid-messages.patch
 
 # stop floppy.ko from autoloading during udev...
 	epatch "${FILESDIR}"/"${PVR}"/die-floppy-die.patch
-	epatch "${FILESDIR}"/"${PVR}"/floppy-Remove-_hlt-related-functions.patch
+	epatch "${FILESDIR}"/"${PVR}"/floppy-drop-disable_hlt-warning.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6.30-no-pcspkr-modalias.patch
 
@@ -137,11 +142,6 @@ src_unpack() {
 
 # Make fbcon not show the penguins with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
-
-if use backports; then
-# modpost: add option to allow external modules to avoid taint
-	epatch "${FILESDIR}"/"${PVR}"/modpost-add-option-to-allow-external-modules-to-avoi.patch
-fi
 
 # Changes to upstream defaults.
 
@@ -160,9 +160,9 @@ fi
 # DRM core
 #	epatch "${FILESDIR}"/"${PVR}"/drm-edid-try-harder-to-fix-up-broken-headers.patch
 
-# Nouveau DRM
-
 # Intel DRM
+	epatch "${FILESDIR}"/"${PVR}"/drm-i915-fbc-stfu.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
 
 # silence the ACPI blacklist code
@@ -170,6 +170,7 @@ fi
 	epatch "${FILESDIR}"/"${PVR}"/quite-apm.patch
 
 # Patches headed upstream
+
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/epoll-limit-paths.patch
@@ -184,33 +185,34 @@ fi
 # utrace.
 #	epatch "${FILESDIR}"/"${PVR}"/utrace.patch # Failed
 
-# Add msi irq ennumeration in sysfs for devices
+#rhbz 752176
 	epatch "${FILESDIR}"/"${PVR}"/sysfs-msi-irq-per-device.patch
 
-if use backports; then
-# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
-	epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
-fi
+# rhbz 754907
+	epatch "${FILESDIR}"/"${PVR}"/hpsa-add-irqf-shared.patch
+
+#rhbz 731365
+	epatch "${FILESDIR}"/"${PVR}"/mac80211_offchannel_rework_revert.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch
 
-#rhbz 753236
-	epatch "${FILESDIR}"/"${PVR}"/nfsv4-include-bitmap-in-nfsv4_get_acl_data.patch
-
-#rhbz 590880
-#	epatch "${FILESDIR}"/"${PVR}"/alps.patch # Failed
+#	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch
 
 #rhbz 717735
 #	epatch "${FILESDIR}"/"${PVR}"/nfs-client-freezer.patch # Failed
 
-#rhbz 770233
-	epatch "${FILESDIR}"/"${PVR}"/Bluetooth-Add-support-for-BCM20702A0-0a5c-21e3.patch
+#rhbz 590880
+#	epatch "${FILESDIR}"/"${PVR}"/alps.patch # Failed
+
+#rhbz 746097
+	epatch "${FILESDIR}"/"${PVR}"/tpm_tis-delay-after-aborting-cmd.patch
+
+#rhbz 771058
+	epatch "${FILESDIR}"/"${PVR}"/msi-irq-sysfs-warning.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/ext4-Support-check-none-nocheck-mount-options.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/ext4-Fix-error-handling-on-inode-bitmap-corruption.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-rx-key-NULL-ptr-deref-in-promiscuous-mode.patch
 
 #rhbz 773392
 	epatch "${FILESDIR}"/"${PVR}"/KVM-x86-extend-struct-x86_emulate_ops-with-get_cpuid.patch
@@ -219,6 +221,15 @@ fi
 #rhbz 728740
 	epatch "${FILESDIR}"/"${PVR}"/rtl8192cu-Fix-WARNING-on-suspend-resume.patch
 
+#rhbz 782686
+	epatch "${FILESDIR}"/"${PVR}"/procfs-parse-mount-options.patch
+	epatch "${FILESDIR}"/"${PVR}"/procfs-add-hidepid-and-gid-mount-options.patch
+	epatch "${FILESDIR}"/"${PVR}"/proc-fix-null-pointer-deref-in-proc_pid_permission.patch
+
+#rhbz 782681
+	epatch "${FILESDIR}"/"${PVR}"/proc-clean-up-and-fix-proc-pid-mem-handling.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-work-removal-on-deauth-request.patch
 
 # END OF PATCH APPLICATIONS
 
@@ -230,9 +241,17 @@ fi
 		cd compat-wireless-${cwversion}
 
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-change-CONFIG_IWLAGN-CONFIG_IWLWIFI.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-pr_fmt-warning-avoidance.patch
-		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-integrated-build.patch
-		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-rtl8192cu-Fix-WARNING-on-suspend-resume.patch_command
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-rtl8192cu-Fix-WARNING-on-suspend-resume.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-rx-key-NULL-ptr-deref-in-promiscuous-mode.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-work-removal-on-deauth-request.patch
+
+	#rhbz 731365, 773271
+		epatch "${FILESDIR}"/"${PVR}"/mac80211_offchannel_rework_revert.patch
+
+	# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
+		epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
 
 		cd ..
 	fi

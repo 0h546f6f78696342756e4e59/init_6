@@ -1,7 +1,6 @@
 #!/usr/bin/python
 #
-# Uses git config options user.name and user.email, falls
-# back to env vars $GIT_COMMITTER_NAME and $GIT_COMMITTER_EMAIL
+# Needs $GIT_COMMITTER_NAME and $GIT_COMMITTER_EMAIL set.
 #
 import re
 import sys
@@ -45,12 +44,8 @@ class Specfile:
             self.vr = " "+ver+'-'+nextrel
 
     def addChangelogEntry(self,entry):
-        user = os.popen("git config --get user.name").read().rstrip()
-        if (user == ""):
-            user = os.environ.get("GIT_COMMITTER_NAME","Unknown")
-        email = os.popen("git config --get user.email").read().rstrip()
-        if (email == ""):
-            email = os.environ.get("GIT_COMMITTER_EMAIL","unknown")
+        user = os.environ.get("GIT_COMMITTER_NAME","unknown")
+        email = os.environ.get("GIT_COMMITTER_EMAIL","unknown")
         if (email == "unknown"):
             email = os.environ.get("USER","unknown")+"@fedoraproject.org"
         changematch=re.compile(r"^%changelog")
