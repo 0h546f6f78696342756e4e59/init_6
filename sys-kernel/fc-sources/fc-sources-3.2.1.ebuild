@@ -259,8 +259,8 @@ src_unpack() {
 	einfo "Apply extra patches" # my
 	echo
 	epatch "${FILESDIR}"/acpi-ec-add-delay-before-write.patch
-	epatch "${FILESDIR}"/font-8x16-iso-latin-1.patch
-	epatch "${FILESDIR}"/gentoo-larry-logo.patch
+	epatch "${FILESDIR}"/font-8x16-iso-latin-1-v2.patch
+	epatch "${FILESDIR}"/gentoo-larry-logo-v2.patch
 	echo
 
 # Unfortunately, it has yet not been ported into 3.0 kernel.
