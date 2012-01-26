@@ -2,6 +2,8 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
+EAPI=4
+
 K_NOUSENAME="yes"
 K_NOSETEXTRAVERSION="1"
 K_DEBLOB_AVAILABLE="0"
@@ -73,7 +75,7 @@ src_unpack() {
 #
 # ARM
 #
-#	epatch "${FILESDIR}"/"${PVR}"/arm-omap-dt-compat.patch
+#pplyPatch arm-omap-dt-compat.patch
 	epatch "${FILESDIR}"/"${PVR}"/arm-smsc-support-reading-mac-address-from-device-tree.patch
 
 #
@@ -172,8 +174,6 @@ fi
 # Patches headed upstream
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
 
-#pplyPatch block-stray-block-put-after-teardown.patch
-
 # rhbz#605888
 	epatch "${FILESDIR}"/"${PVR}"/dmar-disable-when-ricoh-multifunction.patch
 
@@ -181,12 +181,7 @@ fi
 	epatch "${FILESDIR}"/"${PVR}"/efi-dont-map-boot-services-on-32bit.patch
 
 # utrace.
-# pplyPatch utrace.patch
-
-if use backports; then
-# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
-	epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
-fi
+	epatch "${FILESDIR}"/"${PVR}"/utrace.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/ext4-Support-check-none-nocheck-mount-options.patch
 
@@ -195,6 +190,9 @@ fi
 	epatch "${FILESDIR}"/"${PVR}"/KVM-x86-fix-missing-checks-in-syscall-emulation.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/kmemleak.patch
+
+#rhbz 783211
+	epatch "${FILESDIR}"/"${PVR}"/fs-Inval-cache-for-parent-block-device-if-fsync-called-on-part.patch
 
 # END OF PATCH APPLICATIONS
 
@@ -227,7 +225,7 @@ fi
 #	use reiser4 && epatch ${DISTDIR}/reiser4-for-${PV}.patch.bz2
 
 # Install the docs
-	dodoc "${FILESDIR}"/"${PVR}"/{README.txt,TODO}
+	nonfatal dodoc "${FILESDIR}/${PVR}"/{README.txt,TODO}
 
 }
 

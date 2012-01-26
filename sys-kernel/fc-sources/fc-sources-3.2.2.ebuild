@@ -2,6 +2,8 @@
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
+EAPI=4
+
 K_NOUSENAME="yes"
 K_NOSETEXTRAVERSION="1"
 K_DEBLOB_AVAILABLE="0"
@@ -143,6 +145,11 @@ src_unpack() {
 # Make fbcon not show the penguins with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
 
+if use backports; then
+# modpost: add option to allow external modules to avoid taint
+	epatch "${FILESDIR}"/"${PVR}"/modpost-add-option-to-allow-external-modules-to-avoi.patch
+fi
+
 # Changes to upstream defaults.
 
 
@@ -191,9 +198,6 @@ src_unpack() {
 # rhbz 754907
 	epatch "${FILESDIR}"/"${PVR}"/hpsa-add-irqf-shared.patch
 
-#rhbz 731365
-	epatch "${FILESDIR}"/"${PVR}"/mac80211_offchannel_rework_revert.patch
-
 	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch
 
 #	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch
@@ -226,10 +230,18 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/procfs-add-hidepid-and-gid-mount-options.patch
 	epatch "${FILESDIR}"/"${PVR}"/proc-fix-null-pointer-deref-in-proc_pid_permission.patch
 
-#rhbz 782681
-	epatch "${FILESDIR}"/"${PVR}"/proc-clean-up-and-fix-proc-pid-mem-handling.patch
-
 	epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-work-removal-on-deauth-request.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/rcu-reintroduce-missing-calls.patch
+
+#rhbz 718790
+	epatch "${FILESDIR}"/"${PVR}"/rds-Make-rds_sock_lock-BH-rather-than-IRQ-safe.patch
+
+#rhbz 783211
+	epatch "${FILESDIR}"/"${PVR}"/fs-Inval-cache-for-parent-block-device-if-fsync-called-on-part.patch
+
+#rhbz 784345
+	epatch "${FILESDIR}"/"${PVR}"/realtek_async_autopm.patch
 
 # END OF PATCH APPLICATIONS
 
@@ -241,17 +253,12 @@ src_unpack() {
 		cd compat-wireless-${cwversion}
 
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
-		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-change-CONFIG_IWLAGN-CONFIG_IWLWIFI.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-pr_fmt-warning-avoidance.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-rtl8192cu-Fix-WARNING-on-suspend-resume.patch
-		epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-rx-key-NULL-ptr-deref-in-promiscuous-mode.patch
 		epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-work-removal-on-deauth-request.patch
 
-	#rhbz 731365, 773271
-		epatch "${FILESDIR}"/"${PVR}"/mac80211_offchannel_rework_revert.patch
-
-	# Remove overlap between bcma/b43 and brcmsmac and reenable bcm4331
-		epatch "${FILESDIR}"/"${PVR}"/bcma-brcmsmac-compat.patch
+	# Remove overlapping hardware support between b43 and brcmsmac
+		epatch "${FILESDIR}"/"${PVR}"/b43-add-option-to-avoid-duplicating-device-support-w.patch
 
 		cd ..
 	fi
@@ -269,8 +276,7 @@ src_unpack() {
 #	use reiser4 && epatch ${DISTDIR}/reiser4-for-${PV}.patch.bz2
 
 # Install the docs
-	dodoc "${FILESDIR}"/"${PVR}"/{README.txt,TODO}
-
+	nonfatal dodoc "${FILESDIR}/${PVR}"/{README.txt,TODO}
 }
 
 src_install() {

@@ -36,8 +36,8 @@ DEPEND="=sys-devel/automake-1.10*
 	$RDEPEND"
 
 src_prepare() {
-	epatch "${FILESDIR}/${P}-dbus-glib.patch"
-	epatch "${FILESDIR}/${P}-libnotify-0.7.patch"
+#	epatch "${FILESDIR}/${P}-dbus-glib.patch"
+#	epatch "${FILESDIR}/${P}-libnotify-0.7.patch"
 	cd gtk
 	eautoreconf
 }
