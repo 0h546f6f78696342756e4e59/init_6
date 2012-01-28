@@ -4,7 +4,7 @@ Value=1.0
 Type=Application
 Name=Irssi
 GenericName=Irssi
-Exec=gnome-terminal --maximize --hide-menubar -e "irssi"
+Exec=gnome-terminal --maximize --hide-menubar --title="The client of the future" -e "irssi"
 Path=/usr/bin
 Icon=irssi
 StartupNotify=true

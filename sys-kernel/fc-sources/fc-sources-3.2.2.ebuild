@@ -6,7 +6,7 @@ EAPI=4
 
 K_NOUSENAME="yes"
 K_NOSETEXTRAVERSION="1"
-K_DEBLOB_AVAILABLE="0"
+K_DEBLOB_AVAILABLE="1"
 K_SECURITY_UNSUPPORTED="1"
 
 CKV="${PVR/-r/-git}"
@@ -22,7 +22,7 @@ detect_arch
 
 DESCRIPTION="Fedora Core Linux patchset for the ${KV_MAJOR}.${KV_MINOR} linux kernel tree"
 RESTRICT="nomirror"
-IUSE="backports"
+IUSE="backports deblob"
 DEPEND="!net-wireless/athload" # compat-wireless
 UNIPATCH_STRICTORDER="yes"
 KEYWORDS="~amd64 ~x86"

@@ -4,7 +4,7 @@
 
 EAPI=4
 
-inherit base flag-o-matic
+inherit autotools eutils flag-o-matic
 
 MY_P=${P/_/-}
 
@@ -39,6 +39,13 @@ DEPEND="${RDEPEND}
 
 S=${WORKDIR}/${MY_P}
 
+src_prepare() {
+	epatch "${FILESDIR}"/${PN}-4.8.1-fix-fallocate-xBSD.patch
+
+	# patch above changed .m4 bits
+	eautoreconf
+}
+
 src_configure() {
 	local myscreen=ncurses
 	use slang && myscreen=slang
@@ -64,15 +71,13 @@ src_configure() {
 }
 
 src_install() {
-	emake DESTDIR="${D}" install || die
+	emake DESTDIR="${D}" install
 	dodoc AUTHORS README NEWS
 
 	# fix bug #334383
 	if use kernel_linux && [[ ${EUID} == 0 ]] ; then
-		fowners root:tty /usr/libexec/mc/cons.saver ||
-			die "setting cons.saver's owner failed"
-		fperms g+s /usr/libexec/mc/cons.saver ||
-			die "setting cons.saver's permissions failed"
+		fowners root:tty /usr/libexec/mc/cons.saver
+		fperms g+s /usr/libexec/mc/cons.saver
 	fi
 
 	insinto /usr/share/pixmaps
