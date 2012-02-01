@@ -255,13 +255,24 @@ fi
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-pr_fmt-warning-avoidance.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-rtl8192cu-Fix-WARNING-on-suspend-resume.patch
-		epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-work-removal-on-deauth-request.patch
 
-	# Remove overlapping hardware support between b43 and brcmsmac
+	# Pending upstream fixes
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-debugfs-key-station-symlink.patch
+		epatch "${FILESDIR}"/"${PVR}"/brcmsmac-fix-tx-queue-flush-infinite-loop.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-Use-the-right-headroom-size-for-mesh-mgmt-f.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-work-removal-on-deauth-request.patch
 		epatch "${FILESDIR}"/"${PVR}"/b43-add-option-to-avoid-duplicating-device-support-w.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-update-oper_channel-on-ibss-join.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-set-bss_conf.idle-when-vif-is-connected.patch
+		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-fix-PCI-E-transport-inta-race.patch
+
+		epatch "${FILESDIR}"/"${PVR}"/ath9k-use-WARN_ON_ONCE-in-ath_rc_get_highest_rix.patch
+
+		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-bz785561.patch
 
 		cd ..
 	fi
+
 	echo
 	einfo "Apply extra patches" # my
 	echo

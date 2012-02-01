@@ -12,7 +12,7 @@ K_SECURITY_UNSUPPORTED="1"
 #CKV="${PVR/-r/-git}"
 # only use this if it's not an _rc/_pre release
 #[ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
-CKV="3.3-rc1"
+CKV="3.3-rc2"
 
 ETYPE="sources"
 
@@ -22,7 +22,7 @@ detect_arch
 
 DESCRIPTION="Fedora Core Linux patchset for the ${KV_MAJOR}.${KV_MINOR} linux kernel tree"
 RESTRICT="nomirror"
-IUSE="backports"
+IUSE="backports deblob"
 DEPEND="!net-wireless/athload" # compat-wireless
 UNIPATCH_STRICTORDER="yes"
 KEYWORDS="~amd64 ~x86"
@@ -177,11 +177,10 @@ fi
 # rhbz#605888
 	epatch "${FILESDIR}"/"${PVR}"/dmar-disable-when-ricoh-multifunction.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/revert-efi-rtclock.patch
 	epatch "${FILESDIR}"/"${PVR}"/efi-dont-map-boot-services-on-32bit.patch
 
 # utrace.
-	epatch "${FILESDIR}"/"${PVR}"/utrace.patch
+#	epatch "${FILESDIR}"/"${PVR}"/utrace.patch # Failed
 
 	epatch "${FILESDIR}"/"${PVR}"/ext4-Support-check-none-nocheck-mount-options.patch
 
@@ -190,6 +189,8 @@ fi
 	epatch "${FILESDIR}"/"${PVR}"/KVM-x86-fix-missing-checks-in-syscall-emulation.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/kmemleak.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/udlfb-remove-sysfs-framebuffer-device-with-USB-disconnect.patch
 
 #rhbz 783211
 	epatch "${FILESDIR}"/"${PVR}"/fs-Inval-cache-for-parent-block-device-if-fsync-called-on-part.patch
@@ -206,11 +207,15 @@ fi
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-pr_fmt-warning-avoidance.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-integrated-build.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-use-kconfig_h.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-move-br_port_exists-to-compat-2_6_36_h.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-fix-some-config-options.patch
 
-		epatch "${FILESDIR}"/"${PVR}"/brcmfmac-gcc47.patch
+		epatch "${FILESDIR}"/"${PVR}"/ath9k-use-WARN_ON_ONCE-in-ath_rc_get_highest_rix.patch
 
 		cd ..
 	fi
+
 	echo
 	einfo "Apply extra patches" # my
 	echo
