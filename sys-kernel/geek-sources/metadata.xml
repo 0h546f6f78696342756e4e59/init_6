@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "http://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+  <herd>kernel</herd>
+  <maintainer>
+    <email>sudormrfhalt@gmail.com</email>
+    <name>Andrey Ovcharov</name>
+  </maintainer>
+  <use>
+    <flag name='branding'>Enable Gentoo specific branding.</flag>
+    <flag name='backports'>Use backports compat-wireless patches.</flag>
+    <flag name='hardened'>Use grsecurity patches.</flag>
+  </use>
+</pkgmetadata>
