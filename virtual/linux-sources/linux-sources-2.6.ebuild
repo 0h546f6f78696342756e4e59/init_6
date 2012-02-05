@@ -38,5 +38,5 @@ RDEPEND="|| (
 		>=sys-kernel/xen-sources-2.6
 		>=sys-kernel/zen-sources-2.6
 		>=sys-kernel/rh-sources-2.6
-		hardened? ( >=sys-kernel/geek-sources-3.2 )
+		>=sys-kernel/geek-sources-3.2
 	)"
