@@ -8,21 +8,34 @@ K_NOSETEXTRAVERSION="yes"
 K_SECURITY_UNSUPPORTED="1"
 K_DEBLOB_AVAILABLE="1"
 ETYPE="sources"
+
+CKV="${PVR/-r/-git}"
+# only use this if it's not an _rc/_pre release
+[ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
+#CKV="3.2.1"
+
 inherit kernel-2
 detect_version
 
-grsecurity_version=201201302345
-compat_wireless_version=3.2-1
+grsecurity_version="201202032052"
+grsecurity_src="http://grsecurity.net/test/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch"
+compat_wireless_version="3.3-rc1-2"
+compat_wireless_src="http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.3/compat-wireless-${compat_wireless_version}.tar.bz2"
+css_version="1.8.3-20120120"
+css_src="http://sourceforge.jp/tomoyo/43375/ccs-patch-${css_version}.tar.gz"
 
-DESCRIPTION="Full sources for the Linux kernel including fedora, grsecurity patches"
+KEYWORDS="~amd64 ~x86"
+IUSE="backports branding deblob grsecurity tomoyo"
+DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, tomoyo patches"
 HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable http://grsecurity.net"
-SRC_URI="${KERNEL_URI} ${ARCH_URI} http://grsecurity.net/test/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.2/compat-wireless-${compat_wireless_version}.tar.bz2 http://www.orbit-lab.org/kernel/compat-wireless-2.6/2012/01/compat-wireless-${compat_wireless_version}.tar.bz2"
+SRC_URI="${KERNEL_URI} ${ARCH_URI}
+	backports?	( ${compat_wireless_src} )
+	grsecurity?	( ${grsecurity_src} )
+	tomoyo?		( ${css_src} )"
+REQUIRED_USE="grsecurity? ( !tomoyo ) tomoyo? ( !grsecurity )"
 
-KEYWORDS="~alpha amd64 ~arm ~hppa ~ia64 ppc ppc64 ~s390 ~sh ~sparc ~x86"
-IUSE="backports branding deblob hardened"
-
-KV_FULL="${KV_FULL/linux/geek}"
-EXTRAVERSION="${EXTRAVERSION/linux/geek}"
+KV_FULL="${PVR}-geek"
+EXTRAVERSION="${RELEASE}-geek"
 SLOT="${PV}"
 S="${WORKDIR}/linux-${KV_FULL}"
 
@@ -36,7 +49,16 @@ src_unpack() {
 	cp ${FILESDIR}/${PVR}/merge.pl ${FILESDIR}/${PVR}/Makefile.config . &>/dev/null || die "cannot copy kernel files";
 	make -f Makefile.config VERSION=${PVR} configs &>/dev/null || die "cannot generate kernel .config files from config-* files"
 
-	use hardened && epatch ${DISTDIR}/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch
+	use grsecurity && epatch ${DISTDIR}/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch
+	if use tomoyo; then
+		unpack "ccs-patch-${css_version}.tar.gz"
+		cd "${WORKDIR}/linux-${KV_FULL}"
+		cp "${WORKDIR}/linux-${KV_FULL}/patches/ccs-patch-3.2.diff" "${WORKDIR}/linux-${KV_FULL}/ccs-patch-3.2.diff"
+		EPATCH_OPTS="-p1" epatch "${WORKDIR}/linux-${KV_FULL}/ccs-patch-3.2.diff"
+		rm -f "${WORKDIR}/linux-${KV_FULL}/ccs-patch-3.2.diff"
+		rmdir --ignore-fail-on-non-empty "${WORKDIR}/linux-${KV_FULL}/patches"
+		cd "${S}"
+	fi
 
 ### BRANCH APPLY ###
 
@@ -55,8 +77,8 @@ src_unpack() {
 #
 # NX Emulation
 #
-	use hardened || epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
-	use hardened || epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
+	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
+	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
 
 #
 # bugfixes to drivers and filesystems
@@ -122,8 +144,8 @@ src_unpack() {
 # Make fbcon not show the penguins with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
 
-	# modpost: add option to allow external modules to avoid taint
-	use backports epatch "${FILESDIR}"/"${PVR}"/modpost-add-option-to-allow-external-modules-to-avoi.patch
+# modpost: add option to allow external modules to avoid taint
+	use backports && epatch "${FILESDIR}"/"${PVR}"/modpost-add-option-to-allow-external-modules-to-avoi.patch
 
 # Changes to upstream defaults.
 
@@ -186,9 +208,6 @@ src_unpack() {
 #	EPATCH_OPTS="-p1 -F1 -s" \
 #	epatch "${FILESDIR}"/"${PVR}"/alps.patch # Failed
 
-#rhbz 746097
-	epatch "${FILESDIR}"/"${PVR}"/tpm_tis-delay-after-aborting-cmd.patch
-
 #rhbz 771058
 	epatch "${FILESDIR}"/"${PVR}"/msi-irq-sysfs-warning.patch
 
@@ -204,22 +223,12 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/rtl8192cu-Fix-WARNING-on-suspend-resume.patch
 
 #rhbz 782686
-	use hardened || epatch "${FILESDIR}"/"${PVR}"/procfs-parse-mount-options.patch
-	use hardened || epatch "${FILESDIR}"/"${PVR}"/procfs-add-hidepid-and-gid-mount-options.patch
-	use hardened || epatch "${FILESDIR}"/"${PVR}"/proc-fix-null-pointer-deref-in-proc_pid_permission.patch
+	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/procfs-parse-mount-options.patch
+	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/procfs-add-hidepid-and-gid-mount-options.patch
+	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/proc-fix-null-pointer-deref-in-proc_pid_permission.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-work-removal-on-deauth-request.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/rcu-reintroduce-missing-calls.patch
-
-#rhbz 718790
-	epatch "${FILESDIR}"/"${PVR}"/rds-Make-rds_sock_lock-BH-rather-than-IRQ-safe.patch
-
-#rhbz 783211
-	epatch "${FILESDIR}"/"${PVR}"/fs-Inval-cache-for-parent-block-device-if-fsync-called-on-part.patch
-
-#rhbz 784345
-	epatch "${FILESDIR}"/"${PVR}"/realtek_async_autopm.patch
+#rhbz 772772
+	epatch "${FILESDIR}"/"${PVR}"/rt2x00_fix_MCU_request_failures.patch
 
 # END OF PATCH APPLICATIONS
 
@@ -232,21 +241,28 @@ src_unpack() {
 
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-config-fixups.patch
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-pr_fmt-warning-avoidance.patch
+		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-integrated-build.patch
+
 		epatch "${FILESDIR}"/"${PVR}"/compat-wireless-rtl8192cu-Fix-WARNING-on-suspend-resume.patch
 
 	# Pending upstream fixes
 		epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-debugfs-key-station-symlink.patch
 		epatch "${FILESDIR}"/"${PVR}"/brcmsmac-fix-tx-queue-flush-infinite-loop.patch
 		epatch "${FILESDIR}"/"${PVR}"/mac80211-Use-the-right-headroom-size-for-mesh-mgmt-f.patch
-		epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-work-removal-on-deauth-request.patch
 		epatch "${FILESDIR}"/"${PVR}"/b43-add-option-to-avoid-duplicating-device-support-w.patch
 		epatch "${FILESDIR}"/"${PVR}"/mac80211-update-oper_channel-on-ibss-join.patch
 		epatch "${FILESDIR}"/"${PVR}"/mac80211-set-bss_conf.idle-when-vif-is-connected.patch
 		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-fix-PCI-E-transport-inta-race.patch
+		epatch "${FILESDIR}"/"${PVR}"/bcma-Fix-mem-leak-in-bcma_bus_scan.patch
+		epatch "${FILESDIR}"/"${PVR}"/rt2800lib-fix-wrong-128dBm-when-signal-is-stronger-t.patch
+		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-make-Tx-aggregation-enabled-on-ra-be-at-DEBU.patch
+		epatch "${FILESDIR}"/"${PVR}"/ssb-fix-cardbus-slot-in-hostmode.patch
+		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-don-t-mess-up-QoS-counters-with-non-QoS-fram.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-timeout-a-single-frame-in-the-rx-reorder-bu.patch
 
 		epatch "${FILESDIR}"/"${PVR}"/ath9k-use-WARN_ON_ONCE-in-ath_rc_get_highest_rix.patch
 
-		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-bz785561.patch
+		epatch "${FILESDIR}"/"${PVR}"/rt2x00_fix_MCU_request_failures.patch
 
 		cd ..
 	fi
@@ -301,7 +317,10 @@ pkg_postinst() {
 	if use backports; then
 		einfo "backports enable compat-wireless patches http://www.orbit-lab.org/kernel"
 	fi
-	if use hardened; then
-		einfo "hardened enable http://grsecurity.net patches"
+	if use grsecurity; then
+		einfo "grsecurity enable http://grsecurity.net patches"
+	fi
+	if use tomoyo; then
+		einfo "tomoyo enable http://en.sourceforge.jp/projects/tomoyo patches"
 	fi
 }
