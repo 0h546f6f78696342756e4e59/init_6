@@ -1,23 +1,26 @@
-# Copyright 1999-2012 Gentoo Foundation
+# Copyright 1999-2011 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 # $Header: $
 
-EAPI="4"
+EAPI="2"
 
 inherit eutils flag-o-matic multilib
 
 if [[ ${PV} == "9999" ]] ; then
 	EGIT_REPO_URI="git://source.winehq.org/git/wine.git"
-	inherit git-2
+	inherit git autotools
 	SRC_URI=""
 	#KEYWORDS=""
 else
+	AUTOTOOLS_AUTO_DEPEND="no"
+	inherit autotools
 	MY_P="${PN}-${PV/_/-}"
 	SRC_URI="mirror://sourceforge/${PN}/${MY_P}.tar.bz2"
 	KEYWORDS="-* ~amd64 ~x86 ~x86-fbsd"
 	S=${WORKDIR}/${MY_P}
 fi
 
+pulse_patches() { echo "$1"/winepulse-{0.39,configure.ac-1.3.20,winecfg-1.3.11}.patch ; }
 GV="1.2.0"
 DESCRIPTION="free implementation of Windows(tm) on Unix"
 HOMEPAGE="http://www.winehq.org/"
@@ -25,25 +28,22 @@ SRC_URI="${SRC_URI}
 	gecko? (
 		mirror://sourceforge/wine/wine_gecko-${GV}-x86.msi
 		win64? ( mirror://sourceforge/wine/wine_gecko-${GV}-x86_64.msi )
-	)"
+	)
+	pulseaudio? ( `pulse_patches http://art.ified.ca/downloads/winepulse` )"
 
 LICENSE="LGPL-2.1"
 SLOT="0"
-IUSE="alsa capi cups custom-cflags dbus elibc_glibc fontconfig +gecko gnutls gphoto2 gsm gstreamer hardened jack jpeg lcms ldap mp3 nas ncurses nls openal opencl +opengl +oss +perl png samba scanner ssl test +threads +truetype v4l +win32 +win64 +X xcomposite xinerama xml"
-REQUIRED_USE="elibc_glibc? ( threads )" #286560
+IUSE="alsa capi cups custom-cflags dbus esd fontconfig +gecko gnutls gphoto2 gsm gstreamer hal jack jpeg lcms ldap mp3 nas ncurses nls openal +opengl +oss +perl png pulseaudio samba scanner ssl test +threads +truetype v4l +win32 +win64 +X xcomposite xinerama xml"
 RESTRICT="test" #72375
 
 MLIB_DEPS="amd64? (
 	truetype? ( >=app-emulation/emul-linux-x86-xlibs-2.1 )
 	X? (
 		>=app-emulation/emul-linux-x86-xlibs-2.1
-		>=app-emulation/emul-linux-x86-soundlibs-2.1
+		>=app-emulation/emul-linux-x86-soundlibs-2.1[pulseaudio?]
 	)
-	mp3? ( app-emulation/emul-linux-x86-soundlibs )
 	openal? ( app-emulation/emul-linux-x86-sdl )
 	opengl? ( app-emulation/emul-linux-x86-opengl )
-	scanner? ( app-emulation/emul-linux-x86-medialibs )
-	v4l? ( app-emulation/emul-linux-x86-medialibs )
 	app-emulation/emul-linux-x86-baselibs
 	>=sys-kernel/linux-headers-2.6
 	)"
@@ -58,6 +58,7 @@ RDEPEND="truetype? ( >=media-libs/freetype-2.0.0 media-fonts/corefonts )
 	dbus? ( sys-apps/dbus )
 	gnutls? ( net-libs/gnutls )
 	gstreamer? ( media-libs/gstreamer media-libs/gst-plugins-base )
+	hal? ( sys-apps/hal )
 	X? (
 		x11-libs/libXcursor
 		x11-libs/libXrandr
@@ -68,10 +69,11 @@ RDEPEND="truetype? ( >=media-libs/freetype-2.0.0 media-fonts/corefonts )
 	)
 	xinerama? ( x11-libs/libXinerama )
 	alsa? ( media-libs/alsa-lib )
+	esd? ( media-sound/esound )
 	nas? ( media-libs/nas )
 	cups? ( net-print/cups )
-	opencl? ( virtual/opencl )
 	opengl? ( virtual/opengl )
+	pulseaudio? ( media-sound/pulseaudio )
 	gsm? ( media-sound/gsm )
 	jpeg? ( virtual/jpeg )
 	ldap? ( net-nds/openldap )
@@ -86,16 +88,16 @@ RDEPEND="truetype? ( >=media-libs/freetype-2.0.0 media-fonts/corefonts )
 	v4l? ( media-libs/libv4l )
 	!win64? ( ${MLIB_DEPS} )
 	win32? ( ${MLIB_DEPS} )
-	xcomposite? ( x11-libs/libXcomposite )"
+	xcomposite? ( x11-libs/libXcomposite ) "
 DEPEND="${RDEPEND}
+	pulseaudio? ( ${AUTOTOOLS_DEPEND} )
 	X? (
 		x11-proto/inputproto
 		x11-proto/xextproto
 		x11-proto/xf86vidmodeproto
 	)
 	xinerama? ( x11-proto/xineramaproto )
-	!hardened? ( sys-devel/prelink )
-	virtual/yacc
+	sys-devel/bison
 	sys-devel/flex"
 
 src_unpack() {
@@ -105,13 +107,17 @@ src_unpack() {
 	fi
 
 	if [[ ${PV} == "9999" ]] ; then
-		git-2_src_unpack
+		git_src_unpack
 	else
 		unpack ${MY_P}.tar.bz2
 	fi
 }
 
 src_prepare() {
+	if use pulseaudio ; then
+		EPATCH_OPTS=-p1 epatch `pulse_patches "${DISTDIR}"`
+		eautoreconf
+	fi
 	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
 
 	# Fix EAX sound in GTA San Andreas
@@ -120,14 +126,15 @@ src_prepare() {
 
 	epatch "${FILESDIR}"/${PN}-imagemagick-6.5.patch
 
+	# add udisks support
+	# https://bugzilla.redhat.com/show_bug.cgi?id=712755
+	# http://bugs.winehq.org/show_bug.cgi?id=21713
+	# http://source.winehq.org/patches/data/77534
+	#epatch "${FILESDIR}"/${PN}-udisks1.patch
+
 	# Wine doublebuffer patch - http://bugs2.winehq.org/attachment.cgi?id=27310
 	# Need for Crysis
 	epatch "${FILESDIR}"/${PN}-doublebuffer.patch
-
-	# WinePulse – PulseAudio for Wine http://art.ified.ca/?page_id=40
-	epatch "${FILESDIR}"/${PN}pulse-0.40.patch
-	epatch "${FILESDIR}"/${PN}pulse-configure.ac-1.3.22.patch
-	epatch "${FILESDIR}"/${PN}pulse-winecfg-1.3.11.patch
 
 	epatch_user #282735
 	sed -i '/^UPDATE_DESKTOP_DATABASE/s:=.*:=true:' tools/Makefile.in || die
@@ -147,13 +154,13 @@ do_configure() {
 		$(use_with lcms cms) \
 		$(use_with cups) \
 		$(use_with ncurses curses) \
-		--without-esd \
+		$(use_with esd) \
 		$(use_with fontconfig) \
 		$(use_with gnutls) \
 		$(use_with gphoto2 gphoto) \
 		$(use_with gsm) \
 		$(use_with gstreamer) \
-		--without-hal \
+		$(! use dbus && echo --without-hal || use_with hal) \
 		$(use_with jack) \
 		$(use_with jpeg) \
 		$(use_with ldap) \
@@ -161,12 +168,12 @@ do_configure() {
 		$(use_with nas) \
 		$(use_with nls gettextpo) \
 		$(use_with openal) \
-		$(use_with opencl) \
 		$(use_with opengl) \
 		$(use_with ssl openssl) \
 		$(use_with oss) \
 		$(use_with png) \
 		$(use_with threads pthread) \
+		$(use pulseaudio && use_with pulseaudio pulse) \
 		$(use_with scanner sane) \
 		$(use_enable test tests) \
 		$(use_with truetype freetype) \
@@ -178,7 +185,7 @@ do_configure() {
 		$(use_with xml xslt) \
 		$2
 
-	emake -j1 depend
+	emake -j1 depend || die "depend"
 
 	popd >/dev/null
 }
@@ -199,7 +206,7 @@ src_compile() {
 	for b in 64 32 ; do
 		local builddir="${WORKDIR}/wine${b}"
 		[[ -d ${builddir} ]] || continue
-		emake -C "${builddir}" all
+		emake -C "${builddir}" all || die
 	done
 }
 
@@ -208,13 +215,13 @@ src_install() {
 	for b in 64 32 ; do
 		local builddir="${WORKDIR}/wine${b}"
 		[[ -d ${builddir} ]] || continue
-		emake -C "${builddir}" install DESTDIR="${D}"
+		emake -C "${builddir}" install DESTDIR="${D}" || die
 	done
 	dodoc ANNOUNCE AUTHORS README
 	if use gecko ; then
 		insinto /usr/share/wine/gecko
-		doins "${DISTDIR}"/wine_gecko-${GV}-x86.msi
-		use win64 && doins "${DISTDIR}"/wine_gecko-${GV}-x86_64.msi
+		doins "${DISTDIR}"/wine_gecko-${GV}-x86.msi || die
+		use win64 && { doins "${DISTDIR}"/wine_gecko-${GV}-x86_64.msi || die ; }
 	fi
 	if ! use perl ; then
 		rm "${D}"/usr/bin/{wine{dump,maker},function_grep.pl} "${D}"/usr/share/man/man1/wine{dump,maker}.1 || die
@@ -223,8 +230,8 @@ src_install() {
 	insinto /etc/xdg/menus/applications-merged/
 	doins  "${FILESDIR}/wine.menu" || die "doins failed"
 	insinto /usr/share/desktop-directories/
-	doins  "${FILESDIR}/Wine.directory" || die "doins failed"
-	domenu "${FILESDIR}"/*.desktop || die "domenu failed"
+	doins  "${FILESDIR}/Wine.directory" || die "doexe failed"
+	domenu "${FILESDIR}"/*.desktop || die "doins failed"
 	insinto /usr/share/pixmaps/
 	doins "${FILESDIR}"/*.svg || die "doins failed"
 }
