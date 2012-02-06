@@ -15,7 +15,7 @@ In this overlay you will find:
 	media-video/mplayer with desktop and icon files
 	net-irc/irssi with desktop and icon files
 	sys-kernel/vanilla-sources live 9999 git ebuild
-	sys-kernel/geek-sources Full sources for the Linux kernel including fedora, grsecurity patches
+	sys-kernel/geek-sources Full sources for the Linux kernel including fedora, grsecurity, tomoyo patches
 		Use flag branding enable Gentoo specific branding.
 		backports - compat-wireless patches.
 		grsecurity - grsecurity patches.

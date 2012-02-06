@@ -18,7 +18,8 @@ inherit kernel-2
 detect_version
 
 grsecurity_version="201202032052"
-grsecurity_src="http://grsecurity.net/test/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch"
+#grsecurity_src="http://grsecurity.net/test/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch"
+grsecurity_src="http://grsecurity.net/test/grsecurity-2.2.2-3.2.4-${grsecurity_version}.patch"
 compat_wireless_version="3.3-rc1-2"
 compat_wireless_src="http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.3/compat-wireless-${compat_wireless_version}.tar.bz2"
 css_version="1.8.3-20120120"
@@ -201,7 +202,7 @@ src_unpack() {
 # rhbz 754907
 	epatch "${FILESDIR}"/"${PVR}"/hpsa-add-irqf-shared.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch
+#	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch # Failed
 
 #	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch
 
