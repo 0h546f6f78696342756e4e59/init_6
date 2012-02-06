@@ -17,8 +17,9 @@ In this overlay you will find:
 	sys-kernel/vanilla-sources live 9999 git ebuild
 	sys-kernel/geek-sources Full sources for the Linux kernel including fedora, grsecurity patches
 		Use flag branding enable Gentoo specific branding.
-		backports - compat-wireless patches
-		hardened - use grsecurity patches
+		backports - compat-wireless patches.
+		grsecurity - grsecurity patches.
+		tomoyo - tomoyo patches.
 	sys-kernel/rh-sources Full sources including the Red Hat Enterprise Linux sources patchset for the 2.6 kernel tree
 and many fixes and patches…
 

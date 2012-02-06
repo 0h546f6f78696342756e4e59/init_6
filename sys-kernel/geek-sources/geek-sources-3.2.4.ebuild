@@ -26,8 +26,8 @@ css_src="http://sourceforge.jp/tomoyo/43375/ccs-patch-${css_version}.tar.gz"
 
 KEYWORDS="~amd64 ~x86"
 IUSE="backports branding deblob grsecurity tomoyo"
-DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, tomoyo patches"
-HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable http://grsecurity.net"
+DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, tomoyo, and other patches"
+HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable http://grsecurity.net http://tomoyo.sourceforge.jp"
 SRC_URI="${KERNEL_URI} ${ARCH_URI}
 	backports?	( ${compat_wireless_src} )
 	grsecurity?	( ${grsecurity_src} )
