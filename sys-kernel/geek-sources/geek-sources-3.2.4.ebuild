@@ -25,6 +25,11 @@ css_version="1.8.3-20120120"
 css_src="http://sourceforge.jp/tomoyo/43375/ccs-patch-${css_version}.tar.gz"
 
 KEYWORDS="~amd64 ~x86"
+RDEPEND=">=sys-devel/gcc-4.5 \
+	backports?	( !net-wireless/athload )
+	grsecurity?	( >=sys-apps/gradm-2.2.2 )
+	tomoyo?		( sys-apps/ccs-tools )"
+
 IUSE="backports branding deblob grsecurity tomoyo"
 DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, tomoyo, and other patches"
 HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable http://grsecurity.net http://tomoyo.sourceforge.jp"
