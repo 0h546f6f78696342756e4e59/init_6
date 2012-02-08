@@ -17,13 +17,20 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201202032052"
-#grsecurity_src="http://grsecurity.net/test/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch"
-grsecurity_src="http://grsecurity.net/test/grsecurity-2.2.2-3.2.4-${grsecurity_version}.patch"
+grsecurity_version="201202061800"
+grsecurity_src="http://grsecurity.net/test/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch"
+grsecurity_url="http://grsecurity.net"
 compat_wireless_version="3.3-rc1-2"
 compat_wireless_src="http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.3/compat-wireless-${compat_wireless_version}.tar.bz2"
+compat_wireless_url="http://wireless.kernel.org/en/users/Download/stable"
 css_version="1.8.3-20120120"
 css_src="http://sourceforge.jp/tomoyo/43375/ccs-patch-${css_version}.tar.gz"
+css_url="http://tomoyo.sourceforge.jp"
+ck_version="3.2"
+ck_src="http://ck.kolivas.org/patches/3.0/3.2/3.2-ck1/patch-${ck_version}-ck1.bz2"
+ck_url="http://ck-hack.blogspot.com"
+fbcondecor_src="http://sources.gentoo.org/cgi-bin/viewvc.cgi/linux-patches/genpatches-2.6/trunk/3.2/4200_fbcondecor-0.9.6.patch"
+fbcondecor_url="http://dev.gentoo.org/~spock/projects/fbcondecor"
 
 KEYWORDS="~amd64 ~x86"
 RDEPEND=">=sys-devel/gcc-4.5 \
@@ -31,14 +38,19 @@ RDEPEND=">=sys-devel/gcc-4.5 \
 	grsecurity?	( >=sys-apps/gradm-2.2.2 )
 	tomoyo?		( sys-apps/ccs-tools )"
 
-IUSE="backports branding deblob grsecurity tomoyo"
+IUSE="backports branding ck deblob fbcondecor grsecurity tomoyo"
 DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, tomoyo, and other patches"
-HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary http://wireless.kernel.org/en/users/Download/stable http://grsecurity.net http://tomoyo.sourceforge.jp"
+HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary ${compat_wireless_url} ${grsecurity_url} ${css_url} ${ck_url} ${fbcondecor_url}"
 SRC_URI="${KERNEL_URI} ${ARCH_URI}
 	backports?	( ${compat_wireless_src} )
+	ck?		( ${ck_src} )
+	fbcondecor?	( ${fbcondecor_src} )
 	grsecurity?	( ${grsecurity_src} )
 	tomoyo?		( ${css_src} )"
-REQUIRED_USE="grsecurity? ( !tomoyo ) tomoyo? ( !grsecurity )"
+
+REQUIRED_USE="grsecurity? ( !tomoyo ) tomoyo? ( !grsecurity )
+	ck? ( !grsecurity ) ck? ( !tomoyo )
+	fbcondecor? ( !grsecurity ) fbcondecor? ( !tomoyo )"
 
 KV_FULL="${PVR}-geek"
 EXTRAVERSION="${RELEASE}-geek"
@@ -57,13 +69,23 @@ src_unpack() {
 
 	use grsecurity && epatch ${DISTDIR}/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch
 	if use tomoyo; then
+		cd ${T}
 		unpack "ccs-patch-${css_version}.tar.gz"
-		cd "${WORKDIR}/linux-${KV_FULL}"
-		cp "${WORKDIR}/linux-${KV_FULL}/patches/ccs-patch-3.2.diff" "${WORKDIR}/linux-${KV_FULL}/ccs-patch-3.2.diff"
-		EPATCH_OPTS="-p1" epatch "${WORKDIR}/linux-${KV_FULL}/ccs-patch-3.2.diff"
-		rm -f "${WORKDIR}/linux-${KV_FULL}/ccs-patch-3.2.diff"
-		rmdir --ignore-fail-on-non-empty "${WORKDIR}/linux-${KV_FULL}/patches"
+		cp "${T}/patches/ccs-patch-3.2.diff" "${S}/ccs-patch-3.2.diff"
 		cd "${S}"
+		EPATCH_OPTS="-p1" epatch "${S}/ccs-patch-3.2.diff"
+		rm -f "${S}/ccs-patch-3.2.diff"
+	fi
+
+	if use ck; then
+		epatch ${DISTDIR}/patch-${ck_version}-ck1.bz2
+		epatch ${FILESDIR}/0001-block-prepare-I-O-context-code-for-BFQ-v3r2-for-3.2.patch
+		epatch ${FILESDIR}/0002-block-cgroups-kconfig-build-bits-for-BFQ-v3r2-3.2.patch
+		epatch ${FILESDIR}/0003-block-introduce-the-BFQ-v3r2-I-O-sched-for-3.2.patch
+	fi
+
+	if use fbcondecor; then
+		epatch ${DISTDIR}/4200_fbcondecor-0.9.6.patch
 	fi
 
 ### BRANCH APPLY ###
@@ -320,13 +342,9 @@ pkg_postinst() {
 		einfo "font - CONFIG_FONT_ISO_LATIN_1_8x16 http://sudormrf.wordpress.com/2010/10/23/ka-ping-yee-iso-latin-1%c2%a0font-in-linux-kernel/"
 		einfo "logo - CONFIG_LOGO_LARRY_CLUT224 http://www.gentoo.org/proj/en/desktop/artwork/artwork.xml"
 	fi
-	if use backports; then
-		einfo "backports enable compat-wireless patches http://www.orbit-lab.org/kernel"
-	fi
-	if use grsecurity; then
-		einfo "grsecurity enable http://grsecurity.net patches"
-	fi
-	if use tomoyo; then
-		einfo "tomoyo enable http://en.sourceforge.jp/projects/tomoyo patches"
-	fi
+	use backports; einfo "backports enable compat-wireless patches ${compat_wireless_url}"
+	use ck; einfo "ck enable ${ck_url} patches"
+	use fbcondecor;  einfo "fbcondecor enable ${fbcondecor_url} patches"
+	use grsecurity; einfo "grsecurity enable ${grsecurity_url} patches"
+	use tomoyo; einfo "tomoyo enable ${css_url} patches"
 }
