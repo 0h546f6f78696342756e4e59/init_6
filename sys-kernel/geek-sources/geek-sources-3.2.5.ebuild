@@ -172,6 +172,7 @@ src_unpack() {
 # Make fbcon not show the penguins with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
 
+
 # modpost: add option to allow external modules to avoid taint
 	use backports && epatch "${FILESDIR}"/"${PVR}"/modpost-add-option-to-allow-external-modules-to-avoi.patch
 
@@ -206,7 +207,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/epoll-limit-paths.patch
-	epatch "${FILESDIR}"/"${PVR}"/block-stray-block-put-after-teardown.patch
+	epatch "${FILESDIR}"/"${PVR}"/block-readahead-block-plug.patch
 
 # rhbz#605888
 	epatch "${FILESDIR}"/"${PVR}"/dmar-disable-when-ricoh-multifunction.patch
@@ -223,8 +224,6 @@ src_unpack() {
 
 # rhbz 754907
 	epatch "${FILESDIR}"/"${PVR}"/hpsa-add-irqf-shared.patch
-
-#	epatch "${FILESDIR}"/"${PVR}"/pci-Rework-ASPM-disable-code.patch # Failed
 
 #	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch
 
@@ -258,6 +257,12 @@ src_unpack() {
 #rhbz 772772
 	epatch "${FILESDIR}"/"${PVR}"/rt2x00_fix_MCU_request_failures.patch
 
+#rhbz 788269
+	epatch "${FILESDIR}"/"${PVR}"/jbd2-clear-BH_Delay-and-BH_Unwritten-in-journal_unmap_buf.patch
+
+#rhbz 785806
+	epatch "${FILESDIR}"/"${PVR}"/e1000e-Avoid-wrong-check-on-TX-hang.patch
+
 # END OF PATCH APPLICATIONS
 
 	if use backports; then
@@ -289,6 +294,8 @@ src_unpack() {
 		epatch "${FILESDIR}"/"${PVR}"/mac80211-timeout-a-single-frame-in-the-rx-reorder-bu.patch
 
 		epatch "${FILESDIR}"/"${PVR}"/ath9k-use-WARN_ON_ONCE-in-ath_rc_get_highest_rix.patch
+		epatch "${FILESDIR}"/"${PVR}"/ath9k-fix-a-WEP-crypto-related-regression.patch
+		epatch "${FILESDIR}"/"${PVR}"/ath9k_hw-fix-a-RTS-CTS-timeout-regression.patch
 
 		epatch "${FILESDIR}"/"${PVR}"/rt2x00_fix_MCU_request_failures.patch
 
