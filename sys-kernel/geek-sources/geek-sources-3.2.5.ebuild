@@ -349,9 +349,9 @@ pkg_postinst() {
 		einfo "font - CONFIG_FONT_ISO_LATIN_1_8x16 http://sudormrf.wordpress.com/2010/10/23/ka-ping-yee-iso-latin-1%c2%a0font-in-linux-kernel/"
 		einfo "logo - CONFIG_LOGO_LARRY_CLUT224 http://www.gentoo.org/proj/en/desktop/artwork/artwork.xml"
 	fi
-	use backports; einfo "backports enable compat-wireless patches ${compat_wireless_url}"
-	use ck; einfo "ck enable ${ck_url} patches"
-	use fbcondecor;  einfo "fbcondecor enable ${fbcondecor_url} patches"
-	use grsecurity; einfo "grsecurity enable ${grsecurity_url} patches"
-	use tomoyo; einfo "tomoyo enable ${css_url} patches"
+	use backports && einfo "backports enable compat-wireless patches ${compat_wireless_url}"
+	use ck && einfo "ck enable ${ck_url} patches"
+	use fbcondecor && einfo "fbcondecor enable ${fbcondecor_url} patches"
+	use grsecurity && einfo "grsecurity enable ${grsecurity_url} patches"
+	use tomoyo && einfo "tomoyo enable ${css_url} patches"
 }
