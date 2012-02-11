@@ -18,6 +18,7 @@ else
 	S=${WORKDIR}/${MY_P}
 fi
 
+pulse_patches() { echo "$1"/winepulse-{0.40,configure.ac-1.3.36,winecfg-1.3.11}.patch ; }
 GV="1.4"
 DESCRIPTION="free implementation of Windows(tm) on Unix"
 HOMEPAGE="http://www.winehq.org/"
@@ -25,11 +26,12 @@ SRC_URI="${SRC_URI}
 	gecko? (
 		mirror://sourceforge/wine/wine_gecko-${GV}-x86.msi
 		win64? ( mirror://sourceforge/wine/wine_gecko-${GV}-x86_64.msi )
-	)"
+	)
+	pulseaudio? ( `pulse_patches http://art.ified.ca/downloads/winepulse` )"
 
 LICENSE="LGPL-2.1"
 SLOT="0"
-IUSE="alsa capi cups custom-cflags elibc_glibc fontconfig +gecko gnutls gphoto2 gsm gstreamer hardened jpeg lcms ldap mp3 ncurses nls openal opencl +opengl +oss +perl png samba scanner ssl test +threads +truetype udisks v4l +win32 +win64 +X xcomposite xinerama xml"
+IUSE="alsa capi cups custom-cflags elibc_glibc fontconfig +gecko gnutls gphoto2 gsm gstreamer hardened jpeg lcms ldap mp3 ncurses nls openal opencl +opengl +oss +perl png pulseaudio samba scanner ssl test +threads +truetype udisks v4l +win32 +win64 +X xcomposite xinerama xml"
 REQUIRED_USE="elibc_glibc? ( threads )" #286560
 RESTRICT="test" #72375
 
@@ -70,6 +72,7 @@ RDEPEND="truetype? ( >=media-libs/freetype-2.0.0 media-fonts/corefonts )
 	)
 	xinerama? ( x11-libs/libXinerama )
 	alsa? ( media-libs/alsa-lib )
+	pulseaudio? ( media-sound/pulseaudio )
 	cups? ( net-print/cups )
 	opencl? ( virtual/opencl )
 	opengl? ( virtual/opengl )
@@ -113,6 +116,11 @@ src_unpack() {
 }
 
 src_prepare() {
+	if use pulseaudio ; then
+		EPATCH_OPTS=-p1 epatch `pulse_patches "${DISTDIR}"`
+		eautoreconf
+	fi
+
 	epatch "${FILESDIR}"/${PN}-1.1.15-winegcc.patch #260726
 	epatch "${FILESDIR}"/${PN}-1.4_rc2-multilib-portage.patch #395615
 
