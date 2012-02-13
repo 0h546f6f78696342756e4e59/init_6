@@ -5,7 +5,7 @@
 EAPI="4"
 GCONF_DEBUG="no"
 GNOME2_LA_PUNT="yes"
-PYTHON_DEPEND="2:2.4"
+PYTHON_DEPEND="2:2.5"
 PYTHON_USE_WITH="xml"
 
 inherit gnome2 python
@@ -34,8 +34,7 @@ COMMON_DEPEND=">=dev-python/pygobject-2.90.3:3
 RDEPEND="${COMMON_DEPEND}
 	dev-python/dbus-python
 	>=dev-python/pyatspi-2.1.90
-	gnome-base/gconf[introspection]
-	gnome-base/gsettings-desktop-schemas
+	>=gnome-base/gsettings-desktop-schemas-3
 	gnome-base/librsvg:2
 	sys-apps/dbus"
 DEPEND="${COMMON_DEPEND}
@@ -51,7 +50,9 @@ pkg_setup() {
 		--disable-schemas-compile
 		--enable-gtk3-module
 		--enable-gtk2-module
+		PYTHON=${EPREFIX}/usr/bin/python2
 		VALAC=$(type -P true)"
+	# PYTHON is substituted into several installed shell scripts
 	# vala is not needed for tarball builds, but configure checks for it...
 	python_set_active_version 2
 	python_pkg_setup
@@ -63,8 +64,7 @@ src_prepare() {
 		-i bin/{antler-keyboard,caribou,caribou-preferences}.in ||
 		die "sed failed"
 
-	# disable pyc compiling
-	echo '#!/bin/sh' > py-compile
+	python_clean_py-compile_files
 
 	gnome2_src_prepare
 }
@@ -74,8 +74,8 @@ src_install() {
 	epatch "${FILESDIR}"/caribou-0.4.1-fix-desktop.patch
 
 	gnome2_src_install
-	python_convert_shebangs -r 2 "${ED}"
 }
+
 
 pkg_postinst() {
 	gnome2_pkg_postinst
