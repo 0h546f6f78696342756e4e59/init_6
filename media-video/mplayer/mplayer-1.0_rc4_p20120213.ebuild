@@ -159,7 +159,7 @@ DEPEND="${RDEPEND}
 SLOT="0"
 LICENSE="GPL-2"
 if [[ ${PV} != *9999* ]]; then
-	KEYWORDS="~amd64 ~hppa ~x86-fbsd ~amd64-linux ~x86-linux ~ppc-macos ~x64-macos ~x86-macos ~sparc-solaris ~x86-solaris"
+	KEYWORDS="~amd64 ~hppa ~x86 ~x86-fbsd ~amd64-linux ~x86-linux ~ppc-macos ~x64-macos ~x86-macos ~sparc-solaris ~x86-solaris"
 else
 	KEYWORDS=""
 fi
@@ -187,6 +187,8 @@ REQUIRED_USE="bindist? ( !faac !win32codecs )
 	xscreensaver? ( X )
 	xv? ( X )
 	xvmc? ( xv )"
+
+PATCHES=( "${FILESDIR}/ffmpeg.patch" )
 
 pkg_setup() {
 	if [[ ${PV} == *9999* ]]; then
