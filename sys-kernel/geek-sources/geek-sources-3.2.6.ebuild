@@ -17,7 +17,7 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201202131824"
+grsecurity_version="201202162121"
 grsecurity_src="http://grsecurity.net/test/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 compat_wireless_version="3.3-rc1-2"
