@@ -234,6 +234,7 @@ src_unpack() {
 #rhbz 590880
 #	EPATCH_OPTS="-p1 -F1 -s" \
 #	epatch "${FILESDIR}"/"${PVR}"/alps.patch # Failed
+	epatch "${FILESDIR}"/2600_Input-ALPS-synaptics-touchpad.patch
 
 #rhbz 771058
 	epatch "${FILESDIR}"/"${PVR}"/msi-irq-sysfs-warning.patch
