@@ -316,6 +316,17 @@ src_unpack() {
 		epatch "${FILESDIR}"/"${PVR}"/zd1211rw-firmware-needs-duration_id-set-to-zero-for-.patch
 		epatch "${FILESDIR}"/"${PVR}"/mac80211-Fix-a-rwlock-bad-magic-bug.patch
 		epatch "${FILESDIR}"/"${PVR}"/rtlwifi-Modify-rtl_pci_init-to-return-0-on-success.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-call-rate-control-only-after-init.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-do-not-call-rate-control-.tx_status-before-.patch
+		epatch "${FILESDIR}"/"${PVR}"/mwifiex-clear-previous-security-setting-during-assoc.patch
+		epatch "${FILESDIR}"/"${PVR}"/ath9k-stop-on-rates-with-idx-1-in-ath9k-rate-control.patch
+		epatch "${FILESDIR}"/"${PVR}"/ath9k_hw-prevent-writes-to-const-data-on-AR9160.patch
+		epatch "${FILESDIR}"/"${PVR}"/rt2x00-fix-a-possible-NULL-pointer-dereference.patch
+		epatch "${FILESDIR}"/"${PVR}"/iwlwifi-fix-key-removal.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-zero-initialize-count-field-in-ieee80211_tx.patch
+		epatch "${FILESDIR}"/"${PVR}"/mac80211-Fix-a-warning-on-changing-to-monitor-mode-f.patch
+		epatch "${FILESDIR}"/"${PVR}"/brcm80211-smac-fix-endless-retry-of-A-MPDU-transmiss.patch
+		epatch "${FILESDIR}"/"${PVR}"/brcm80211-smac-only-print-block-ack-timeout-message-.patch
 
 		epatch "${FILESDIR}"/"${PVR}"/rt2x00_fix_MCU_request_failures.patch
 
