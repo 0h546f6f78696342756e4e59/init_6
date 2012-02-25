@@ -17,8 +17,8 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201202202005"
-grsecurity_src="http://grsecurity.net/test/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch"
+grsecurity_version="201202242018"
+grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 compat_wireless_version="3.3-rc1-2"
 compat_wireless_src="http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.3/compat-wireless-${compat_wireless_version}.tar.bz2"
@@ -67,7 +67,7 @@ src_unpack() {
 	cp ${FILESDIR}/${PVR}/merge.pl ${FILESDIR}/${PVR}/Makefile.config . &>/dev/null || die "cannot copy kernel files";
 	make -f Makefile.config VERSION=${PVR} configs &>/dev/null || die "cannot generate kernel .config files from config-* files"
 
-	use grsecurity && epatch ${DISTDIR}/grsecurity-2.2.2-${PV}-${grsecurity_version}.patch
+	use grsecurity && epatch ${DISTDIR}/grsecurity-2.9-${PV}-${grsecurity_version}.patch
 	if use tomoyo; then
 		cd ${T}
 		unpack "ccs-patch-${css_version}.tar.gz"
