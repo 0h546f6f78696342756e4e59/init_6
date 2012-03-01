@@ -17,8 +17,9 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201202242018"
-grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
+grsecurity_version="201202272117"
+#grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
+grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-3.2.8-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 compat_wireless_version="3.3-rc1-2"
 compat_wireless_src="http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.3/compat-wireless-${compat_wireless_version}.tar.bz2"
@@ -205,8 +206,6 @@ src_unpack() {
 
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/epoll-limit-paths.patch
-
 	epatch "${FILESDIR}"/"${PVR}"/bsg-fix-sysfs-link-remove-warning.patch
 
 # rhbz#605888
@@ -234,8 +233,6 @@ src_unpack() {
 #rhbz 717735
 #	EPATCH_OPTS="-p1 -F1 -s" \
 #	epatch "${FILESDIR}"/"${PVR}"/nfs-client-freezer.patch # Failed
-
-	epatch "${FILESDIR}"/"${PVR}"/nfs-oops-getacl.patch
 
 #rhbz 590880
 #	EPATCH_OPTS="-p1 -F1 -s" \
@@ -276,6 +273,17 @@ src_unpack() {
 
 #rhbz 790367
 	epatch "${FILESDIR}"/"${PVR}"/s390x-enable-keys-compat.patch
+
+#rhbz 727865 730007
+	epatch "${FILESDIR}"/"${PVR}"/ACPICA-Fix-regression-in-FADT-revision-checks.patch
+
+#rhbz 798296
+	epatch "${FILESDIR}"/"${PVR}"/cifs-fix-dentry-refcount-leak-when-opening-a-FIFO.patch
+
+#rhbz 728478
+	epatch "${FILESDIR}"/"${PVR}"/sony-laptop-Enable-keyboard-backlight-by-default.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/unhandled-irqs-switch-to-polling.patch
 
 # END OF PATCH APPLICATIONS
 
