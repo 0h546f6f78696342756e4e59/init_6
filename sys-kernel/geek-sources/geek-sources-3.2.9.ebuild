@@ -17,9 +17,8 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201202272117"
-#grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
-grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-3.2.8-${grsecurity_version}.patch"
+grsecurity_version="201203012153"
+grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 compat_wireless_version="3.3-rc1-2"
 compat_wireless_src="http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.3/compat-wireless-${compat_wireless_version}.tar.bz2"
