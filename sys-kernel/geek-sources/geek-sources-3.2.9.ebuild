@@ -78,9 +78,13 @@ src_unpack() {
 	fi
 
 	if use ck; then
+		EPATCH_OPTS="-p1 -F1 -s" \
 		epatch ${DISTDIR}/patch-${ck_version}-ck1.bz2
+		EPATCH_OPTS="-p1 -F1 -s" \
 		epatch ${FILESDIR}/0001-block-prepare-I-O-context-code-for-BFQ-v3r2-for-3.2.patch
+		EPATCH_OPTS="-p1 -F1 -s" \
 		epatch ${FILESDIR}/0002-block-cgroups-kconfig-build-bits-for-BFQ-v3r2-3.2.patch
+		EPATCH_OPTS="-p1 -F1 -s" \
 		epatch ${FILESDIR}/0003-block-introduce-the-BFQ-v3r2-I-O-sched-for-3.2.patch
 	fi
 
