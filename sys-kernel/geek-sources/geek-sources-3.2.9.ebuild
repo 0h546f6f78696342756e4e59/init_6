@@ -17,14 +17,14 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201203012153"
+grsecurity_version="201203062051"
 grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 compat_wireless_version="3.3-rc1-2"
 compat_wireless_src="http://www.orbit-lab.org/kernel/compat-wireless-3-stable/v3.3/compat-wireless-${compat_wireless_version}.tar.bz2"
 compat_wireless_url="http://wireless.kernel.org/en/users/Download/stable"
-css_version="1.8.3-20120120"
-css_src="http://sourceforge.jp/tomoyo/43375/ccs-patch-${css_version}.tar.gz"
+css_version="1.8.3-20120301"
+css_src="http://sourceforge.jp/frs/redir.php?m=jaist&f=/tomoyo/49684/ccs-patch-${css_version}.tar.gz"
 css_url="http://tomoyo.sourceforge.jp"
 ck_version="3.2"
 ck_src="http://ck.kolivas.org/patches/3.0/3.2/3.2-ck1/patch-${ck_version}-ck1.bz2"
@@ -197,6 +197,7 @@ src_unpack() {
 #	epatch "${FILESDIR}"/"${PVR}"/drm-edid-try-harder-to-fix-up-broken-headers.patch
 
 # Intel DRM
+	epatch "${FILESDIR}"/"${PVR}"/drm-intel-crtc-dpms-fix.patch
 	epatch "${FILESDIR}"/"${PVR}"/drm-i915-fbc-stfu.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
@@ -286,6 +287,19 @@ src_unpack() {
 #rhbz 728478
 	epatch "${FILESDIR}"/"${PVR}"/sony-laptop-Enable-keyboard-backlight-by-default.patch
 
+#Disable threading in hibernate compression
+	epatch "${FILESDIR}"/"${PVR}"/disable-threading-in-compression-for-hibernate.patch
+
+#rhbz 799782 CVE-2012-1097
+	epatch "${FILESDIR}"/"${PVR}"/regset-Prevent-null-pointer-reference-on-readonly-re.patch
+	epatch "${FILESDIR}"/"${PVR}"/regset-Return-EFAULT-not-EIO-on-host-side-memory-fau.patch
+
+#rhbz 786632
+	epatch "${FILESDIR}"/"${PVR}"/mm-thp-fix-BUG-on-mm-nr_ptes.patch
+
+#rhbz 800817
+	epatch "${FILESDIR}"/"${PVR}"/mm-memcg-Correct-unregistring-of-events-attached-to-.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/unhandled-irqs-switch-to-polling.patch
 
 # END OF PATCH APPLICATIONS
@@ -356,7 +370,7 @@ src_unpack() {
 #	use reiser4 && epatch ${DISTDIR}/reiser4-for-${PV}.patch.bz2
 
 # Install the docs
-	nonfatal dodoc "${FILESDIR}/${PVR}"/{README.txt,TODO}
+	nonfatal dodoc "${FILESDIR}/${PVR}"/{README.txt,TODO,*notes.txt}
 
 	echo
 	einfo "Live long and prosper."
