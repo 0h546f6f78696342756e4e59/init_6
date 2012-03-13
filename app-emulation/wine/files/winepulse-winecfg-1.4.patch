@@ -1,0 +1,11 @@
+diff -ur a/programs/winecfg/libraries.c b/programs/winecfg/libraries.c
+--- a/programs/winecfg/libraries.c	2012-03-07 18:11:48.000000000 +0200
++++ b/programs/winecfg/libraries.c	2012-03-10 07:53:06.377381505 +0200
+@@ -73,6 +73,7 @@
+     "winedos",
+     "winemp3.acm",
+     "wineps",
++    "winepulse.drv",
+     "winmm",
+     "wintab32",
+     "wnaspi32",

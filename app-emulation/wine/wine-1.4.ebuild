@@ -29,7 +29,7 @@ SRC_URI="${SRC_URI}
 
 LICENSE="LGPL-2.1"
 SLOT="0"
-IUSE="alsa capi cups custom-cflags elibc_glibc fontconfig +gecko gnutls gphoto2 gsm gstreamer hardened jpeg lcms ldap mp3 ncurses nls odbc openal opencl +opengl +oss +perl png samba scanner selinux ssl test +threads +truetype udisks v4l +win32 +win64 +X xcomposite xinerama xml"
+IUSE="alsa capi cups custom-cflags elibc_glibc fontconfig +gecko gnutls gphoto2 gsm gstreamer hardened jpeg lcms ldap mp3 ncurses nls odbc openal opencl +opengl +oss +perl png pulseaudio samba scanner selinux ssl test +threads +truetype udisks v4l +win32 +win64 +X xcomposite xinerama xml"
 REQUIRED_USE="elibc_glibc? ( threads )" #286560
 RESTRICT="test" #72375
 
@@ -81,6 +81,7 @@ RDEPEND="truetype? ( >=media-libs/freetype-2.0.0 media-fonts/corefonts )
 	mp3? ( >=media-sound/mpg123-1.5.0 )
 	nls? ( sys-devel/gettext )
 	odbc? ( dev-db/unixODBC )
+	pulseaudio? ( media-sound/pulseaudio )
 	samba? ( >=net-fs/samba-3.0.25 )
 	selinux? ( sec-policy/selinux-wine )
 	xml? ( dev-libs/libxml2 dev-libs/libxslt )
@@ -135,6 +136,11 @@ src_prepare() {
 	# Wine doublebuffer patch - http://bugs2.winehq.org/attachment.cgi?id=27310
 	# Need for Crysis
 	epatch "${FILESDIR}"/${PN}-doublebuffer.patch
+
+	# WinePulse – PulseAudio for Wine http://art.ified.ca/?page_id=40
+	EPATCH_OPTS="-p1 -F1 -s" epatch "${FILESDIR}"/${PN}pulse-0.41.patch
+	epatch "${FILESDIR}"/${PN}pulse-configure.ac-1.4.patch
+	epatch "${FILESDIR}"/${PN}pulse-winecfg-1.4.patch
 
 	eautoreconf
 	sed -i '/^UPDATE_DESKTOP_DATABASE/s:=.*:=true:' tools/Makefile.in || die
@@ -235,4 +241,12 @@ src_install() {
 		dosym /usr/bin/wine{64,} # 404331
 		dosym /usr/bin/wine{64,}-preloader
 	fi
+
+	insinto /etc/xdg/menus/applications-merged/
+	doins  "${FILESDIR}/wine.menu" || die "doins failed"
+	insinto /usr/share/desktop-directories/
+	doins  "${FILESDIR}/Wine.directory" || die "doexe failed"
+	domenu "${FILESDIR}"/*.desktop || die "doins failed"
+	insinto /usr/share/pixmaps/
+	doins "${FILESDIR}"/*.svg || die "doins failed"
 }
