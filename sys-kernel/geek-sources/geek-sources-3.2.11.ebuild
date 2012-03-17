@@ -128,6 +128,8 @@ src_unpack() {
 # eCryptfs
 
 # NFSv4
+	epatch "${FILESDIR}"/"${PVR}"/NFSv4-Reduce-the-footprint-of-the-idmapper.patch
+	epatch "${FILESDIR}"/"${PVR}"/NFSv4-Further-reduce-the-footprint-of-the-idmapper.patch
 
 # USB
 
@@ -278,14 +280,14 @@ src_unpack() {
 #rhbz 728478
 	epatch "${FILESDIR}"/"${PVR}"/sony-laptop-Enable-keyboard-backlight-by-default.patch
 
-#Disable threading in hibernate compression
-	epatch "${FILESDIR}"/"${PVR}"/disable-threading-in-compression-for-hibernate.patch
-
 	epatch "${FILESDIR}"/"${PVR}"/unhandled-irqs-switch-to-polling.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/weird-root-dentry-name-debug.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/x86-ioapic-add-register-checks-for-bogus-io-apic-entries.patch
+
+#rhbz 803809 CVE-2012-1179
+	epatch "${FILESDIR}"/"${PVR}"/mm-thp-fix-pmd_bad-triggering.patch
 
 # END OF PATCH APPLICATIONS
 
