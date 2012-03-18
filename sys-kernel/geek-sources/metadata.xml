@@ -12,6 +12,7 @@
     <flag name='ck'>Use Con Kolivas BFS, BFQ patches.</flag>
     <flag name='fbcondecor'>Use Spock's fbsplash patch.</flag>
     <flag name='grsecurity'>Use grsecurity patches.</flag>
+    <flag name='rt'>Use real-time patchset for the Linux Kernel.</flag>
     <flag name='tomoyo'>Use tomoyo patches.</flag>
   </use>
 </pkgmetadata>

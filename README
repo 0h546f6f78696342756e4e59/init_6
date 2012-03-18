@@ -21,6 +21,7 @@ In this overlay you will find:
 		ck - use Con Kolivas BFS, BFQ patches.
 		fbcondecor - use Spock's fbsplash patch.
 		grsecurity - grsecurity patches.
+		rt - real-time patchset.
 		tomoyo - tomoyo patches.
 	sys-kernel/rh-sources Full sources including the Red Hat Enterprise Linux sources patchset for the 2.6 kernel tree
 and many fixes and patches…
