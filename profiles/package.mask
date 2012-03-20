@@ -6,5 +6,4 @@
 
 # Andrey Ovcharov <sudormrfhalt@gmail.com>
 # kernel mainline
-# Failed to build =x11-drivers/nvidia-drivers-290.10
-=sys-kernel/fc-sources-3.3-r1
+=sys-kernel/geek-sources-3.3

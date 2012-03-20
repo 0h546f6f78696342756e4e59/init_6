@@ -17,7 +17,7 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201203162123"
+grsecurity_version="201203191822"
 grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 compat_wireless_version="3.3-rc1-2"
@@ -283,7 +283,7 @@ src_unpack() {
 
 #rhbz 754518
 #	epatch "${FILESDIR}"/"${PVR}"/scsi-sd_revalidate_disk-prevent-NULL-ptr-deref.patch
-	epatch "${FILESDIR}"/"${PVR}"/scsi-fix-sd_revalidate_disk-oops.patch
+#	epatch "${FILESDIR}"/"${PVR}"/scsi-fix-sd_revalidate_disk-oops.patch
 
 #rhbz 727865 730007
 	epatch "${FILESDIR}"/"${PVR}"/ACPICA-Fix-regression-in-FADT-revision-checks.patch
