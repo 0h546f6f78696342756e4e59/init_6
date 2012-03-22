@@ -4,7 +4,7 @@
 
 EAPI=4
 
-inherit autotools eutils flag-o-matic
+inherit flag-o-matic
 
 MY_P=${P/_/-}
 
@@ -15,16 +15,14 @@ SRC_URI="http://www.midnight-commander.org/downloads/${MY_P}.tar.xz"
 LICENSE="GPL-3"
 SLOT="0"
 KEYWORDS="~alpha ~amd64 ~arm ~hppa ~ia64 ~mips ~ppc ~ppc64 ~s390 ~sh ~sparc ~x86 ~x86-fbsd ~x86-interix ~amd64-linux ~ppc-macos ~x64-macos ~x86-macos ~sparc-solaris ~sparc64-solaris ~x86-solaris"
-IUSE="+edit gpm mclib +ncurses nls samba slang test X +xdg"
-
-REQUIRED_USE="^^ ( ncurses slang )"
+IUSE="+edit gpm mclib nls samba +slang test X +xdg"
 
 RDEPEND=">=dev-libs/glib-2.8:2
 	gpm? ( sys-libs/gpm )
 	kernel_linux? ( sys-fs/e2fsprogs )
-	ncurses? ( sys-libs/ncurses )
 	samba? ( net-fs/samba )
 	slang? ( >=sys-libs/slang-2 )
+	!slang? ( sys-libs/ncurses )
 	X? ( x11-libs/libX11
 		x11-libs/libICE
 		x11-libs/libXau
@@ -40,10 +38,8 @@ DEPEND="${RDEPEND}
 S=${WORKDIR}/${MY_P}
 
 src_prepare() {
-	epatch "${FILESDIR}"/${PN}-4.8.1-fix-fallocate-xBSD.patch
-
-	# patch above changed .m4 bits
-	eautoreconf
+	cp "${FILESDIR}"/${P}-missing-do_panel_cd_stub_env.c \
+		tests/src/filemanager/do_panel_cd_stub_env.c || die
 }
 
 src_configure() {
