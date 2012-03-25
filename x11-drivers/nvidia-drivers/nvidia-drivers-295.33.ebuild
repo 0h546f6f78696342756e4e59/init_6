@@ -18,7 +18,7 @@ SRC_URI="x86? ( http://us.download.nvidia.com/XFree86/Linux-x86/${PV}/${X86_NV_P
 
 LICENSE="NVIDIA"
 SLOT="0"
-KEYWORDS="-* amd64 ~x86 ~x86-fbsd"
+KEYWORDS="-* ~amd64 ~x86 ~x86-fbsd"
 IUSE="acpi custom-cflags gtk multilib kernel_linux"
 RESTRICT="strip"
 EMULTILIB_PKG="true"
@@ -27,8 +27,7 @@ COMMON="<x11-base/xorg-server-1.12.99
 	kernel_linux? ( >=sys-libs/glibc-2.6.1 )
 	multilib? ( app-emulation/emul-linux-x86-xlibs )
 	>=app-admin/eselect-opengl-1.0.9
-	app-admin/eselect-opencl
-	!<media-video/nvidia-settings-256.52"
+	app-admin/eselect-opencl"
 DEPEND="${COMMON}
 	kernel_linux? ( virtual/linux-sources )"
 RDEPEND="${COMMON}
@@ -98,9 +97,10 @@ QA_EXECSTACK_amd64="usr/lib32/libnvidia-glcore.so.${PV}
 	usr/lib64/OpenCL/vendors/nvidia/libOpenCL.so.1.0.0
 	usr/lib64/libnvidia-compiler.so.${PV}
 	usr/lib64/xorg/modules/drivers/nvidia_drv.so
-	usr/bin/nvidia-smi
-	usr/bin/nvidia-xconfig
-	usr/bin/nvidia-settings"
+	opt/bin/nvidia-smi
+	opt/bin/nvidia-xconfig
+	opt/bin/nvidia-debugdump
+	opt/bin/nvidia-settings"
 
 QA_WX_LOAD_x86="usr/lib/libnvidia-glcore.so.${PV}
 	usr/lib/opengl/nvidia/lib/libGL.so.${PV}
@@ -140,9 +140,10 @@ QA_DT_HASH_amd64="usr/lib32/libcuda.so.${PV}
 	usr/lib64/OpenCL/vendors/nvidia/libOpenCL.so.1.0.0
 	usr/lib64/libnvidia-compiler.so.${PV}
 	usr/lib64/libnvcuvid.so.${PV}
-	usr/bin/nvidia-smi
-	usr/bin/nvidia-xconfig
-	usr/bin/nvidia-settings"
+	opt/bin/nvidia-smi
+	opt/bin/nvidia-xconfig
+	opt/bin/nvidia-debugdump
+	opt/bin/nvidia-settings"
 
 QA_DT_HASH_x86="usr/lib/libcuda.so.${PV}
 	usr/lib/libnvidia-cfg.so.${PV}
@@ -157,9 +158,10 @@ QA_DT_HASH_x86="usr/lib/libcuda.so.${PV}
 	usr/lib/OpenCL/vendors/nvidia/libOpenCL.so.1.0.0
 	usr/lib/libnvidia-compiler.so.${PV}
 	usr/lib/libnvcuvid.so.${PV}
-	usr/bin/nvidia-smi
-	usr/bin/nvidia-xconfig
-	usr/bin/nvidia-settings"
+	opt/bin/nvidia-smi
+	opt/bin/nvidia-xconfig
+	opt/bin/nvidia-debugdump
+	opt/bin/nvidia-settings"
 
 S=${WORKDIR}/
 
@@ -281,7 +283,7 @@ src_prepare() {
 			-e 's:-Wsign-compare::g' \
 			"${NV_SRC}"/Makefile.kbuild
 
-		#epatch "${FILESDIR}"/256.35-unified-arch.patch
+		epatch "${FILESDIR}"/295.33-unified-arch.patch
 
 		# Fix building with Linux 3.3.x wrt #408841
 		sed -i \
@@ -416,7 +418,9 @@ src_install() {
 	fi
 
 	# Helper Apps
+	exeinto /opt/bin/
 	dobin ${NV_EXEC}/nvidia-xconfig || die
+	dobin ${NV_EXEC}/nvidia-debugdump || die
 	if use gtk; then
 		dobin ${NV_EXEC}/nvidia-settings || die
 	fi
@@ -427,10 +431,10 @@ src_install() {
 
 	# Desktop entries for nvidia-settings
 	if use gtk; then
-		sed -e 's:__UTILS_PATH__:/usr/bin:' \
+		sed -e 's:__UTILS_PATH__:/opt/bin:' \
 			-e 's:__PIXMAP_PATH__:/usr/share/pixmaps:' \
 			-i "${NV_EXEC}/nvidia-settings.desktop"
-		domenu ${NV_EXEC}/nvidia-settings.desktop
+		newmenu ${NV_EXEC}/nvidia-settings.desktop nvidia-settings-opt.desktop
 
 		doicon ${NV_EXEC}/nvidia-settings.png
 	fi
@@ -545,7 +549,7 @@ pkg_postinst() {
 	elog "To use the NVIDIA CUDA/OpenCL, run \"eselect opencl set nvidia\""
 	elog
 	elog "NVIDIA has requested that any bug reports submitted have the"
-	elog "output of /usr/bin/nvidia-bug-report.sh included."
+	elog "output of /opt/bin/nvidia-bug-report.sh included."
 	elog
 	elog "To work with compiz, you must enable the AddARGBGLXVisuals option."
 	elog
