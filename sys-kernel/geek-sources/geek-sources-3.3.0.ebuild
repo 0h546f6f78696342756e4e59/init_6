@@ -35,7 +35,7 @@ RDEPEND=">=sys-devel/gcc-4.5 \
 	tomoyo?		( sys-apps/ccs-tools )"
 
 IUSE="branding ck deblob fbcondecor grsecurity tomoyo"
-DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, rt, tomoyo, and other patches"
+DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, tomoyo and other patches"
 HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary ${grsecurity_url} ${css_url} ${ck_url} ${fbcondecor_url}"
 SRC_URI="${KERNEL_URI} ${ARCH_URI}
 	ck?		( ${ck_src} )
@@ -63,25 +63,20 @@ src_unpack() {
 	make -f Makefile.config VERSION=${PVR} configs &>/dev/null || die "cannot generate kernel .config files from config-* files"
 
 	use grsecurity && epatch ${DISTDIR}/grsecurity-2.9-${PV}-${grsecurity_version}.patch
+
 	if use tomoyo; then
 		cd ${T}
 		unpack "ccs-patch-${css_version}.tar.gz"
-		cp "${T}/patches/ccs-patch-3.2.diff" "${S}/ccs-patch-3.2.diff"
+		cp "${T}/patches/ccs-patch-3.3.diff" "${S}/ccs-patch-3.3.diff"
 		cd "${S}"
-		EPATCH_OPTS="-p1" epatch "${S}/ccs-patch-3.2.diff"
-		rm -f "${S}/ccs-patch-3.2.diff"
+		EPATCH_OPTS="-p1" epatch "${S}/ccs-patch-3.3.diff"
+		rm -f "${S}/ccs-patch-3.3.diff"
 		rm -rf ${T}/* # Clean temp
 	fi
 
 	if use ck; then
 		EPATCH_OPTS="-p1 -F1 -s" \
 		epatch ${DISTDIR}/patch-${ck_version}-ck1.bz2
-		EPATCH_OPTS="-p1 -F1 -s" \
-		epatch ${FILESDIR}/0001-block-prepare-I-O-context-code-for-BFQ-v3r2-for-3.2.patch
-		EPATCH_OPTS="-p1 -F1 -s" \
-		epatch ${FILESDIR}/0002-block-cgroups-kconfig-build-bits-for-BFQ-v3r2-3.2.patch
-		EPATCH_OPTS="-p1 -F1 -s" \
-		epatch ${FILESDIR}/0003-block-introduce-the-BFQ-v3r2-I-O-sched-for-3.2.patch
 	fi
 
 	if use fbcondecor; then
@@ -216,7 +211,7 @@ src_unpack() {
 
 # utrace.
 	EPATCH_OPTS="-p1 -F1 -s" \
-	epatch "${FILESDIR}"/"${PVR}"/utrace.patch # Failed
+	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/utrace.patch
 
 #	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch
 
@@ -263,7 +258,7 @@ src_unpack() {
 #	use reiser4 && epatch ${DISTDIR}/reiser4-for-${PV}.patch.bz2
 
 # Install the docs
-	nonfatal dodoc "${FILESDIR}/${PVR}"/{README.txt,TODO,*notes.txt}
+	nonfatal dodoc "${FILESDIR}/${PVR}"/{README.txt,TODO}
 
 	echo
 	einfo "Live long and prosper."
