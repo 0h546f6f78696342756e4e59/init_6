@@ -6,28 +6,46 @@ EAPI="4"
 K_NOUSENAME="yes"
 K_NOSETEXTRAVERSION="yes"
 K_SECURITY_UNSUPPORTED="1"
-K_DEBLOB_AVAILABLE="0"
+K_DEBLOB_AVAILABLE="1"
 ETYPE="sources"
 
 CKV="${PVR/-r/-git}"
 # only use this if it's not an _rc/_pre release
 [ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
-#CKV="3.2.1"
+#CKV="3.3"
 
 inherit kernel-2
 detect_version
 
+grsecurity_version="201203242026"
+grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
+grsecurity_url="http://grsecurity.net"
+css_version="1.8.3-20120301"
+css_src="http://sourceforge.jp/frs/redir.php?m=jaist&f=/tomoyo/49684/ccs-patch-${css_version}.tar.gz"
+css_url="http://tomoyo.sourceforge.jp"
+ck_version="3.3"
+ck_src="http://ck.kolivas.org/patches/3.0/3.3/3.3-ck1/patch-${ck_version}-ck1.bz2"
+ck_url="http://ck-hack.blogspot.com"
 fbcondecor_src="http://sources.gentoo.org/cgi-bin/viewvc.cgi/linux-patches/genpatches-2.6/trunk/3.2/4200_fbcondecor-0.9.6.patch"
 fbcondecor_url="http://dev.gentoo.org/~spock/projects/fbcondecor"
 
 KEYWORDS="~amd64 ~x86"
-RDEPEND=">=sys-devel/gcc-4.5"
+RDEPEND=">=sys-devel/gcc-4.5 \
+	grsecurity?	( >=sys-apps/gradm-2.2.2 )
+	tomoyo?		( sys-apps/ccs-tools )"
 
-IUSE="branding fbcondecor"
+IUSE="branding ck deblob fbcondecor grsecurity tomoyo"
 DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, rt, tomoyo, and other patches"
-HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary ${grsecurity_url} ${css_url} ${ck_url} ${fbcondecor_url} ${rt_url}"
+HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary ${grsecurity_url} ${css_url} ${ck_url} ${fbcondecor_url}"
 SRC_URI="${KERNEL_URI} ${ARCH_URI}
-	fbcondecor?	( ${fbcondecor_src} )"
+	ck?		( ${ck_src} )
+	fbcondecor?	( ${fbcondecor_src} )
+	grsecurity?	( ${grsecurity_src} )
+	tomoyo?		( ${css_src} )"
+
+REQUIRED_USE="grsecurity? ( !tomoyo ) tomoyo? ( !grsecurity )
+	ck? ( !grsecurity ) ck? ( !tomoyo )
+	fbcondecor? ( !grsecurity ) fbcondecor? ( !tomoyo )"
 
 KV_FULL="${PVR}-geek"
 EXTRAVERSION="${RELEASE}-geek"
@@ -43,6 +61,28 @@ src_unpack() {
 	cp ${FILESDIR}/${PVR}/config-* . || die "cannot copy kernel config";
 	cp ${FILESDIR}/${PVR}/merge.pl ${FILESDIR}/${PVR}/Makefile.config . &>/dev/null || die "cannot copy kernel files";
 	make -f Makefile.config VERSION=${PVR} configs &>/dev/null || die "cannot generate kernel .config files from config-* files"
+
+	use grsecurity && epatch ${DISTDIR}/grsecurity-2.9-${PV}-${grsecurity_version}.patch
+	if use tomoyo; then
+		cd ${T}
+		unpack "ccs-patch-${css_version}.tar.gz"
+		cp "${T}/patches/ccs-patch-3.2.diff" "${S}/ccs-patch-3.2.diff"
+		cd "${S}"
+		EPATCH_OPTS="-p1" epatch "${S}/ccs-patch-3.2.diff"
+		rm -f "${S}/ccs-patch-3.2.diff"
+		rm -rf ${T}/* # Clean temp
+	fi
+
+	if use ck; then
+		EPATCH_OPTS="-p1 -F1 -s" \
+		epatch ${DISTDIR}/patch-${ck_version}-ck1.bz2
+		EPATCH_OPTS="-p1 -F1 -s" \
+		epatch ${FILESDIR}/0001-block-prepare-I-O-context-code-for-BFQ-v3r2-for-3.2.patch
+		EPATCH_OPTS="-p1 -F1 -s" \
+		epatch ${FILESDIR}/0002-block-cgroups-kconfig-build-bits-for-BFQ-v3r2-3.2.patch
+		EPATCH_OPTS="-p1 -F1 -s" \
+		epatch ${FILESDIR}/0003-block-introduce-the-BFQ-v3r2-I-O-sched-for-3.2.patch
+	fi
 
 	if use fbcondecor; then
 		epatch ${DISTDIR}/4200_fbcondecor-0.9.6.patch
@@ -217,6 +257,11 @@ src_unpack() {
 		epatch "${FILESDIR}"/gentoo-larry-logo-v2.patch
 	fi
 
+# Unfortunately, it has yet not been ported into 3.0 kernel.
+# Check out here for the progress: http://www.kernel.org/pub/linux/kernel/people/edward/reiser4/
+# http://sourceforge.net/projects/reiser4/
+#	use reiser4 && epatch ${DISTDIR}/reiser4-for-${PV}.patch.bz2
+
 # Install the docs
 	nonfatal dodoc "${FILESDIR}/${PVR}"/{README.txt,TODO,*notes.txt}
 
@@ -253,5 +298,8 @@ pkg_postinst() {
 		einfo "font - CONFIG_FONT_ISO_LATIN_1_8x16 http://sudormrf.wordpress.com/2010/10/23/ka-ping-yee-iso-latin-1%c2%a0font-in-linux-kernel/"
 		einfo "logo - CONFIG_LOGO_LARRY_CLUT224 http://www.gentoo.org/proj/en/desktop/artwork/artwork.xml"
 	fi
+	use ck && einfo "ck enable ${ck_url} patches"
 	use fbcondecor && einfo "fbcondecor enable ${fbcondecor_url} patches"
+	use grsecurity && einfo "grsecurity enable ${grsecurity_url} patches"
+	use tomoyo && einfo "tomoyo enable ${css_url} patches"
 }

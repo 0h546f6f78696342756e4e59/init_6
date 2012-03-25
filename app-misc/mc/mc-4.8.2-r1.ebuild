@@ -40,6 +40,9 @@ S=${WORKDIR}/${MY_P}
 src_prepare() {
 	cp "${FILESDIR}"/${P}-missing-do_panel_cd_stub_env.c \
 		tests/src/filemanager/do_panel_cd_stub_env.c || die
+
+	# bug 409107
+	epatch "${FILESDIR}"/"${P}"-mcedit-without-file-param-fix.patch
 }
 
 src_configure() {
