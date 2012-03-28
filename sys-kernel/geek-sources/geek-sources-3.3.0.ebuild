@@ -17,7 +17,7 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201203242026"
+grsecurity_version="201203251922"
 grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 css_version="1.8.3-20120301"
@@ -209,6 +209,10 @@ src_unpack() {
 
 	epatch "${FILESDIR}"/"${PVR}"/lis3-improve-handling-of-null-rate.patch
 
+	epatch "${FILESDIR}"/"${PVR}"/bluetooth-use-after-free.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/ips-noirq.patch
+
 # utrace.
 	EPATCH_OPTS="-p1 -F1 -s" \
 	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/utrace.patch
@@ -226,6 +230,9 @@ src_unpack() {
 #rhbz 754518
 #	epatch "${FILESDIR}"/"${PVR}"/scsi-sd_revalidate_disk-prevent-NULL-ptr-deref.patch
 
+#rhbz 789644
+	epatch "${FILESDIR}"/"${PVR}"/mcelog-rcu-splat.patch
+
 #rhbz 727865 730007
 	epatch "${FILESDIR}"/"${PVR}"/ACPICA-Fix-regression-in-FADT-revision-checks.patch
 
@@ -235,11 +242,19 @@ src_unpack() {
 #rhbz 804007
 	epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-possible-tid_rx-reorder_timer-use-after-free.patch
 
+#rhbz 804957 CVE-2012-1568
+	epatch "${FILESDIR}"/"${PVR}"/shlib_base_randomize.patch
+
 	epatch "${FILESDIR}"/"${PVR}"/unhandled-irqs-switch-to-polling.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/weird-root-dentry-name-debug.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/x86-ioapic-add-register-checks-for-bogus-io-apic-entries.patch
+
+#rhbz 804347
+	epatch "${FILESDIR}"/"${PVR}"/x86-add-io_apic_ops-to-allow-interception.patch
+	epatch "${FILESDIR}"/"${PVR}"/x86-apic_ops-Replace-apic_ops-with-x86_apic_ops.patch
+	epatch "${FILESDIR}"/"${PVR}"/xen-x86-Implement-x86_apic_ops.patch
 
 #rhbz 803809 CVE-2012-1179
 	epatch "${FILESDIR}"/"${PVR}"/mm-thp-fix-pmd_bad-triggering.patch

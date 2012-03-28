@@ -43,6 +43,8 @@ src_prepare() {
 
 	# bug 409107
 	epatch "${FILESDIR}"/"${P}"-mcedit-without-file-param-fix.patch
+	# bug 409365
+	epatch "${FILESDIR}"/"${P}"-fix-existing.patch
 }
 
 src_configure() {
