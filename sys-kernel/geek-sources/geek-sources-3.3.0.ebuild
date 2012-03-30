@@ -26,7 +26,7 @@ css_url="http://tomoyo.sourceforge.jp"
 ck_version="3.3"
 ck_src="http://ck.kolivas.org/patches/3.0/3.3/3.3-ck1/patch-${ck_version}-ck1.bz2"
 ck_url="http://ck-hack.blogspot.com"
-fbcondecor_src="http://sources.gentoo.org/cgi-bin/viewvc.cgi/linux-patches/genpatches-2.6/trunk/3.2/4200_fbcondecor-0.9.6.patch"
+fbcondecor_src="http://sources.gentoo.org/cgi-bin/viewvc.cgi/linux-patches/genpatches-2.6/trunk/3.3/4200_fbcondecor-0.9.6.patch"
 fbcondecor_url="http://dev.gentoo.org/~spock/projects/fbcondecor"
 
 KEYWORDS="~amd64 ~x86"
@@ -102,6 +102,7 @@ src_unpack() {
 #
 	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
 	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
+	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/nx-emu-remove-cpuinitdata-for-disable_nx-on-x86_32.patch
 
 #
 # bugfixes to drivers and filesystems
@@ -256,8 +257,16 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/x86-apic_ops-Replace-apic_ops-with-x86_apic_ops.patch
 	epatch "${FILESDIR}"/"${PVR}"/xen-x86-Implement-x86_apic_ops.patch
 
+#rhbz 770476
+	epatch "${FILESDIR}"/"${PVR}"/iwlegacy-do-not-nulify-il-vif-on-reset.patch
+	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-do-not-nulify-ctx-vif-on-reset.patch
+
 #rhbz 803809 CVE-2012-1179
 	epatch "${FILESDIR}"/"${PVR}"/mm-thp-fix-pmd_bad-triggering.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/ASPM-Fix-pcie-devs-with-non-pcie-children.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/nfs-Fix-length-of-buffer-copied-in-__nfs4_get_acl_uncached.patch
 
 # END OF PATCH APPLICATIONS
 
