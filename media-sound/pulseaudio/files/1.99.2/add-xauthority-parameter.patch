@@ -1,0 +1,117 @@
+Description: Add the parameter xauthority to module-x11-* and use it in the startup script
+Author: Alexander Kurtz <kurtz.alex@googlemail.com>
+Bug-Debian: http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=593746
+
+diff -ru pulseaudio-0.9.21.orig/src/daemon/start-pulseaudio-x11.in pulseaudio-0.9.21/src/daemon/start-pulseaudio-x11.in
+--- pulseaudio-0.9.21.orig/src/daemon/start-pulseaudio-x11.in	2009-11-23 23:22:41.000000000 +0100
++++ pulseaudio-0.9.21/src/daemon/start-pulseaudio-x11.in	2010-08-20 19:55:15.958072145 +0200
+@@ -25,10 +25,10 @@
+ 
+ if [ x"$DISPLAY" != x ] ; then
+ 
+-    @PACTL_BINARY@ load-module module-x11-publish "display=$DISPLAY" > /dev/null
+-    @PACTL_BINARY@ load-module module-x11-cork-request "display=$DISPLAY" > /dev/null
++    @PACTL_BINARY@ load-module module-x11-publish "display=$DISPLAY xauthority=$XAUTHORITY" > /dev/null
++    @PACTL_BINARY@ load-module module-x11-cork-request "display=$DISPLAY xauthority=$XAUTHORITY" > /dev/null
+ 
+     if [ x"$SESSION_MANAGER" != x ] ; then
+-	@PACTL_BINARY@ load-module module-x11-xsmp "display=$DISPLAY session_manager=$SESSION_MANAGER" > /dev/null
++	@PACTL_BINARY@ load-module module-x11-xsmp "display=$DISPLAY xauthority=$XAUTHORITY session_manager=$SESSION_MANAGER" > /dev/null
+     fi
+ fi
+diff -ru pulseaudio-0.9.21.orig/src/modules/x11/module-x11-bell.c pulseaudio-0.9.21/src/modules/x11/module-x11-bell.c
+--- pulseaudio-0.9.21.orig/src/modules/x11/module-x11-bell.c	2009-11-23 23:22:41.000000000 +0100
++++ pulseaudio-0.9.21/src/modules/x11/module-x11-bell.c	2010-08-20 19:56:31.982074287 +0200
+@@ -52,6 +52,7 @@
+     "sink",
+     "sample",
+     "display",
++    "xauthority",
+     NULL
+ };
+ 
+@@ -130,6 +131,12 @@
+     u->sink_name = pa_xstrdup(pa_modargs_get_value(ma, "sink", NULL));
+     u->x11_client = NULL;
+ 
++    if (pa_modargs_get_value(ma, "xauthority", NULL))
++    	if (setenv("XAUTHORITY", pa_modargs_get_value(ma, "xauthority", NULL), 1)) {
++    		pa_log("setenv() for $XAUTHORITY failed");
++    		goto fail;
++    	}
++
+     if (!(u->x11_wrapper = pa_x11_wrapper_get(m->core, pa_modargs_get_value(ma, "display", NULL))))
+         goto fail;
+ 
+diff -ru pulseaudio-0.9.21.orig/src/modules/x11/module-x11-cork-request.c pulseaudio-0.9.21/src/modules/x11/module-x11-cork-request.c
+--- pulseaudio-0.9.21.orig/src/modules/x11/module-x11-cork-request.c	2009-11-23 23:22:41.000000000 +0100
++++ pulseaudio-0.9.21/src/modules/x11/module-x11-cork-request.c	2010-08-20 19:56:55.950076714 +0200
+@@ -52,6 +52,7 @@
+ 
+ static const char* const valid_modargs[] = {
+     "display",
++    "xauthority",
+     NULL
+ };
+ 
+@@ -134,6 +135,12 @@
+     m->userdata = u = pa_xnew0(struct userdata, 1);
+     u->module = m;
+ 
++    if (pa_modargs_get_value(ma, "xauthority", NULL))
++    	if (setenv("XAUTHORITY", pa_modargs_get_value(ma, "xauthority", NULL), 1)) {
++    		pa_log("setenv() for $XAUTHORITY failed");
++    		goto fail;
++    	}
++
+     if (!(u->x11_wrapper = pa_x11_wrapper_get(m->core, pa_modargs_get_value(ma, "display", NULL))))
+         goto fail;
+ 
+diff -ru pulseaudio-0.9.21.orig/src/modules/x11/module-x11-publish.c pulseaudio-0.9.21/src/modules/x11/module-x11-publish.c
+--- pulseaudio-0.9.21.orig/src/modules/x11/module-x11-publish.c	2009-11-23 23:22:41.000000000 +0100
++++ pulseaudio-0.9.21/src/modules/x11/module-x11-publish.c	2010-08-20 19:57:00.510075873 +0200
+@@ -66,6 +66,7 @@
+     "sink",
+     "source",
+     "cookie",
++    "xauthority",
+     NULL
+ };
+ 
+@@ -161,6 +162,12 @@
+     if (!(u->auth_cookie = pa_auth_cookie_get(m->core, pa_modargs_get_value(ma, "cookie", PA_NATIVE_COOKIE_FILE), PA_NATIVE_COOKIE_LENGTH)))
+         goto fail;
+ 
++    if (pa_modargs_get_value(ma, "xauthority", NULL))
++    	if (setenv("XAUTHORITY", pa_modargs_get_value(ma, "xauthority", NULL), 1)) {
++    		pa_log("setenv() for $XAUTHORITY failed");
++    		goto fail;
++    	}
++
+     if (!(u->x11_wrapper = pa_x11_wrapper_get(m->core, pa_modargs_get_value(ma, "display", NULL))))
+         goto fail;
+ 
+diff -ru pulseaudio-0.9.21.orig/src/modules/x11/module-x11-xsmp.c pulseaudio-0.9.21/src/modules/x11/module-x11-xsmp.c
+--- pulseaudio-0.9.21.orig/src/modules/x11/module-x11-xsmp.c	2009-11-23 23:22:41.000000000 +0100
++++ pulseaudio-0.9.21/src/modules/x11/module-x11-xsmp.c	2010-08-20 19:57:05.674576871 +0200
+@@ -55,6 +55,7 @@
+ static const char* const valid_modargs[] = {
+     "session_manager",
+     "display",
++    "xauthority",
+     NULL
+ };
+ 
+@@ -148,6 +149,12 @@
+         goto fail;
+     }
+ 
++    if (pa_modargs_get_value(ma, "xauthority", NULL))
++    	if (setenv("XAUTHORITY", pa_modargs_get_value(ma, "xauthority", NULL), 1)) {
++    		pa_log("setenv() for $XAUTHORITY failed");
++    		goto fail;
++    	}
++
+     if (!(u->x11 = pa_x11_wrapper_get(m->core, pa_modargs_get_value(ma, "display", NULL))))
+         goto fail;
+ 

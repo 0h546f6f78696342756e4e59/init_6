@@ -83,6 +83,7 @@ REQUIRED_USE="bluetooth? ( dbus )"
 
 src_prepare() {
 	epatch "${FILESDIR}"/"${PVR}"/pulseaudio-activation.patch
+	epatch "${FILESDIR}"/"${PVR}"/add-xauthority-parameter.patch
 }
 
 pkg_setup() {
