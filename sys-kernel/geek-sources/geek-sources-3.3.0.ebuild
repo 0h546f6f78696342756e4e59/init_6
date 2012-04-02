@@ -84,7 +84,6 @@ src_unpack() {
 	fi
 
 ### BRANCH APPLY ###
-
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-makefile-after_link.patch
 
 # Architecture patches
@@ -167,6 +166,8 @@ src_unpack() {
 # Silence some useless messages that still get printed with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-noise.patch
 
+	epatch "${FILESDIR}"/"${PVR}"/silence-timekeeping-spew.patch
+
 # Make fbcon not show the penguins with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
 
@@ -192,6 +193,8 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/drm-i915-fbc-stfu.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/drm-i915-suspend-fbdev-device-around-suspend-hiberna.patch
 
 # silence the ACPI blacklist code
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-acpi-blacklist.patch
@@ -267,6 +270,9 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/ASPM-Fix-pcie-devs-with-non-pcie-children.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/nfs-Fix-length-of-buffer-copied-in-__nfs4_get_acl_uncached.patch
+
+#rhbz 808207 CVE-2012-1601
+	epatch "${FILESDIR}"/"${PVR}"/KVM-Ensure-all-vcpus-are-consistent-with-in-kernel-i.patch
 
 # END OF PATCH APPLICATIONS
 
