@@ -17,7 +17,7 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201204021758"
+grsecurity_version="201204062021"
 grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 css_version="1.8.3-20120301"
@@ -210,6 +210,7 @@ src_unpack() {
 
 # FIXME
 #	epatch "${FILESDIR}"/"${PVR}"/hibernate-freeze-filesystems.patch
+	epatch "${FILESDIR}"/"${PVR}"/hibernate-watermark.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/lis3-improve-handling-of-null-rate.patch
 
