@@ -28,24 +28,29 @@ ck_src="http://ck.kolivas.org/patches/3.0/3.3/3.3-ck1/patch-${ck_version}-ck1.bz
 ck_url="http://ck-hack.blogspot.com"
 fbcondecor_src="http://sources.gentoo.org/cgi-bin/viewvc.cgi/linux-patches/genpatches-2.6/trunk/3.3/4200_fbcondecor-0.9.6.patch"
 fbcondecor_url="http://dev.gentoo.org/~spock/projects/fbcondecor"
+bld_version="3.3-rc3"
+bld_src="http://bld.googlecode.com/files/bld-${bld_version}.tar.bz2"
+bld_url="http://code.google.com/p/bld"
 
 KEYWORDS="~amd64 ~x86"
 RDEPEND=">=sys-devel/gcc-4.5 \
 	grsecurity?	( >=sys-apps/gradm-2.2.2 )
 	tomoyo?		( sys-apps/ccs-tools )"
 
-IUSE="branding ck deblob fbcondecor grsecurity tomoyo"
+IUSE="bld branding ck deblob fbcondecor grsecurity tomoyo"
 DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, tomoyo and other patches"
-HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary ${grsecurity_url} ${css_url} ${ck_url} ${fbcondecor_url}"
+HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary ${bld_url} ${grsecurity_url} ${css_url} ${ck_url} ${fbcondecor_url}"
 SRC_URI="${KERNEL_URI} ${ARCH_URI}
 	ck?		( ${ck_src} )
 	fbcondecor?	( ${fbcondecor_src} )
 	grsecurity?	( ${grsecurity_src} )
-	tomoyo?		( ${css_src} )"
+	tomoyo?		( ${css_src} )
+	bld?		( ${bld_src} )"
 
 REQUIRED_USE="grsecurity? ( !tomoyo ) tomoyo? ( !grsecurity )
 	ck? ( !grsecurity ) ck? ( !tomoyo )
-	fbcondecor? ( !grsecurity ) fbcondecor? ( !tomoyo )"
+	fbcondecor? ( !grsecurity ) fbcondecor? ( !tomoyo )
+	bld? ( !grsecurity ) bld? ( !tomoyo ) bld? ( !ck )"
 
 KV_FULL="${PVR}-geek"
 EXTRAVERSION="${RELEASE}-geek"
@@ -71,7 +76,9 @@ src_unpack() {
 		cd "${S}"
 		EPATCH_OPTS="-p1" epatch "${S}/ccs-patch-3.3.diff"
 		rm -f "${S}/ccs-patch-3.3.diff"
-		rm -rf ${T}/* # Clean temp
+		# Clean temp
+		rm -rf "${T}/config.ccs" "${T}/COPYING.ccs" "${T}/README.ccs"
+		rm -r "${T}/include" "${T}/patches" "${T}/security" "${T}/specs"
 	fi
 
 	if use ck; then
@@ -81,6 +88,16 @@ src_unpack() {
 
 	if use fbcondecor; then
 		epatch ${DISTDIR}/4200_fbcondecor-0.9.6.patch
+	fi
+
+	if use bld; then
+		cd ${T}
+		unpack "bld-${bld_version}.tar.bz2"
+		cp "${T}/bld-${bld_version}/BLD_${bld_version}-feb12.patch" "${S}/BLD_${bld_version}-feb12.patch"
+		cd "${S}"
+		EPATCH_OPTS="-p1" epatch "${S}/BLD_${bld_version}-feb12.patch"
+		rm -f "${S}/BLD_${bld_version}-feb12.patch"
+		rm -r "${T}/bld-${bld_version}" # Clean temp
 	fi
 
 ### BRANCH APPLY ###
@@ -319,6 +336,12 @@ src_install() {
 }
 
 pkg_postinst() {
+
+	if [ ! -e ${ROOT}usr/src/linux ]
+	then
+		ln -s linux-${P} ${ROOT}usr/src/linux
+	fi
+
 	einfo "Now is the time to configure and build the kernel."
 	if use branding; then
 		einfo "branding enable"
@@ -329,4 +352,5 @@ pkg_postinst() {
 	use fbcondecor && einfo "fbcondecor enable ${fbcondecor_url} patches"
 	use grsecurity && einfo "grsecurity enable ${grsecurity_url} patches"
 	use tomoyo && einfo "tomoyo enable ${css_url} patches"
+	use bld & einfo "bld enable ${bld_url} patches"
 }

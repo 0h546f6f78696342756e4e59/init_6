@@ -17,6 +17,7 @@ In this overlay you will find:
 	sys-kernel/vanilla-sources live 9999 git ebuild
 	sys-kernel/geek-sources Full sources for the Linux kernel including fedora, grsecurity, tomoyo patches
 		backports - compat-wireless patches.
+		bld - alternate CPU load distribution technique for Linux kernel scheduler.
 		branding - enable Gentoo specific branding.
 		ck - use Con Kolivas BFS, BFQ patches.
 		fbcondecor - use Spock's fbsplash patch.
