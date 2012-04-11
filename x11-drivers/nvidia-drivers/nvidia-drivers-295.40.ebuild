@@ -213,6 +213,11 @@ pkg_setup() {
 		MODULE_NAMES="nvidia(video:${S}/kernel)"
 		BUILD_PARAMS="IGNORE_CC_MISMATCH=yes V=1 SYSSRC=${KV_DIR} \
 		SYSOUT=${KV_OUT_DIR} CC=$(tc-getBUILD_CC)"
+		# linux-mod_src_compile calls set_arch_to_kernel, which
+		# sets the ARCH to x86 but NVIDIA's wrapping Makefile
+		# expects x86_64 or i386 and then converts it to x86
+		# later on in the build process
+		BUILD_FIXES="ARCH=$(uname -m | sed -e 's/i.86/i386/')"
 		mtrr_check
 		lockdep_check
 	fi
@@ -283,8 +288,6 @@ src_prepare() {
 			-e 's:-Wsign-compare::g' \
 			"${NV_SRC}"/Makefile.kbuild
 
-		epatch "${FILESDIR}"/295.33-unified-arch.patch
-
 		# Fix building with Linux 3.3.x wrt #408841
 		sed -i \
 			-e '/CFLAGS="$CFLAGS/s:-I$SOURCES/arch/x86/include:& -I$OUTPUT/arch/x86/include/generated:' \
@@ -332,6 +335,13 @@ src_install() {
 			"${WORKDIR}"/nvidia
 		insinto /etc/modprobe.d
 		newins "${WORKDIR}"/nvidia nvidia.conf || die
+
+		# Ensures that our device nodes are created when not using X
+		exeinto /lib/udev
+		doexe "${FILESDIR}"/nvidia-udev.sh
+
+		insinto /lib/udev/rules.d
+		newins "${FILESDIR}"/nvidia.udev-rule 99-nvidia.rules
 	elif use x86-fbsd; then
 		insinto /boot/modules
 		doins "${WORKDIR}/${NV_PACKAGE}/src/nvidia.kld" || die
@@ -419,14 +429,14 @@ src_install() {
 
 	# Helper Apps
 	exeinto /opt/bin/
-	dobin ${NV_EXEC}/nvidia-xconfig || die
-	dobin ${NV_EXEC}/nvidia-debugdump || die
+	doexe ${NV_EXEC}/nvidia-xconfig || die
+	doexe ${NV_EXEC}/nvidia-debugdump || die
 	if use gtk; then
-		dobin ${NV_EXEC}/nvidia-settings || die
+		doexe ${NV_EXEC}/nvidia-settings || die
 	fi
-	dobin ${NV_EXEC}/nvidia-bug-report.sh || die
+	doexe ${NV_EXEC}/nvidia-bug-report.sh || die
 	if use kernel_linux; then
-		dobin ${NV_EXEC}/nvidia-smi || die
+		doexe ${NV_EXEC}/nvidia-smi || die
 	fi
 
 	# Desktop entries for nvidia-settings
@@ -509,9 +519,7 @@ src_install-libs() {
 }
 
 pkg_preinst() {
-	if use kernel_linux; then
-		linux-mod_pkg_postinst
-	fi
+	use kernel_linux && linux-mod_pkg_preinst
 
 	# Clean the dynamic libGL stuff's home to ensure
 	# we dont have stale libs floating around
@@ -525,13 +533,11 @@ pkg_preinst() {
 }
 
 pkg_postinst() {
-	if use kernel_linux; then
-		linux-mod_pkg_postinst
-	fi
+	use kernel_linux && linux-mod_pkg_postinst
 
 	# Switch to the nvidia implementation
-	eselect opengl set --use-old nvidia
-	eselect opencl set --use-old nvidia
+	"${ROOT}"/usr/bin/eselect opengl set --use-old nvidia
+	"${ROOT}"/usr/bin/eselect opencl set --use-old nvidia
 
 	echo
 	elog "You must be in the video group to use the NVIDIA device"
@@ -565,9 +571,11 @@ pkg_postinst() {
 	fi
 }
 
+pkg_prerm() {
+	"${ROOT}"/usr/bin/eselect opengl set --use-old xorg-x11
+}
+
 pkg_postrm() {
-	if use kernel_linux; then
-		linux-mod_pkg_postrm
-	fi
-	eselect opengl set --use-old xorg-x11
+	use kernel_linux && linux-mod_pkg_postrm
+	"${ROOT}"/usr/bin/eselect opengl set --use-old xorg-x11
 }

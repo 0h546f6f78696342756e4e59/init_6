@@ -352,5 +352,5 @@ pkg_postinst() {
 	use fbcondecor && einfo "fbcondecor enable ${fbcondecor_url} patches"
 	use grsecurity && einfo "grsecurity enable ${grsecurity_url} patches"
 	use tomoyo && einfo "tomoyo enable ${css_url} patches"
-	use bld & einfo "bld enable ${bld_url} patches"
+	use bld && einfo "bld enable ${bld_url} patches"
 }
