@@ -6,51 +6,60 @@ EAPI="4"
 K_NOUSENAME="yes"
 K_NOSETEXTRAVERSION="yes"
 K_SECURITY_UNSUPPORTED="1"
-K_DEBLOB_AVAILABLE="1"
+K_DEBLOB_AVAILABLE="0"
 ETYPE="sources"
 
-CKV="${PVR/-r/-git}"
+#CKV="${PVR/-r/-git}"
 # only use this if it's not an _rc/_pre release
-[ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
-#CKV="3.3"
+#[ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
+CKV="3.4-rc2"
 
 inherit kernel-2
 detect_version
 
-grsecurity_version="201204091729"
-grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
-grsecurity_url="http://grsecurity.net"
-css_version="1.8.3-20120301"
-css_src="http://sourceforge.jp/frs/redir.php?m=jaist&f=/tomoyo/49684/ccs-patch-${css_version}.tar.gz"
-css_url="http://tomoyo.sourceforge.jp"
-ck_version="3.3"
-ck_src="http://ck.kolivas.org/patches/3.0/3.3/3.3-ck1/patch-${ck_version}-ck1.bz2"
-ck_url="http://ck-hack.blogspot.com"
+#grsecurity_version="201204062021"
+#grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
+#grsecurity_url="http://grsecurity.net"
+#css_version="1.8.3-20120301"
+#css_src="http://sourceforge.jp/frs/redir.php?m=jaist&f=/tomoyo/49684/ccs-patch-${css_version}.tar.gz"
+#css_url="http://tomoyo.sourceforge.jp"
+#ck_version="3.3"
+#ck_src="http://ck.kolivas.org/patches/3.0/3.3/3.3-ck1/patch-${ck_version}-ck1.bz2"
+#ck_url="http://ck-hack.blogspot.com"
 fbcondecor_src="http://sources.gentoo.org/cgi-bin/viewvc.cgi/linux-patches/genpatches-2.6/trunk/3.3/4200_fbcondecor-0.9.6.patch"
 fbcondecor_url="http://dev.gentoo.org/~spock/projects/fbcondecor"
-bld_version="3.3-rc3"
-bld_src="http://bld.googlecode.com/files/bld-${bld_version}.tar.bz2"
-bld_url="http://code.google.com/p/bld"
+#bld_version="3.3-rc3"
+#bld_src="http://bld.googlecode.com/files/bld-${bld_version}.tar.bz2"
+#bld_url="http://code.google.com/p/bld"
+rt_version="3.4-rc2-rt2"
+rt_src="http://www.kernel.org/pub/linux/kernel/projects/rt/3.4/patch-${rt_version}.patch.xz"
+rt_url="http://www.kernel.org/pub/linux/kernel/projects/rt"
 
-KEYWORDS="~amd64 ~x86"
-RDEPEND=">=sys-devel/gcc-4.5 \
-	grsecurity?	( >=sys-apps/gradm-2.2.2 )
-	tomoyo?		( sys-apps/ccs-tools )"
+KEYWORDS=""
+#KEYWORDS="~amd64 ~x86"
 
-IUSE="bld branding ck deblob fbcondecor grsecurity tomoyo"
+#	grsecurity?	( >=sys-apps/gradm-2.2.2 )
+#	tomoyo?		( sys-apps/ccs-tools )
+RDEPEND=">=sys-devel/gcc-4.5"
+
+IUSE="branding deblob fbcondecor rt"
+#IUSE="bld branding ck deblob fbcondecor grsecurity tomoyo"
 DESCRIPTION="Full sources for the Linux kernel including: fedora, grsecurity, tomoyo and other patches"
-HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary ${bld_url} ${grsecurity_url} ${css_url} ${ck_url} ${fbcondecor_url}"
-SRC_URI="${KERNEL_URI} ${ARCH_URI}
-	ck?		( ${ck_src} )
-	fbcondecor?	( ${fbcondecor_src} )
-	grsecurity?	( ${grsecurity_src} )
-	tomoyo?		( ${css_src} )
-	bld?		( ${bld_src} )"
 
-REQUIRED_USE="grsecurity? ( !tomoyo ) tomoyo? ( !grsecurity )
-	ck? ( !grsecurity ) ck? ( !tomoyo )
-	fbcondecor? ( !grsecurity ) fbcondecor? ( !tomoyo )
-	bld? ( !grsecurity ) bld? ( !tomoyo ) bld? ( !ck )"
+HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary ${fbcondecor_url} ${rt_url}"
+#HOMEPAGE="http://www.kernel.org http://pkgs.fedoraproject.org/gitweb/?p=kernel.git;a=summary ${bld_url} ${grsecurity_url} ${css_url} ${ck_url} ${fbcondecor_url}"
+#	ck?		( ${ck_src} )
+#	fbcondecor?	( ${fbcondecor_src} )
+#	grsecurity?	( ${grsecurity_src} )
+#	tomoyo?		( ${css_src} )
+#	bld?		( ${bld_src} )
+SRC_URI="${KERNEL_URI} ${ARCH_URI}
+	rt?		( ${rt_src} )"
+
+#REQUIRED_USE=grsecurity? ( !tomoyo ) tomoyo? ( !grsecurity )
+#	ck? ( !grsecurity ) ck? ( !tomoyo )
+#	fbcondecor? ( !grsecurity ) fbcondecor? ( !tomoyo )
+#	bld? ( !grsecurity ) bld? ( !tomoyo ) bld? ( !ck )"
 
 KV_FULL="${PVR}-geek"
 EXTRAVERSION="${RELEASE}-geek"
@@ -67,78 +76,77 @@ src_unpack() {
 	cp ${FILESDIR}/${PVR}/merge.pl ${FILESDIR}/${PVR}/Makefile.config . &>/dev/null || die "cannot copy kernel files";
 	make -f Makefile.config VERSION=${PVR} configs &>/dev/null || die "cannot generate kernel .config files from config-* files"
 
-	use grsecurity && epatch ${DISTDIR}/grsecurity-2.9-${PV}-${grsecurity_version}.patch
+#	use grsecurity && epatch ${DISTDIR}/grsecurity-2.9-${PV}-${grsecurity_version}.patch
 
-	if use tomoyo; then
-		cd ${T}
-		unpack "ccs-patch-${css_version}.tar.gz"
-		cp "${T}/patches/ccs-patch-3.3.diff" "${S}/ccs-patch-3.3.diff"
-		cd "${S}"
-		EPATCH_OPTS="-p1" epatch "${S}/ccs-patch-3.3.diff"
-		rm -f "${S}/ccs-patch-3.3.diff"
+#	if use tomoyo; then
+#		cd ${T}
+#		unpack "ccs-patch-${css_version}.tar.gz"
+#		cp "${T}/patches/ccs-patch-3.3.diff" "${S}/ccs-patch-3.3.diff"
+#		cd "${S}"
+#		EPATCH_OPTS="-p1" epatch "${S}/ccs-patch-3.3.diff"
+#		rm -f "${S}/ccs-patch-3.3.diff"
 		# Clean temp
-		rm -rf "${T}/config.ccs" "${T}/COPYING.ccs" "${T}/README.ccs"
-		rm -r "${T}/include" "${T}/patches" "${T}/security" "${T}/specs"
-	fi
+#		rm -rf "${T}/config.ccs" "${T}/COPYING.ccs" "${T}/README.ccs"
+#		rm -r "${T}/include" "${T}/patches" "${T}/security" "${T}/specs"
+#	fi
 
-	if use ck; then
-		EPATCH_OPTS="-p1 -F1 -s" \
-		epatch ${DISTDIR}/patch-${ck_version}-ck1.bz2
-	fi
+#	if use ck; then
+#		EPATCH_OPTS="-p1 -F1 -s" \
+#		epatch ${DISTDIR}/patch-${ck_version}-ck1.bz2
+#	fi
 
 	if use fbcondecor; then
 		epatch ${DISTDIR}/4200_fbcondecor-0.9.6.patch
 	fi
 
-	if use bld; then
-		cd ${T}
-		unpack "bld-${bld_version}.tar.bz2"
-		cp "${T}/bld-${bld_version}/BLD_${bld_version}-feb12.patch" "${S}/BLD_${bld_version}-feb12.patch"
-		cd "${S}"
-		EPATCH_OPTS="-p1" epatch "${S}/BLD_${bld_version}-feb12.patch"
-		rm -f "${S}/BLD_${bld_version}-feb12.patch"
-		rm -r "${T}/bld-${bld_version}" # Clean temp
+#	if use bld; then
+#		cd ${T}
+#		unpack "bld-${bld_version}.tar.bz2"
+#		cp "${T}/bld-${bld_version}/BLD_${bld_version}-feb12.patch" "${S}/BLD_${bld_version}-feb12.patch"
+#		cd "${S}"
+#		EPATCH_OPTS="-p1" epatch "${S}/BLD_${bld_version}-feb12.patch"
+#		rm -f "${S}/BLD_${bld_version}-feb12.patch"
+#		rm -r "${T}/bld-${bld_version}" # Clean temp
+#	fi
+
+	if use rt; then
+		epatch "${DISTDIR}/patch-${rt_version}.patch.xz"
 	fi
 
 ### BRANCH APPLY ###
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-makefile-after_link.patch
 
+	epatch "${FILESDIR}"/"${PVR}"/taint-vbox.patch
+
 # Architecture patches
 # x86(-64)
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
+	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
+	epatch "${FILESDIR}"/"${PVR}"/nx-emu-remove-cpuinitdata-for-disable_nx-on-x86_32.patch
 
 #
 # ARM
 #
-# 	epatch "${FILESDIR}"/"${PVR}"/arm-omap-dt-compat.patch
-	epatch "${FILESDIR}"/"${PVR}"/arm-smsc-support-reading-mac-address-from-device-tree.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/taint-vbox.patch
-#
-# NX Emulation
-#
-	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/linux-2.6-32bit-mmap-exec-randomization.patch
-	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/linux-2.6-i386-nx-emulation.patch
-	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/nx-emu-remove-cpuinitdata-for-disable_nx-on-x86_32.patch
+#	epatch "${FILESDIR}"/"${PVR}"/arm-omap-dt-compat.patch
+#	epatch "${FILESDIR}"/"${PVR}"/arm-smsc-support-reading-mac-address-from-device-tree.patch
+	epatch "${FILESDIR}"/"${PVR}"/arm-tegra-nvec-kconfig.patch
 
 #
 # bugfixes to drivers and filesystems
 #
 
 # ext4
-#rhbz 753346
-	epatch "${FILESDIR}"/"${PVR}"/jbd-jbd2-validate-sb-s_first-in-journal_get_superblo.patch
 
 # xfs
 
 # btrfs
+	epatch "${FILESDIR}"/"${PVR}"/btrfs-use-after-free.patch
 
 
 # eCryptfs
 
 # NFSv4
-	epatch "${FILESDIR}"/"${PVR}"/NFSv4-Reduce-the-footprint-of-the-idmapper.patch
-	epatch "${FILESDIR}"/"${PVR}"/NFSv4-Further-reduce-the-footprint-of-the-idmapper.patch
 
 # USB
 
@@ -148,14 +156,11 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-defaults-acpi-video.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-video-dos.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-debug-infinite-loop.patch
-	epatch "${FILESDIR}"/"${PVR}"/acpi-ensure-thermal-limits-match-cpu-freq.patch
 	epatch "${FILESDIR}"/"${PVR}"/acpi-sony-nonvs-blacklist.patch
 
 #
 # PCI
 #
-# enable ASPM by default on hardware we expect to work
-	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-defaults-aspm.patch
 
 #
 # SCSI Bits.
@@ -167,14 +172,12 @@ src_unpack() {
 
 # Networking
 
-
 # Misc fixes
 # The input layer spews crap no-one cares about.
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-input-kill-stupid-messages.patch
 
 # stop floppy.ko from autoloading during udev...
 	epatch "${FILESDIR}"/"${PVR}"/die-floppy-die.patch
-	epatch "${FILESDIR}"/"${PVR}"/floppy-drop-disable_hlt-warning.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6.30-no-pcspkr-modalias.patch
 
@@ -183,8 +186,6 @@ src_unpack() {
 
 # Silence some useless messages that still get printed with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-noise.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/silence-timekeeping-spew.patch
 
 # Make fbcon not show the penguins with 'quiet'
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-fbcon-logo.patch
@@ -199,16 +200,19 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-e1000-ich9-montevina.patch
 
 # crypto/
+#	epatch "${FILESDIR}"/"${PVR}"/modsign-20111207.patch # Failed
 
 # Assorted Virt Fixes
 	epatch "${FILESDIR}"/"${PVR}"/fix_xen_guest_on_old_EC2.patch
 
 # DRM core
 #	epatch "${FILESDIR}"/"${PVR}"/drm-edid-try-harder-to-fix-up-broken-headers.patch
+	epatch "${FILESDIR}"/"${PVR}"/drm-vgem.patch
+
+# Nouveau DRM
 
 # Intel DRM
 	epatch "${FILESDIR}"/"${PVR}"/drm-i915-dp-stfu.patch
-	epatch "${FILESDIR}"/"${PVR}"/drm-i915-fbc-stfu.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-intel-iommu-igfx.patch
 
@@ -216,12 +220,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-silence-acpi-blacklist.patch
 	epatch "${FILESDIR}"/"${PVR}"/quite-apm.patch
 
-# Media (V4L/DVB/IR) updates/fixes/experimental drivers
-#  apply if non-empty
-	epatch "${FILESDIR}"/"${PVR}"/add-poll-requested-events.patch
-
 # Patches headed upstream
-
 	epatch "${FILESDIR}"/"${PVR}"/disable-i8042-check-on-apple-mac.patch
 
 # rhbz#605888
@@ -229,70 +228,32 @@ src_unpack() {
 
 	epatch "${FILESDIR}"/"${PVR}"/efi-dont-map-boot-services-on-32bit.patch
 
-# FIXME
+# FIXME: REBASE
 #	epatch "${FILESDIR}"/"${PVR}"/hibernate-freeze-filesystems.patch
 	epatch "${FILESDIR}"/"${PVR}"/hibernate-watermark.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/lis3-improve-handling-of-null-rate.patch
 
-	epatch "${FILESDIR}"/"${PVR}"/bluetooth-use-after-free.patch
-	epatch "${FILESDIR}"/"${PVR}"/Bluetooth-Adding-USB-device-13d3-3375-as-an-Atheros-.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/ips-noirq.patch
-
-# utrace.
-	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/utrace.patch
-
-#	epatch "${FILESDIR}"/"${PVR}"/pci-crs-blacklist.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/ext4-Support-check-none-nocheck-mount-options.patch
-
-#rhbz 772772
-	epatch "${FILESDIR}"/"${PVR}"/rt2x00_fix_MCU_request_failures.patch
+	epatch "${FILESDIR}"/"${PVR}"/power-x86-destdir.patch
 
 #rhbz 754518
-#	epatch "${FILESDIR}"/"${PVR}"/scsi-sd_revalidate_disk-prevent-NULL-ptr-deref.patch
-
-#rhbz 789644
-	epatch "${FILESDIR}"/"${PVR}"/mcelog-rcu-splat.patch
-
-#rhbz 727865 730007
-	epatch "${FILESDIR}"/"${PVR}"/ACPICA-Fix-regression-in-FADT-revision-checks.patch
-
-#rhbz 728478
-	epatch "${FILESDIR}"/"${PVR}"/sony-laptop-Enable-keyboard-backlight-by-default.patch
-
-#rhbz 804007
-	epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-possible-tid_rx-reorder_timer-use-after-free.patch
+	epatch "${FILESDIR}"/"${PVR}"/scsi-sd_revalidate_disk-prevent-NULL-ptr-deref.patch
 
 #rhbz 804957 CVE-2012-1568
 	epatch "${FILESDIR}"/"${PVR}"/shlib_base_randomize.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/unhandled-irqs-switch-to-polling.patch
 
-# debug patches
 	epatch "${FILESDIR}"/"${PVR}"/weird-root-dentry-name-debug.patch
-	epatch "${FILESDIR}"/"${PVR}"/debug-808990.patch
 
-#rhbz 804347
-	epatch "${FILESDIR}"/"${PVR}"/x86-add-io_apic_ops-to-allow-interception.patch
-	epatch "${FILESDIR}"/"${PVR}"/x86-apic_ops-Replace-apic_ops-with-x86_apic_ops.patch
-	epatch "${FILESDIR}"/"${PVR}"/xen-x86-Implement-x86_apic_ops.patch
+#selinux ptrace child permissions
+	epatch "${FILESDIR}"/"${PVR}"/selinux-apply-different-permission-to-ptrace-child.patch
 
-#rhbz 770476
-	epatch "${FILESDIR}"/"${PVR}"/iwlegacy-do-not-nulify-il-vif-on-reset.patch
-	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-do-not-nulify-ctx-vif-on-reset.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/nfs-Fix-length-of-buffer-copied-in-__nfs4_get_acl_uncached.patch
-
-#rhbz 808207 CVE-2012-1601
-	epatch "${FILESDIR}"/"${PVR}"/KVM-Ensure-all-vcpus-are-consistent-with-in-kernel-i.patch
+#Highbank clock functions
+	epatch "${FILESDIR}"/"${PVR}"/highbank-export-clock-functions.patch 
 
 #rhbz 806433
 	epatch "${FILESDIR}"/"${PVR}"/uvcvideo-Fix-race-induced-crash-in-uvc_video_clock_update.patch
-
-#rhbz 808603
-	epatch "${FILESDIR}"/"${PVR}"/wimax-i2400m-prevent-a-possible-kernel-bug-due-to-mi.patch
 
 #rhbz 806676 807632
 	epatch "${FILESDIR}"/"${PVR}"/libata-disable-runtime-pm-for-hotpluggable-port.patch
@@ -301,7 +262,7 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/x86-Use-correct-byte-sized-register-constraint-in-__xchg_op.patch
 	epatch "${FILESDIR}"/"${PVR}"/x86-Use-correct-byte-sized-register-constraint-in-__add.patch
 
-### END OF PATCH APPLICATIONS ###
+# END OF PATCH APPLICATIONS
 
 	epatch "${FILESDIR}"/acpi-ec-add-delay-before-write.patch
 	if use branding; then
@@ -356,9 +317,11 @@ pkg_postinst() {
 		einfo "font - CONFIG_FONT_ISO_LATIN_1_8x16 http://sudormrf.wordpress.com/2010/10/23/ka-ping-yee-iso-latin-1%c2%a0font-in-linux-kernel/"
 		einfo "logo - CONFIG_LOGO_LARRY_CLUT224 http://www.gentoo.org/proj/en/desktop/artwork/artwork.xml"
 	fi
+#	use backports && einfo "backports enable compat-wireless patches ${compat_wireless_url}"
 	use ck && einfo "ck enable ${ck_url} patches"
 	use fbcondecor && einfo "fbcondecor enable ${fbcondecor_url} patches"
 	use grsecurity && einfo "grsecurity enable ${grsecurity_url} patches"
 	use tomoyo && einfo "tomoyo enable ${css_url} patches"
 	use bld && einfo "bld enable ${bld_url} patches"
+	use rt && einfo "rt enable ${rt_url} patches"
 }

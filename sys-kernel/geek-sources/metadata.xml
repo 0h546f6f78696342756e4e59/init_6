@@ -9,6 +9,7 @@
   <use>
     <flag name='branding'>Enable Gentoo specific branding.</flag>
     <flag name='backports'>Use backports patches.</flag>
+    <flag name='bld'>Alternate CPU load distribution technique for Linux kernel scheduler.</flag>
     <flag name='ck'>Use Con Kolivas BFS, BFQ patches.</flag>
     <flag name='fbcondecor'>Use Spock's fbsplash patch.</flag>
     <flag name='grsecurity'>Use grsecurity patches.</flag>
