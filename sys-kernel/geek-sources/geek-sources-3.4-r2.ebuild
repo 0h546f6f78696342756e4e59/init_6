@@ -26,12 +26,12 @@ detect_version
 #ck_version="3.3"
 #ck_src="http://ck.kolivas.org/patches/3.0/3.3/3.3-ck1/patch-${ck_version}-ck1.bz2"
 #ck_url="http://ck-hack.blogspot.com"
-fbcondecor_src="http://sources.gentoo.org/cgi-bin/viewvc.cgi/linux-patches/genpatches-2.6/trunk/3.3/4200_fbcondecor-0.9.6.patch"
+fbcondecor_src="http://sources.gentoo.org/cgi-bin/viewvc.cgi/linux-patches/genpatches-2.6/trunk/3.4/4200_fbcondecor-0.9.6.patch"
 fbcondecor_url="http://dev.gentoo.org/~spock/projects/fbcondecor"
 #bld_version="3.3-rc3"
 #bld_src="http://bld.googlecode.com/files/bld-${bld_version}.tar.bz2"
 #bld_url="http://code.google.com/p/bld"
-rt_version="3.4-rc2-rt2"
+rt_version="3.4-rc2-rt4"
 rt_src="http://www.kernel.org/pub/linux/kernel/projects/rt/3.4/patch-${rt_version}.patch.xz"
 rt_url="http://www.kernel.org/pub/linux/kernel/projects/rt"
 
@@ -252,17 +252,10 @@ src_unpack() {
 #Highbank clock functions
 	epatch "${FILESDIR}"/"${PVR}"/highbank-export-clock-functions.patch 
 
-#rhbz 806433
-	epatch "${FILESDIR}"/"${PVR}"/uvcvideo-Fix-race-induced-crash-in-uvc_video_clock_update.patch
-
 #rhbz 806676 807632
 	epatch "${FILESDIR}"/"${PVR}"/libata-disable-runtime-pm-for-hotpluggable-port.patch
 
-#rhbz 809014
-	epatch "${FILESDIR}"/"${PVR}"/x86-Use-correct-byte-sized-register-constraint-in-__xchg_op.patch
-	epatch "${FILESDIR}"/"${PVR}"/x86-Use-correct-byte-sized-register-constraint-in-__add.patch
-
-# END OF PATCH APPLICATIONS
+### END OF PATCH APPLICATIONS ###
 
 	epatch "${FILESDIR}"/acpi-ec-add-delay-before-write.patch
 	if use branding; then

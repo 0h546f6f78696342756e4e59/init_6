@@ -17,10 +17,10 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201204091729"
+grsecurity_version="201204131715"
 grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
-css_version="1.8.3-20120301"
+css_version="1.8.3-20120401"
 css_src="http://sourceforge.jp/frs/redir.php?m=jaist&f=/tomoyo/49684/ccs-patch-${css_version}.tar.gz"
 css_url="http://tomoyo.sourceforge.jp"
 ck_version="3.3"
@@ -148,7 +148,6 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-defaults-acpi-video.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-video-dos.patch
 	epatch "${FILESDIR}"/"${PVR}"/linux-2.6-acpi-debug-infinite-loop.patch
-	epatch "${FILESDIR}"/"${PVR}"/acpi-ensure-thermal-limits-match-cpu-freq.patch
 	epatch "${FILESDIR}"/"${PVR}"/acpi-sony-nonvs-blacklist.patch
 
 #
@@ -219,6 +218,7 @@ src_unpack() {
 # Media (V4L/DVB/IR) updates/fixes/experimental drivers
 #  apply if non-empty
 	epatch "${FILESDIR}"/"${PVR}"/add-poll-requested-events.patch
+	epatch "${FILESDIR}"/"${PVR}"/drivers-media-update.patch
 
 # Patches headed upstream
 
@@ -256,17 +256,11 @@ src_unpack() {
 #rhbz 789644
 	epatch "${FILESDIR}"/"${PVR}"/mcelog-rcu-splat.patch
 
-#rhbz 727865 730007
-	epatch "${FILESDIR}"/"${PVR}"/ACPICA-Fix-regression-in-FADT-revision-checks.patch
-
 #rhbz 728478
 	epatch "${FILESDIR}"/"${PVR}"/sony-laptop-Enable-keyboard-backlight-by-default.patch
 
-#rhbz 804007
-	epatch "${FILESDIR}"/"${PVR}"/mac80211-fix-possible-tid_rx-reorder_timer-use-after-free.patch
-
 #rhbz 804957 CVE-2012-1568
-	epatch "${FILESDIR}"/"${PVR}"/shlib_base_randomize.patch
+	use grsecurity || epatch "${FILESDIR}"/"${PVR}"/shlib_base_randomize.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/unhandled-irqs-switch-to-polling.patch
 
@@ -280,16 +274,10 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/xen-x86-Implement-x86_apic_ops.patch
 
 #rhbz 770476
-	epatch "${FILESDIR}"/"${PVR}"/iwlegacy-do-not-nulify-il-vif-on-reset.patch
 	epatch "${FILESDIR}"/"${PVR}"/iwlwifi-do-not-nulify-ctx-vif-on-reset.patch
-
-	epatch "${FILESDIR}"/"${PVR}"/nfs-Fix-length-of-buffer-copied-in-__nfs4_get_acl_uncached.patch
 
 #rhbz 808207 CVE-2012-1601
 	epatch "${FILESDIR}"/"${PVR}"/KVM-Ensure-all-vcpus-are-consistent-with-in-kernel-i.patch
-
-#rhbz 806433
-	epatch "${FILESDIR}"/"${PVR}"/uvcvideo-Fix-race-induced-crash-in-uvc_video_clock_update.patch
 
 #rhbz 808603
 	epatch "${FILESDIR}"/"${PVR}"/wimax-i2400m-prevent-a-possible-kernel-bug-due-to-mi.patch
