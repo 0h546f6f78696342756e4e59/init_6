@@ -12,7 +12,7 @@ ETYPE="sources"
 #CKV="${PVR/-r/-git}"
 # only use this if it's not an _rc/_pre release
 #[ "${PV/_pre}" == "${PV}" ] && [ "${PV/_rc}" == "${PV}" ] && OKV="${PV}"
-CKV="3.4-rc2"
+CKV="3.4-rc3"
 
 inherit kernel-2
 detect_version
@@ -141,7 +141,7 @@ src_unpack() {
 # xfs
 
 # btrfs
-	epatch "${FILESDIR}"/"${PVR}"/btrfs-use-after-free.patch
+#	epatch "${FILESDIR}"/"${PVR}"/btrfs-use-after-free.patch # Failed
 
 
 # eCryptfs
