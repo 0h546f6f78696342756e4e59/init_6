@@ -10,3 +10,6 @@
 
 # Gnome 3.4
 =net-libs/webkit-gtk-1.8.0
+
+# performance regression
+=x11-drivers/nvidia-drivers-295.40

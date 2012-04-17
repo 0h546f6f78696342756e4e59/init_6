@@ -288,6 +288,10 @@ src_prepare() {
 			-e 's:-Wsign-compare::g' \
 			"${NV_SRC}"/Makefile.kbuild
 
+		# fix CVE-2012-0946
+		# ftp://download.nvidia.com/XFree86/patches/security/CVE-2012-0946/nvidia-blacklist-register-mapping-290-295.diff
+		epatch "${FILESDIR}"/nvidia-blacklist-register-mapping-290-295.diff
+
 		# Fix building with Linux 3.3.x wrt #408841
 		sed -i \
 			-e '/CFLAGS="$CFLAGS/s:-I$SOURCES/arch/x86/include:& -I$OUTPUT/arch/x86/include/generated:' \
