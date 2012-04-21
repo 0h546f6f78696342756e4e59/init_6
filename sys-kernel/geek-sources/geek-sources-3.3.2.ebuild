@@ -17,7 +17,7 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201204131715"
+grsecurity_version="201204172135"
 grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 css_version="1.8.3-20120401"
@@ -139,6 +139,7 @@ src_unpack() {
 # NFSv4
 	epatch "${FILESDIR}"/"${PVR}"/NFSv4-Reduce-the-footprint-of-the-idmapper.patch
 	epatch "${FILESDIR}"/"${PVR}"/NFSv4-Further-reduce-the-footprint-of-the-idmapper.patch
+	epatch "${FILESDIR}"/"${PVR}"/NFSv4-Minor-cleanups-for-nfs4_handle_exception-and-n.patch
 
 # USB
 
@@ -163,6 +164,9 @@ src_unpack() {
 # ACPI
 
 # ALSA
+
+#rhbz 808559
+	epatch "${FILESDIR}"/"${PVR}"/ALSA-hda-realtek-Add-quirk-for-Mac-Pro-5-1-machines.patch
 
 # Networking
 
@@ -218,7 +222,7 @@ src_unpack() {
 # Media (V4L/DVB/IR) updates/fixes/experimental drivers
 #  apply if non-empty
 	epatch "${FILESDIR}"/"${PVR}"/add-poll-requested-events.patch
-	epatch "${FILESDIR}"/"${PVR}"/drivers-media-update.patch
+	epatch "${FILESDIR}"/"${PVR}"/dvb_frontend_switch_regression_fix.patch
 
 # Patches headed upstream
 
@@ -282,12 +286,29 @@ src_unpack() {
 #rhbz 808603
 	epatch "${FILESDIR}"/"${PVR}"/wimax-i2400m-prevent-a-possible-kernel-bug-due-to-mi.patch
 
-#rhbz 806676 807632
-	epatch "${FILESDIR}"/"${PVR}"/libata-disable-runtime-pm-for-hotpluggable-port.patch
+#rhbz 807632
+	epatch "${FILESDIR}"/"${PVR}"/libata-forbid-port-runtime-pm-by-default.patch
 
 #rhbz 809014
 	epatch "${FILESDIR}"/"${PVR}"/x86-Use-correct-byte-sized-register-constraint-in-__xchg_op.patch
 	epatch "${FILESDIR}"/"${PVR}"/x86-Use-correct-byte-sized-register-constraint-in-__add.patch
+
+#rhbz 797559
+	epatch "${FILESDIR}"/"${PVR}"/x86-microcode-Fix-sysfs-warning-during-module-unload-on-unsupported-CPUs.patch
+	epatch "${FILESDIR}"/"${PVR}"/x86-microcode-Ensure-that-module-is-only-loaded-for-supported-AMD-CPUs.patch
+
+#rhbz 806295
+	epatch "${FILESDIR}"/"${PVR}"/disable-hid-battery.patch
+
+#rhbz 814149 814155 CVE-2012-2121
+	epatch "${FILESDIR}"/"${PVR}"/KVM-unmap-pages-from-the-iommu-when-slots-are-removed.patch
+
+#rhbz 814278 814289 CVE-2012-2119
+	epatch "${FILESDIR}"/"${PVR}"/macvtap-zerocopy-validate-vector-length.patch
+
+#rhbz 814523 806722 CVE-2012-2123
+	epatch "${FILESDIR}"/"${PVR}"/fcaps-clear-the-same-personality-flags-as-suid-when-.patch
+	epatch "${FILESDIR}"/"${PVR}"/security-fix-compile-error-in-commoncap.c.patch
 
 ### END OF PATCH APPLICATIONS ###
 
@@ -335,7 +356,7 @@ pkg_postinst() {
 
 	if [ ! -e ${ROOT}usr/src/linux ]
 	then
-		ln -s linux-${P} ${ROOT}usr/src/linux
+		ln -sf linux-${P} ${ROOT}usr/src/linux
 	fi
 
 	einfo "Now is the time to configure and build the kernel."
