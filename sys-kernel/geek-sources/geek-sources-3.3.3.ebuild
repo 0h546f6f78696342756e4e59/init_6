@@ -17,7 +17,7 @@ CKV="${PVR/-r/-git}"
 inherit kernel-2
 detect_version
 
-grsecurity_version="201204172135"
+grsecurity_version="201204222117"
 grsecurity_src="http://grsecurity.net/test/grsecurity-2.9-${PV}-${grsecurity_version}.patch"
 grsecurity_url="http://grsecurity.net"
 css_version="1.8.3-20120401"
@@ -240,7 +240,6 @@ src_unpack() {
 	epatch "${FILESDIR}"/"${PVR}"/lis3-improve-handling-of-null-rate.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/bluetooth-use-after-free.patch
-	epatch "${FILESDIR}"/"${PVR}"/Bluetooth-Adding-USB-device-13d3-3375-as-an-Atheros-.patch
 
 	epatch "${FILESDIR}"/"${PVR}"/ips-noirq.patch
 
@@ -289,10 +288,6 @@ src_unpack() {
 #rhbz 807632
 	epatch "${FILESDIR}"/"${PVR}"/libata-forbid-port-runtime-pm-by-default.patch
 
-#rhbz 809014
-	epatch "${FILESDIR}"/"${PVR}"/x86-Use-correct-byte-sized-register-constraint-in-__xchg_op.patch
-	epatch "${FILESDIR}"/"${PVR}"/x86-Use-correct-byte-sized-register-constraint-in-__add.patch
-
 #rhbz 797559
 	epatch "${FILESDIR}"/"${PVR}"/x86-microcode-Fix-sysfs-warning-during-module-unload-on-unsupported-CPUs.patch
 	epatch "${FILESDIR}"/"${PVR}"/x86-microcode-Ensure-that-module-is-only-loaded-for-supported-AMD-CPUs.patch
@@ -306,9 +301,11 @@ src_unpack() {
 #rhbz 814278 814289 CVE-2012-2119
 	epatch "${FILESDIR}"/"${PVR}"/macvtap-zerocopy-validate-vector-length.patch
 
-#rhbz 814523 806722 CVE-2012-2123
-	epatch "${FILESDIR}"/"${PVR}"/fcaps-clear-the-same-personality-flags-as-suid-when-.patch
-	epatch "${FILESDIR}"/"${PVR}"/security-fix-compile-error-in-commoncap.c.patch
+#rhbz 811225
+	epatch "${FILESDIR}"/"${PVR}"/memblock-memblock-should-be-able-to-handle-zero-leng.patch
+
+	epatch "${FILESDIR}"/"${PVR}"/input-synaptics-fix-regression-with-image-sensor-trackpads.patch
+
 
 ### END OF PATCH APPLICATIONS ###
 
