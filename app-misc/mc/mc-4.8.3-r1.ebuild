@@ -4,7 +4,7 @@
 
 EAPI=4
 
-inherit flag-o-matic
+inherit eutils flag-o-matic
 
 MY_P=${P/_/-}
 
@@ -40,6 +40,9 @@ S=${WORKDIR}/${MY_P}
 src_prepare() {
 	cp "${FILESDIR}"/${P}-missing-do_panel_cd_stub_env.c \
 		tests/src/filemanager/do_panel_cd_stub_env.c || die
+
+	# bug #413259
+	epatch "${FILESDIR}"/${P}-fix-chown-crash.patch
 }
 
 src_configure() {
